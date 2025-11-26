@@ -1,0 +1,29 @@
+# Build directories
+build/
+build-*/
+cmake-build-*/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Compiled objects
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+*.dll
+
+# WebAssembly output
+*.wasm
+*.js.map
+
+# macOS
+.DS_Store
+
+# Emscripten cache
+.emscripten_cache/
