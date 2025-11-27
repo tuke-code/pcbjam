@@ -131,7 +131,53 @@ git apply ../patches/0002-touch-to-mouse-events.patch
 git commit -m "Add Emscripten/WASM support"
 ```
 
-### Step 4: Create Build Script
+### Step 4: Submodule Setup After Cloning
+
+The wxwidgets submodule is a fork (`VV-EE/wxWidgets`) with all WASM changes already committed. However, wxWidgets has **nested submodules** (pcre, expat, jpeg, png, tiff, zlib) that need config.sub modifications for Emscripten support. These nested submodules are separate repositories, so their changes are NOT tracked by the wxwidgets fork.
+
+**After cloning kicad-wasm, you must:**
+
+```bash
+git clone <kicad-wasm-repo>
+cd kicad-wasm
+
+# 1. Initialize wxwidgets submodule
+git submodule update --init wxwidgets
+
+# 2. Initialize wxwidgets' nested submodules
+cd wxwidgets
+git submodule update --init --recursive
+
+# 3. Copy config.sub to nested submodules (required for Emscripten)
+# The main wxwidgets/config.sub already has emscripten/wasm32 support.
+# Copy it to all nested submodule locations:
+cp config.sub 3rdparty/pcre/config.sub
+cp config.sub src/expat/expat/conftools/config.sub
+cp config.sub src/jpeg/config.sub
+cp config.sub src/png/config.sub
+cp config.sub src/tiff/config/config.sub
+
+cd ..
+```
+
+**Why is this needed?**
+- wxWidgets bundles libraries (pcre, expat, jpeg, png, tiff) as git submodules
+- Each submodule has its own `config.sub` that must recognize `emscripten` and `wasm32` hosts
+- These submodules point to upstream repos, so we can't commit changes to them
+- The same modified config.sub must be copied to all 5 locations after every fresh clone
+
+**Reproducibility Testing** (optional):
+
+A patch-based build system exists for validation:
+```bash
+# Generate patches from current wxwidgets state
+./scripts/generate-wxwidgets-patches.sh
+
+# Build from clean clone + patches (validates reproducibility)
+./scripts/build-wxwidgets-wasm-clean.sh --clean
+```
+
+### Step 5: Create Build Script
 
 Create `scripts/build-wxuniversal-wasm.sh`:
 
