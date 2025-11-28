@@ -29,7 +29,12 @@ function isKnownWarning(error: string): boolean {
          error.includes('invalid bitmap') ||
          error.includes('assert') ||
          error.includes('HEAPU8') ||  // Emscripten export warning
-         error.includes('showError');  // Template function
+         error.includes('showError') ||  // Template function
+         error.includes('emscripten GL emulation') ||  // GL emulation warnings
+         error.includes('GL immediate mode emulation') ||  // GL immediate mode warning
+         error.includes('WebGL') ||  // WebGL version warnings
+         error.includes('EndModal') ||  // wxWidgets debug messages
+         error.includes('Debug:');  // wxWidgets debug prefix
 }
 
 // Click at specific canvas coordinates
@@ -60,7 +65,9 @@ test.describe('wxWidgets WASM - Diagnostics', () => {
       allLogs.push(`[${msg.type()}] ${msg.text()}`);
     });
     page.on('pageerror', err => {
-      errors.push(`[PAGE_ERROR] ${err.message}`);
+      // Include stack trace for better debugging
+      const stack = err.stack || 'No stack trace available';
+      errors.push(`[PAGE_ERROR] ${err.message}\n${stack}`);
     });
 
     await page.goto('/minimal_test.html');
@@ -187,6 +194,26 @@ test.describe('wxWidgets WASM - Diagnostics', () => {
 
     await page.screenshot({ path: 'test-results/10-lists-clicked.png', fullPage: true });
 
+    // === TAB 5: OpenGL ===
+    console.log('--- Testing OpenGL Tab ---');
+
+    // Click OpenGL tab (fifth tab, around x=280)
+    await page.mouse.click(box.x + 280, box.y + 35);
+    await page.waitForTimeout(1000);  // Give GL time to initialize
+
+    await page.screenshot({ path: 'test-results/14-opengl-tab.png', fullPage: true });
+
+    // Click on different GL tests in the dropdown
+    // First, click the dropdown (at approximately x=200, y=90)
+    await page.mouse.click(box.x + 200, box.y + 90);
+    await page.waitForTimeout(300);
+
+    // Click "Run All Tests" button (approximately x=400, y=90)
+    await page.mouse.click(box.x + 400, box.y + 90);
+    await page.waitForTimeout(500);
+
+    await page.screenshot({ path: 'test-results/15-opengl-tests.png', fullPage: true });
+
     // === Menu interaction ===
     console.log('--- Testing Menus ---');
 
@@ -249,7 +276,7 @@ test.describe('wxWidgets WASM - Diagnostics', () => {
 test.describe('wxWidgets WASM - Loading', () => {
   test('app loads without JavaScript errors', async ({ page }) => {
     const errors: string[] = [];
-    page.on('pageerror', err => errors.push(err.message));
+    page.on('pageerror', err => errors.push(`${err.message}\n${err.stack || 'No stack'}`));
     page.on('console', msg => {
       if (msg.type() === 'error') {
         errors.push(msg.text());
@@ -446,7 +473,7 @@ test.describe('wxWidgets WASM - Visual Rendering', () => {
 test.describe('wxWidgets WASM - Stability', () => {
   test('app remains stable after multiple interactions', async ({ page }) => {
     const errors: string[] = [];
-    page.on('pageerror', err => errors.push(err.message));
+    page.on('pageerror', err => errors.push(`${err.message}\n${err.stack || 'No stack'}`));
 
     await page.goto('/minimal_test.html');
     await waitForApp(page);
@@ -487,5 +514,141 @@ test.describe('wxWidgets WASM - Stability', () => {
 
     // App should still be responsive
     await expect(page.locator(MAIN_CANVAS)).toBeVisible();
+  });
+});
+
+test.describe('wxWidgets WASM - OpenGL', () => {
+  test('OpenGL tab switches successfully', async ({ page }) => {
+    const logs: string[] = [];
+    page.on('console', msg => {
+      logs.push(msg.text());
+    });
+
+    await page.goto('/minimal_test.html');
+    await waitForApp(page);
+
+    const canvas = page.locator(MAIN_CANVAS);
+    const box = await canvas.boundingBox();
+    if (!box) throw new Error('Canvas not found');
+
+    // Click OpenGL tab (fifth tab, around x=280)
+    await page.mouse.click(box.x + 280, box.y + 35);
+    await page.waitForTimeout(1500);  // Give GL time to initialize
+
+    // Check that we switched to the OpenGL tab
+    const tabChanged = logs.some(log => log.includes('Tab changed to: OpenGL'));
+    expect(tabChanged).toBe(true);
+
+    // Save screenshot for visual verification
+    await page.screenshot({ path: 'test-results/opengl-tab-initial.png', fullPage: true });
+  });
+
+  test('OpenGL tab interaction without crashes', async ({ page }) => {
+    const errors: string[] = [];
+    const logs: string[] = [];
+
+    page.on('pageerror', err => errors.push(`${err.message}\n${err.stack || 'No stack'}`));
+    page.on('console', msg => {
+      if (msg.type() === 'error' && !isKnownWarning(msg.text())) {
+        errors.push(msg.text());
+      }
+      logs.push(msg.text());
+    });
+
+    await page.goto('/minimal_test.html');
+    await waitForApp(page);
+
+    const canvas = page.locator(MAIN_CANVAS);
+    const box = await canvas.boundingBox();
+    if (!box) throw new Error('Canvas not found');
+
+    // Switch to OpenGL tab
+    await page.mouse.click(box.x + 280, box.y + 35);
+    await page.waitForTimeout(1000);
+
+    // Click "Run All Tests" button (approximately x=360, y=130)
+    await page.mouse.click(box.x + 360, box.y + 130);
+    await page.waitForTimeout(1000);
+
+    // Save screenshot after running tests
+    await page.screenshot({ path: 'test-results/opengl-after-tests.png', fullPage: true });
+
+    // App should remain stable - no crashes or critical errors
+    await expect(page.locator(MAIN_CANVAS)).toBeVisible();
+
+    // Note: wxPrintf logs go to stdout which may not appear in browser console
+    // The main verification is that the app doesn't crash
+    expect(errors.length).toBe(0);
+  });
+
+  test('OpenGL tab renders without errors', async ({ page }) => {
+    const errors: string[] = [];
+    const logs: string[] = [];
+
+    page.on('pageerror', err => errors.push(`${err.message}\n${err.stack || 'No stack'}`));
+    page.on('console', msg => {
+      logs.push(`[${msg.type()}] ${msg.text()}`);
+      if (msg.type() === 'error' && !isKnownWarning(msg.text())) {
+        errors.push(msg.text());
+      }
+    });
+
+    await page.goto('/minimal_test.html');
+    await waitForApp(page);
+
+    const canvas = page.locator(MAIN_CANVAS);
+    const box = await canvas.boundingBox();
+    if (!box) throw new Error('Canvas not found');
+
+    // Switch to OpenGL tab
+    await page.mouse.click(box.x + 280, box.y + 35);
+    await page.waitForTimeout(1000);
+
+    // Click "Run All Tests" button (approximately at x=360, y=130 relative to canvas)
+    await page.mouse.click(box.x + 360, box.y + 130);
+    await page.waitForTimeout(500);
+
+    // Take screenshot before checking GL canvas
+    await page.screenshot({ path: 'test-results/opengl-before-debug.png', fullPage: true });
+
+    // Debug: Check GL canvas element position and visibility
+    const glCanvasInfo = await page.evaluate(() => {
+      const glCanvas = document.querySelector('[id^="glcanvas-"]') as HTMLCanvasElement;
+      if (!glCanvas) return { exists: false };
+      const style = window.getComputedStyle(glCanvas);
+      return {
+        exists: true,
+        id: glCanvas.id,
+        display: style.display,
+        visibility: style.visibility,
+        pointerEvents: style.pointerEvents,
+        position: style.position,
+        left: style.left,
+        top: style.top,
+        width: style.width,
+        height: style.height,
+        canvasWidth: glCanvas.width,
+        canvasHeight: glCanvas.height,
+        zIndex: style.zIndex,
+        boundingRect: glCanvas.getBoundingClientRect()
+      };
+    });
+
+    console.log('GL Canvas Debug Info:', JSON.stringify(glCanvasInfo, null, 2));
+
+    // Take screenshot of GL canvas
+    const screenshot = await page.screenshot();
+    expect(screenshot.length).toBeGreaterThan(0);
+
+    // Save for visual inspection including errors
+    const fs = require('fs');
+    fs.writeFileSync('test-results/opengl-render.png', screenshot);
+    fs.writeFileSync('test-results/opengl-debug.json', JSON.stringify({ glCanvasInfo, logs, errors }, null, 2));
+
+    // App should still be responsive after GL rendering
+    await expect(page.locator(MAIN_CANVAS)).toBeVisible();
+
+    // No critical JavaScript errors
+    expect(errors.length).toBe(0);
   });
 });

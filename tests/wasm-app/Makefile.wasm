@@ -1,18 +1,28 @@
-# Makefile for minimal wxWidgets WASM test app
-# Uses the local wxWidgets build
+# Makefile for wxWidgets WASM test app with OpenGL support
+# Uses the local wxWidgets build with legacy GL emulation
 
 WXCONFIG = ../../build-wasm/wxwidgets-universal/wx-config
 TOOLS_ROOT = ../../wxwidgets/build/wasm
 
 CXX = em++
 WX_CXXFLAGS := $(shell $(WXCONFIG) --cxxflags)
-WX_LDFLAGS := $(shell $(WXCONFIG) --libs base,core)
+# Include GL library for OpenGL tests
+WX_LDFLAGS := $(shell $(WXCONFIG) --libs base,core,gl)
 
 TARGET = minimal_test
 SOURCES = minimal_test.cpp
 
 CXXFLAGS = -O2 $(WX_CXXFLAGS)
-LDFLAGS = -s TOTAL_MEMORY=32MB -s ERROR_ON_UNDEFINED_SYMBOLS=0 -s "EXPORTED_RUNTIME_METHODS=['HEAPU8','HEAP8','HEAP32']" $(WX_LDFLAGS)
+
+# Emscripten flags:
+# -sLEGACY_GL_EMULATION: Enable legacy OpenGL (glBegin/glEnd, etc.) emulation on WebGL
+# -sMAX_WEBGL_VERSION=2: Enable WebGL 2.0 support (required since wxGLCanvas requests WebGL 2)
+# Note: Cannot combine LEGACY_GL_EMULATION with FULL_ES2 - they are mutually exclusive
+EM_GL_FLAGS = -sLEGACY_GL_EMULATION -sMAX_WEBGL_VERSION=2
+
+LDFLAGS = -sALLOW_MEMORY_GROWTH -sERROR_ON_UNDEFINED_SYMBOLS=0 \
+          -s "EXPORTED_RUNTIME_METHODS=['HEAPU8','HEAP8','HEAP32']" \
+          $(EM_GL_FLAGS) $(WX_LDFLAGS)
 
 JS = $(TOOLS_ROOT)/wx.js
 HTML = $(TOOLS_ROOT)/template.html
