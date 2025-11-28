@@ -1,0 +1,31 @@
+# Makefile for minimal wxWidgets WASM test app
+# Uses the local wxWidgets build
+
+WXCONFIG = ../../build-wasm/wxwidgets-universal/wx-config
+TOOLS_ROOT = ../../wxwidgets/build/wasm
+
+CXX = em++
+WX_CXXFLAGS := $(shell $(WXCONFIG) --cxxflags)
+WX_LDFLAGS := $(shell $(WXCONFIG) --libs base,core)
+
+TARGET = minimal_test
+SOURCES = minimal_test.cpp
+
+CXXFLAGS = -O2 $(WX_CXXFLAGS)
+LDFLAGS = -s TOTAL_MEMORY=32MB -s ERROR_ON_UNDEFINED_SYMBOLS=0 -s "EXPORTED_RUNTIME_METHODS=['HEAPU8','HEAP8','HEAP32']" $(WX_LDFLAGS)
+
+JS = $(TOOLS_ROOT)/wx.js
+HTML = $(TOOLS_ROOT)/template.html
+
+all: $(TARGET).html
+
+$(TARGET).o: $(SOURCES)
+	$(CXX) -c $(CXXFLAGS) $< -o $@
+
+$(TARGET).html: $(TARGET).o
+	$(CXX) $(TARGET).o $(LDFLAGS) --pre-js $(JS) --shell-file $(HTML) -o $@
+
+clean:
+	rm -f $(TARGET).o $(TARGET).html $(TARGET).js $(TARGET).wasm
+
+.PHONY: all clean

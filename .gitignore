@@ -18,8 +18,9 @@ cmake-build-*/
 *.dylib
 *.dll
 
-# WebAssembly output
+# WebAssembly output (but not Makefiles that end in .wasm)
 *.wasm
+!Makefile.wasm
 *.js.map
 
 # macOS
@@ -36,5 +37,5 @@ wxwidgets-clean/
 /tests/playwright-report/
 /tests/test-results/
 /tests/wasm-app/*.js
-/tests/wasm-app/*.wasm
+/tests/wasm-app/minimal_test.wasm
 /temp/

@@ -47,8 +47,10 @@ echo "=== Configuring ==="
 
 # Set flags for Emscripten compatibility
 # Z_HAVE_UNISTD_H ensures zlib includes <unistd.h> for read/write/lseek
+# Include pcre2 headers from the build directory (generated during configure)
+PCRE2_INCLUDE="$BUILD_DIR/3rdparty/pcre/src"
 export CFLAGS="-DZ_HAVE_UNISTD_H=1"
-export CXXFLAGS="-DZ_HAVE_UNISTD_H=1"
+export CXXFLAGS="-DZ_HAVE_UNISTD_H=1 -I$PCRE2_INCLUDE"
 
 emconfigure "$WX_SOURCE/configure" \
     --host=emscripten \
