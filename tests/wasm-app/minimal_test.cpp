@@ -17,6 +17,9 @@
 #include "wx/dcbuffer.h"
 #include "wx/datetime.h"
 #include "wx/glcanvas.h"
+#include "wx/grid.h"
+#include "wx/spinctrl.h"
+#include "wx/srchctrl.h"
 
 // OpenGL headers - using legacy GL with Emscripten's emulation
 #ifdef __EMSCRIPTEN__
@@ -61,7 +64,19 @@ enum {
     ID_BTN_GL_TEST_MATRIX,
     ID_BTN_GL_TEST_VERTEX_ARRAY,
     ID_BTN_GL_RUN_ALL,
-    ID_GL_TEST_SELECT
+    ID_GL_TEST_SELECT,
+    // Grid tab IDs
+    ID_GRID,
+    ID_SPIN_CTRL,
+    ID_SEARCH_CTRL,
+    // Dialogs tab IDs
+    ID_BTN_MSGBOX_INFO,
+    ID_BTN_MSGBOX_YESNO,
+    ID_BTN_MSGBOX_ERROR,
+    ID_BTN_CUSTOM_DIALOG,
+    ID_BTN_TIMER_START,
+    ID_BTN_TIMER_STOP,
+    ID_TIMER
 };
 
 // Forward declarations
@@ -638,6 +653,14 @@ private:
     wxListBox* m_listBox;
     GLTestCanvas* m_glCanvas;
     wxChoice* m_glTestChoice;
+    // Grid tab controls
+    wxGrid* m_grid;
+    wxSpinCtrl* m_spinCtrl;
+    wxSearchCtrl* m_searchCtrl;
+    // Dialogs tab controls
+    wxTimer* m_timer;
+    wxStaticText* m_timerLabel;
+    int m_timerCount;
 
     // Create tab pages
     wxPanel* CreateControlsPage(wxNotebook* parent);
@@ -645,6 +668,8 @@ private:
     wxPanel* CreateDrawingPage(wxNotebook* parent);
     wxPanel* CreateListsPage(wxNotebook* parent);
     wxPanel* CreateOpenGLPage(wxNotebook* parent);
+    wxPanel* CreateGridPage(wxNotebook* parent);
+    wxPanel* CreateDialogsPage(wxNotebook* parent);
 
     // Event handlers
     void OnQuit(wxCommandEvent& evt);
@@ -665,6 +690,20 @@ private:
     void OnNotebookPageChanged(wxBookCtrlEvent& evt);
     void OnGLTestSelect(wxCommandEvent& evt);
     void OnGLRunAll(wxCommandEvent& evt);
+    // Grid tab event handlers
+    void OnGridCellChange(wxGridEvent& evt);
+    void OnGridCellSelect(wxGridEvent& evt);
+    void OnSpinCtrl(wxSpinEvent& evt);
+    void OnSearchCtrl(wxCommandEvent& evt);
+    void OnSearchCtrlEnter(wxCommandEvent& evt);
+    // Dialogs tab event handlers
+    void OnMsgBoxInfo(wxCommandEvent& evt);
+    void OnMsgBoxYesNo(wxCommandEvent& evt);
+    void OnMsgBoxError(wxCommandEvent& evt);
+    void OnCustomDialog(wxCommandEvent& evt);
+    void OnTimerStart(wxCommandEvent& evt);
+    void OnTimerStop(wxCommandEvent& evt);
+    void OnTimer(wxTimerEvent& evt);
 
     wxDECLARE_EVENT_TABLE();
 };
@@ -688,6 +727,20 @@ wxBEGIN_EVENT_TABLE(TestFrame, wxFrame)
     EVT_NOTEBOOK_PAGE_CHANGED(wxID_ANY, TestFrame::OnNotebookPageChanged)
     EVT_CHOICE(ID_GL_TEST_SELECT, TestFrame::OnGLTestSelect)
     EVT_BUTTON(ID_BTN_GL_RUN_ALL, TestFrame::OnGLRunAll)
+    // Grid tab events
+    EVT_GRID_CELL_CHANGED(TestFrame::OnGridCellChange)
+    EVT_GRID_SELECT_CELL(TestFrame::OnGridCellSelect)
+    EVT_SPINCTRL(ID_SPIN_CTRL, TestFrame::OnSpinCtrl)
+    EVT_SEARCHCTRL_SEARCH_BTN(ID_SEARCH_CTRL, TestFrame::OnSearchCtrl)
+    EVT_TEXT_ENTER(ID_SEARCH_CTRL, TestFrame::OnSearchCtrlEnter)
+    // Dialogs tab events
+    EVT_BUTTON(ID_BTN_MSGBOX_INFO, TestFrame::OnMsgBoxInfo)
+    EVT_BUTTON(ID_BTN_MSGBOX_YESNO, TestFrame::OnMsgBoxYesNo)
+    EVT_BUTTON(ID_BTN_MSGBOX_ERROR, TestFrame::OnMsgBoxError)
+    EVT_BUTTON(ID_BTN_CUSTOM_DIALOG, TestFrame::OnCustomDialog)
+    EVT_BUTTON(ID_BTN_TIMER_START, TestFrame::OnTimerStart)
+    EVT_BUTTON(ID_BTN_TIMER_STOP, TestFrame::OnTimerStop)
+    EVT_TIMER(ID_TIMER, TestFrame::OnTimer)
 wxEND_EVENT_TABLE()
 
 TestFrame::TestFrame(const wxString& title)
@@ -721,6 +774,8 @@ TestFrame::TestFrame(const wxString& title)
     m_notebook->AddPage(CreateDrawingPage(m_notebook), "Drawing");
     m_notebook->AddPage(CreateListsPage(m_notebook), "Lists");
     m_notebook->AddPage(CreateOpenGLPage(m_notebook), "OpenGL");
+    m_notebook->AddPage(CreateGridPage(m_notebook), "Grid");
+    m_notebook->AddPage(CreateDialogsPage(m_notebook), "Dialogs");
 
     mainSizer->Add(m_notebook, 1, wxEXPAND | wxALL, 5);
 
@@ -979,6 +1034,65 @@ wxPanel* TestFrame::CreateOpenGLPage(wxNotebook* parent)
     return panel;
 }
 
+wxPanel* TestFrame::CreateGridPage(wxNotebook* parent)
+{
+    wxPanel* panel = new wxPanel(parent);
+    wxBoxSizer* mainSizer = new wxBoxSizer(wxVERTICAL);
+
+    // Description
+    wxStaticText* desc = new wxStaticText(panel, wxID_ANY,
+        "Advanced Controls Test\n"
+        "Tests wxSpinCtrl and wxSearchCtrl which KiCad uses extensively.\n"
+        "NOTE: wxGrid is NOT YET SUPPORTED in WASM (causes function signature mismatch crash).");
+    mainSizer->Add(desc, 0, wxALL, 10);
+
+    // wxGrid - DISABLED: causes "function signature mismatch" crash in WASM
+    // This needs to be fixed in wxWidgets WASM port before we can test it
+    /*
+    wxStaticBox* gridBox = new wxStaticBox(panel, wxID_ANY, "wxGrid (editable cells)");
+    wxStaticBoxSizer* gridSizer = new wxStaticBoxSizer(gridBox, wxVERTICAL);
+    m_grid = new wxGrid(panel, ID_GRID, wxDefaultPosition, wxSize(400, 150));
+    m_grid->CreateGrid(5, 4);
+    // ... grid setup ...
+    gridSizer->Add(m_grid, 1, wxEXPAND | wxALL, 5);
+    mainSizer->Add(gridSizer, 1, wxEXPAND | wxALL, 5);
+    */
+    m_grid = nullptr;  // wxGrid not supported in WASM yet
+
+    // Row with wxSpinCtrl and wxSearchCtrl
+    wxBoxSizer* controlRow = new wxBoxSizer(wxHORIZONTAL);
+
+    // wxSpinCtrl
+    wxStaticBox* spinBox = new wxStaticBox(panel, wxID_ANY, "wxSpinCtrl");
+    wxStaticBoxSizer* spinSizer = new wxStaticBoxSizer(spinBox, wxHORIZONTAL);
+
+    spinSizer->Add(new wxStaticText(panel, wxID_ANY, "Value (0-100):"), 0,
+        wxALL | wxALIGN_CENTER_VERTICAL, 5);
+    m_spinCtrl = new wxSpinCtrl(panel, ID_SPIN_CTRL, "50",
+        wxDefaultPosition, wxSize(80, -1), wxSP_ARROW_KEYS, 0, 100, 50);
+    spinSizer->Add(m_spinCtrl, 0, wxALL, 5);
+
+    controlRow->Add(spinSizer, 0, wxALL, 5);
+
+    // wxSearchCtrl
+    wxStaticBox* searchBox = new wxStaticBox(panel, wxID_ANY, "wxSearchCtrl");
+    wxStaticBoxSizer* searchSizer = new wxStaticBoxSizer(searchBox, wxHORIZONTAL);
+
+    m_searchCtrl = new wxSearchCtrl(panel, ID_SEARCH_CTRL, "",
+        wxDefaultPosition, wxSize(200, -1), wxTE_PROCESS_ENTER);
+    m_searchCtrl->ShowSearchButton(true);
+    m_searchCtrl->ShowCancelButton(true);
+    m_searchCtrl->SetDescriptiveText("Search...");
+    searchSizer->Add(m_searchCtrl, 1, wxALL | wxEXPAND, 5);
+
+    controlRow->Add(searchSizer, 1, wxALL | wxEXPAND, 5);
+
+    mainSizer->Add(controlRow, 0, wxEXPAND);
+
+    panel->SetSizer(mainSizer);
+    return panel;
+}
+
 // Event handlers
 void TestFrame::OnQuit(wxCommandEvent& WXUNUSED(evt))
 {
@@ -1111,6 +1225,45 @@ void TestFrame::OnGLRunAll(wxCommandEvent& WXUNUSED(evt))
     LogEvent("All GL tests completed - check console for detailed results");
 }
 
+// Grid tab event handlers
+void TestFrame::OnGridCellChange(wxGridEvent& evt)
+{
+    if (!m_grid) { evt.Skip(); return; }  // wxGrid not supported in WASM
+    int row = evt.GetRow();
+    int col = evt.GetCol();
+    wxString value = m_grid->GetCellValue(row, col);
+    LogEvent(wxString::Format("Grid cell changed: [%d,%d] = \"%s\"", row, col, value));
+    evt.Skip();
+}
+
+void TestFrame::OnGridCellSelect(wxGridEvent& evt)
+{
+    if (!m_grid) { evt.Skip(); return; }  // wxGrid not supported in WASM
+    int row = evt.GetRow();
+    int col = evt.GetCol();
+    wxString value = m_grid->GetCellValue(row, col);
+    LogEvent(wxString::Format("Grid cell selected: [%d,%d] \"%s\"", row, col, value));
+    evt.Skip();
+}
+
+void TestFrame::OnSpinCtrl(wxSpinEvent& evt)
+{
+    int value = evt.GetValue();
+    LogEvent(wxString::Format("SpinCtrl value: %d", value));
+}
+
+void TestFrame::OnSearchCtrl(wxCommandEvent& evt)
+{
+    wxString text = m_searchCtrl->GetValue();
+    LogEvent(wxString::Format("Search button clicked: \"%s\"", text));
+}
+
+void TestFrame::OnSearchCtrlEnter(wxCommandEvent& evt)
+{
+    wxString text = evt.GetString();
+    LogEvent(wxString::Format("Search Enter pressed: \"%s\"", text));
+}
+
 // DrawingPanel event handlers (defined after TestFrame for g_frame access)
 void DrawingPanel::OnMouseDown(wxMouseEvent& evt)
 {
@@ -1167,6 +1320,151 @@ void DrawingPanel::OnMouseLeave(wxMouseEvent& WXUNUSED(evt))
     if (g_frame) {
         g_frame->LogEvent("Mouse left drawing canvas");
     }
+}
+
+//-----------------------------------------------------------------------------
+// CreateDialogsPage - Dialogs tab with message boxes and timer
+//-----------------------------------------------------------------------------
+wxPanel* TestFrame::CreateDialogsPage(wxNotebook* parent)
+{
+    wxPanel* panel = new wxPanel(parent);
+    wxBoxSizer* mainSizer = new wxBoxSizer(wxVERTICAL);
+
+    // Description
+    wxStaticText* desc = new wxStaticText(panel, wxID_ANY,
+        "Dialog and Timer Tests\n"
+        "Tests wxMessageBox, wxDialog, and wxTimer which KiCad uses for alerts and animations.");
+    mainSizer->Add(desc, 0, wxALL, 10);
+
+    // Message Box section
+    wxStaticBox* msgBox = new wxStaticBox(panel, wxID_ANY, "wxMessageBox");
+    wxStaticBoxSizer* msgSizer = new wxStaticBoxSizer(msgBox, wxHORIZONTAL);
+
+    wxButton* btnInfo = new wxButton(panel, ID_BTN_MSGBOX_INFO, "Info Dialog");
+    wxButton* btnYesNo = new wxButton(panel, ID_BTN_MSGBOX_YESNO, "Yes/No Dialog");
+    wxButton* btnError = new wxButton(panel, ID_BTN_MSGBOX_ERROR, "Error Dialog");
+
+    msgSizer->Add(btnInfo, 0, wxALL, 5);
+    msgSizer->Add(btnYesNo, 0, wxALL, 5);
+    msgSizer->Add(btnError, 0, wxALL, 5);
+
+    mainSizer->Add(msgSizer, 0, wxEXPAND | wxALL, 10);
+
+    // Custom Dialog section
+    wxStaticBox* dlgBox = new wxStaticBox(panel, wxID_ANY, "wxDialog");
+    wxStaticBoxSizer* dlgSizer = new wxStaticBoxSizer(dlgBox, wxHORIZONTAL);
+
+    wxButton* btnCustom = new wxButton(panel, ID_BTN_CUSTOM_DIALOG, "Open Custom Dialog");
+    dlgSizer->Add(btnCustom, 0, wxALL, 5);
+    dlgSizer->Add(new wxStaticText(panel, wxID_ANY,
+        "Opens a modal dialog with OK/Cancel buttons"), 0, wxALL | wxALIGN_CENTER_VERTICAL, 5);
+
+    mainSizer->Add(dlgSizer, 0, wxEXPAND | wxALL, 10);
+
+    // Timer section
+    wxStaticBox* timerBox = new wxStaticBox(panel, wxID_ANY, "wxTimer");
+    wxStaticBoxSizer* timerSizer = new wxStaticBoxSizer(timerBox, wxVERTICAL);
+
+    wxBoxSizer* timerBtnSizer = new wxBoxSizer(wxHORIZONTAL);
+    wxButton* btnStart = new wxButton(panel, ID_BTN_TIMER_START, "Start Timer");
+    wxButton* btnStop = new wxButton(panel, ID_BTN_TIMER_STOP, "Stop Timer");
+    timerBtnSizer->Add(btnStart, 0, wxALL, 5);
+    timerBtnSizer->Add(btnStop, 0, wxALL, 5);
+    timerSizer->Add(timerBtnSizer, 0, wxALIGN_CENTER);
+
+    m_timerLabel = new wxStaticText(panel, wxID_ANY, "Timer: 0");
+    wxFont font = m_timerLabel->GetFont();
+    font.SetPointSize(16);
+    m_timerLabel->SetFont(font);
+    timerSizer->Add(m_timerLabel, 0, wxALL | wxALIGN_CENTER, 10);
+
+    mainSizer->Add(timerSizer, 0, wxEXPAND | wxALL, 10);
+
+    // Initialize timer
+    m_timer = new wxTimer(this, ID_TIMER);
+    m_timerCount = 0;
+
+    panel->SetSizer(mainSizer);
+    return panel;
+}
+
+// Dialogs tab event handlers
+void TestFrame::OnMsgBoxInfo(wxCommandEvent& WXUNUSED(evt))
+{
+    LogEvent("Showing Info message box");
+    wxMessageBox("This is an information message.\n\nwxMessageBox is used throughout KiCad for notifications.",
+                 "Information",
+                 wxOK | wxICON_INFORMATION, this);
+    LogEvent("Info message box closed");
+}
+
+void TestFrame::OnMsgBoxYesNo(wxCommandEvent& WXUNUSED(evt))
+{
+    LogEvent("Showing Yes/No message box");
+    int result = wxMessageBox("Do you want to proceed?\n\nThis tests wxYES_NO style dialogs.",
+                              "Confirm Action",
+                              wxYES_NO | wxICON_QUESTION, this);
+    LogEvent(wxString::Format("User clicked: %s", result == wxYES ? "Yes" : "No"));
+}
+
+void TestFrame::OnMsgBoxError(wxCommandEvent& WXUNUSED(evt))
+{
+    LogEvent("Showing Error message box");
+    wxMessageBox("An error has occurred!\n\nThis tests wxICON_ERROR style dialogs.",
+                 "Error",
+                 wxOK | wxICON_ERROR, this);
+    LogEvent("Error message box closed");
+}
+
+void TestFrame::OnCustomDialog(wxCommandEvent& WXUNUSED(evt))
+{
+    LogEvent("Opening custom dialog");
+
+    // Create a simple custom dialog
+    wxDialog dlg(this, wxID_ANY, "Custom Dialog",
+                 wxDefaultPosition, wxSize(300, 200));
+
+    wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
+
+    sizer->Add(new wxStaticText(&dlg, wxID_ANY,
+        "This is a custom wxDialog.\n\n"
+        "KiCad uses wxDialog extensively for\n"
+        "property editors, settings panels, etc."),
+        1, wxALL | wxEXPAND, 20);
+
+    wxBoxSizer* btnSizer = new wxBoxSizer(wxHORIZONTAL);
+    btnSizer->Add(new wxButton(&dlg, wxID_OK, "OK"), 0, wxALL, 5);
+    btnSizer->Add(new wxButton(&dlg, wxID_CANCEL, "Cancel"), 0, wxALL, 5);
+    sizer->Add(btnSizer, 0, wxALIGN_CENTER | wxBOTTOM, 10);
+
+    dlg.SetSizer(sizer);
+
+    int result = dlg.ShowModal();
+    LogEvent(wxString::Format("Custom dialog closed with: %s",
+        result == wxID_OK ? "OK" : "Cancel"));
+}
+
+void TestFrame::OnTimerStart(wxCommandEvent& WXUNUSED(evt))
+{
+    if (!m_timer->IsRunning()) {
+        m_timer->Start(1000);  // 1 second interval
+        LogEvent("Timer started (1 second interval)");
+    }
+}
+
+void TestFrame::OnTimerStop(wxCommandEvent& WXUNUSED(evt))
+{
+    if (m_timer->IsRunning()) {
+        m_timer->Stop();
+        LogEvent("Timer stopped");
+    }
+}
+
+void TestFrame::OnTimer(wxTimerEvent& WXUNUSED(evt))
+{
+    m_timerCount++;
+    m_timerLabel->SetLabel(wxString::Format("Timer: %d", m_timerCount));
+    LogEvent(wxString::Format("Timer tick: %d", m_timerCount));
 }
 
 //-----------------------------------------------------------------------------

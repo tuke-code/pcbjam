@@ -1,6 +1,6 @@
 #!/bin/bash
-# Build the minimal wxWidgets WASM test application
-# This script creates library symlinks and builds the test app
+# Build the wxWidgets WASM test applications
+# This script creates library symlinks and builds the test apps
 
 set -e
 
@@ -9,8 +9,9 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="$PROJECT_ROOT/build-wasm/wxwidgets-universal"
 TESTS_DIR="$PROJECT_ROOT/tests"
 WASM_APP_DIR="$TESTS_DIR/wasm-app"
+STANDALONE_DIR="$WASM_APP_DIR/standalone"
 
-echo "=== Building wxWidgets WASM Test Application ==="
+echo "=== Building wxWidgets WASM Test Applications ==="
 echo "Project root: $PROJECT_ROOT"
 echo "wxWidgets build: $BUILD_DIR"
 echo "Test app dir: $WASM_APP_DIR"
@@ -36,20 +37,33 @@ for f in libwx_*-emscripten.a; do
     fi
 done
 
-# Build the test app
+# Build the test apps
 echo ""
-echo "=== Building test application ==="
+echo "=== Building test applications ==="
 cd "$WASM_APP_DIR"
 
 # Clean any previous build
 make -f Makefile.wasm clean 2>/dev/null || true
 
-# Build
+# Build all
 make -f Makefile.wasm
 
 echo ""
 echo "=== Build complete ==="
-ls -lh "$WASM_APP_DIR"/minimal_test.* 2>/dev/null
+echo ""
+echo "Main test app:"
+ls -lh "$WASM_APP_DIR"/minimal_test.html 2>/dev/null || echo "  (not built)"
+
+echo ""
+echo "Standalone test apps:"
+for test in menu clipboard filedialog layout aui toolbar grid dialog timer tree; do
+    if [ -f "$STANDALONE_DIR/$test/${test}_test.html" ]; then
+        echo "  $test: OK"
+        ls -lh "$STANDALONE_DIR/$test/${test}_test.html"
+    else
+        echo "  $test: (not built)"
+    fi
+done
 
 echo ""
 echo "To run the tests:"

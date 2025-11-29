@@ -36,7 +36,12 @@ wxwidgets-clean/
 /tests/node_modules/
 /tests/playwright-report/
 /tests/test-results/
+/test-results/
 /tests/wasm-app/*.js
+/tests/wasm-app/*.html
 /tests/wasm-app/minimal_test.wasm
+/tests/wasm-app/standalone/*/*.js
+/tests/wasm-app/standalone/*/*.html
+/tests/wasm-app/standalone/*/*.wasm
 /temp/
 *.log

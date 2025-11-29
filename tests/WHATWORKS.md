@@ -1,0 +1,245 @@
+# wxWidgets WASM Test Status
+
+Last updated: 2025-11-29
+
+## Test Summary
+
+**79 Playwright tests pass, 12 failing (button position issues in new tests)**
+
+| Category | Status | Notes |
+|----------|--------|-------|
+| Main App Load | WORKS | minimal_test.html loads and renders correctly |
+| Standalone Apps | WORKS | 10 standalone test apps |
+| wxGrid | BROKEN | Crashes with "memory access out of bounds" |
+| wxTreeCtrl | BROKEN | Crashes on startup |
+| wxTimer | WORKS | Timer test app works |
+| wxDialog | PARTIAL | App works, dialogs don't render |
+
+---
+
+## KiCad wxWidgets Usage Coverage
+
+This section maps KiCad's wxWidgets usage to our test coverage.
+
+### Critical for KiCad - WORKING
+
+| KiCad Feature | wxWidgets Class | Test Status | Evidence |
+|---------------|-----------------|-------------|----------|
+| Main window frame | wxFrame | WORKS | All apps show frame with title |
+| Menu bar (File, Edit, etc.) | wxMenuBar | WORKS | menu-03-file-clicked.png shows dropdown |
+| Toolbars | wxToolBar | WORKS | toolbar-01-loaded.png shows icons |
+| Status bar (coords, zoom) | wxStatusBar | WORKS | 3-field status bar like KiCad |
+| Dockable panels | wxAuiManager | WORKS | aui-01-loaded.png shows Properties/Layers/Messages |
+| Tab panels | wxNotebook | WORKS | 7 tabs switching correctly |
+| Property editor panels | wxSplitterWindow | WORKS | layout-01-loaded.png shows split panes |
+| Scrollable content | wxScrolledWindow | WORKS | 20 items scrollable in each pane |
+| OpenGL canvas | wxGLCanvas | WORKS | gl-01-opengl-tab.png shows rendering |
+| OpenGL context | wxGLContext | WORKS | Context created successfully |
+| Drawing/painting | wxDC | WORKS | 08-drawing-done.png shows strokes |
+| Mouse events | wxMouseEvent | WORKS | Drawing strokes captured |
+
+### Controls - WORKING
+
+| KiCad Use | wxWidgets Class | Test Status | Evidence |
+|-----------|-----------------|-------------|----------|
+| Action buttons | wxButton | WORKS | "Click Me" button functional |
+| Toggle tools | wxToggleButton | WORKS | Toggle button in Controls tab |
+| Options | wxCheckBox | WORKS | "Enable feature" checkbox |
+| Selection groups | wxRadioButton | WORKS | Option A/B/C working |
+| Value adjustment | wxSlider | WORKS | Slider draggable |
+| Progress display | wxGauge | WORKS | Gauge renders |
+| Numeric input | wxSpinCtrl | WORKS | spinctrl-01-visible.png shows control |
+| Search fields | wxSearchCtrl | WORKS | Search field with placeholder |
+| Item lists | wxListBox | WORKS | Item selection with highlight |
+| Dropdowns | wxChoice | WORKS | 10a-choice-dropdown-open.png shows popup |
+| Editable dropdowns | wxComboBox | WORKS | Visible in Text Input tab |
+
+### Text Input - WORKING
+
+| KiCad Use | wxWidgets Class | Test Status | Evidence |
+|-----------|-----------------|-------------|----------|
+| Single-line entry | wxTextCtrl | WORKS | Text input accepts typing |
+| Multi-line entry | wxTextCtrl (multiline) | WORKS | Line 1/2/3 typed successfully |
+| Password fields | wxTextCtrl (password) | WORKS | Password field visible |
+
+### OpenGL Rendering - WORKING
+
+| KiCad Use | GL Function | Test Status | Evidence |
+|-----------|-------------|-------------|----------|
+| Immediate mode | glBegin/glEnd | WORKS | Rainbow triangle renders |
+| Vertex positioning | glVertex2f/3f | WORKS | Shapes positioned correctly |
+| Colors | glColor3f/4f | WORKS | Rainbow colors visible |
+| Triangles | GL_TRIANGLES | WORKS | Triangle visible |
+| Quads | GL_QUADS | WORKS | Yellow rectangle visible |
+| Lines | GL_LINES | WORKS | Cyan lines visible |
+| Matrix operations | glMatrixMode, glTranslatef | WORKS | Test passes |
+| Vertex arrays | glVertexPointer, glDrawElements | WORKS | Test passes |
+| State management | glEnable, glDisable | WORKS | Test passes |
+| Blending | glBlendFunc, GL_BLEND | WORKS | Test passes |
+
+### File Operations - PARTIAL
+
+| KiCad Use | wxWidgets Class | Test Status | Notes |
+|-----------|-----------------|-------------|-------|
+| Open file dialog | wxFileDialog (FD_OPEN) | PARTIAL | Dialog events fire, browser file picker |
+| Save file dialog | wxFileDialog (FD_SAVE) | PARTIAL | Dialog events fire, browser file picker |
+| Multiple file selection | wxFileDialog (FD_MULTIPLE) | PARTIAL | Events fire |
+
+---
+
+## BROKEN Features
+
+### wxGrid - CRASHES
+- **Status**: Standalone grid_test crashes with "memory access out of bounds"
+- **KiCad Impact**: HIGH - KiCad uses wxGrid for property editors, DRC results, BOM
+- **Evidence**: wxgrid-dedicated-page.png shows red error "Exception thrown"
+- **Error**: `RuntimeError: memory access out of bounds` at wasm-function[101]
+
+### wxTreeCtrl - CRASHES
+- **Status**: Standalone tree_test crashes on startup
+- **KiCad Impact**: HIGH - KiCad uses wxTreeCtrl for hierarchy browsers, component trees
+- **Evidence**: tree-01-loaded.png shows red error "Exception thrown, see JavaScript console"
+- **Note**: Similar crash pattern to wxGrid - both may have same underlying issue
+
+### wxMessageBox/wxDialog - NO VISUAL POPUP
+- **Status**: Events fire but no dialog appears
+- **KiCad Impact**: MEDIUM - Alert messages, confirmations
+- **Evidence**: dialogs-msgbox-info-open.png shows buttons but no popup
+- **Behavior**: "Showing Info message box" logged, then immediately "closed"
+
+### wxClipboard - LIMITED
+- **Status**: App loads but "Could not open clipboard" errors
+- **KiCad Impact**: MEDIUM - Copy/paste operations
+- **Evidence**: Clipboard logs show open errors
+- **Cause**: Browser clipboard API restrictions
+
+---
+
+## Standalone Test Apps
+
+Organized in `wasm-app/standalone/` folders:
+
+| App | Status | Tests | KiCad Relevance |
+|-----|--------|-------|-----------------|
+| menu/menu_test | WORKS | 5/5 | Menu system |
+| toolbar/toolbar_test | WORKS | 6/6 | Tool palettes |
+| layout/layout_test | WORKS | 5/5 | Split panel layout |
+| aui/aui_test | WORKS | 5/5 | Dockable panels |
+| clipboard/clipboard_test | WORKS* | 6/6 | Copy/paste (*limited) |
+| filedialog/filedialog_test | WORKS | 5/5 | Open/save dialogs |
+| grid/grid_test | BROKEN | 0/1 | Property grids |
+| dialog/dialog_test | WORKS | 1/5 | Alerts/confirmations |
+| timer/timer_test | WORKS | 1/4 | Auto-save, animations |
+| tree/tree_test | BROKEN | 0/7 | Hierarchy browsers |
+
+---
+
+## Main App Test Coverage
+
+### Controls Tab
+- wxButton: Click events logged
+- wxToggleButton: Toggle state changes
+- wxCheckBox: Check/uncheck works
+- wxRadioButton: Selection switches between options
+- wxSlider: Value changes on drag
+- wxGauge: Renders progress bar
+
+### Text Input Tab
+- Single-line wxTextCtrl: Keyboard input works
+- Multi-line wxTextCtrl: Multiple lines typed
+- Password wxTextCtrl: Masked input
+- wxComboBox: Editable dropdown
+
+### Drawing Tab
+- Mouse down/up events captured
+- Line strokes drawn on wxPanel
+- Clear Canvas button works
+- wxDC drawing operations functional
+
+### Lists Tab
+- wxListBox: Item selection with blue highlight
+- Add/Remove buttons functional
+- wxChoice: Dropdown opens with items (Red, Green, Blue, Yellow, Purple)
+
+### OpenGL Tab
+- wxGLCanvas renders blue background
+- Immediate mode: Rainbow triangle
+- GL_QUADS: Yellow rectangle
+- GL_LINES: Cyan lines
+- Vertex arrays: Working
+- Matrix operations: Working
+- State management: Working
+- Texture coordinates: Working
+
+### Grid Tab
+- wxSpinCtrl: Renders with up/down arrows
+- wxSearchCtrl: Renders with search icon and clear button
+- wxGrid: NOT WORKING (crashes in standalone, note shown in main app)
+
+### Dialogs Tab
+- wxMessageBox buttons visible
+- wxDialog button visible
+- wxTimer: Start/Stop buttons, counter display
+- **Issue**: No visual popup dialogs appear
+
+---
+
+## KiCad Readiness Assessment
+
+### Ready for KiCad
+1. Window management (wxFrame, wxMenuBar, wxToolBar, wxStatusBar)
+2. Panel docking (wxAuiManager)
+3. Layout controls (wxSplitterWindow, wxScrolledWindow, wxNotebook)
+4. Basic controls (buttons, checkboxes, radio buttons, sliders)
+5. Text input (single/multi-line)
+6. List controls (wxListBox, wxChoice, wxComboBox)
+7. OpenGL rendering (immediate mode, vertex arrays, matrix ops)
+8. Drawing/painting (wxDC, mouse events)
+
+### Needs Work for KiCad
+1. **wxGrid** - Critical for property editors, DRC, BOM tables
+2. **wxMessageBox/wxDialog** - Alerts and confirmations
+3. **wxClipboard** - Copy/paste (browser limitations)
+
+### Untested for KiCad
+1. wxTreeCtrl (hierarchy browser)
+2. wxDataViewCtrl (advanced lists)
+3. wxRichTextCtrl (formatted text)
+4. wxStyledTextCtrl (code editor)
+5. Printing support
+6. Drag and drop
+
+---
+
+## Build Notes
+
+### GL vs Non-GL Apps
+- Main app (minimal_test) uses `LDFLAGS_GL` with OpenGL support
+- Standalone test apps use `LDFLAGS_NOGL` without OpenGL
+- This prevents "_glBegin is not defined" crashes in non-GL apps
+
+### Build Command
+Always use the build script:
+```bash
+cd tests/wasm-app && ./build-test-apps.sh
+```
+
+---
+
+## Screenshots Reference
+
+| Screenshot | Shows |
+|------------|-------|
+| 03-after-load.png | Controls tab with all widgets |
+| 06-text-input-typed.png | Text input with typed content |
+| 08-drawing-done.png | Drawing strokes on canvas |
+| 09-lists-tab.png | ListBox and Choice controls |
+| 10a-choice-dropdown-open.png | Dropdown menu open |
+| gl-01-opengl-tab.png | OpenGL rendering |
+| aui-01-loaded.png | AUI dockable panels |
+| menu-03-file-clicked.png | File menu dropdown |
+| toolbar-01-loaded.png | Toolbar with icons |
+| layout-01-loaded.png | Splitter window |
+| spinctrl-01-visible.png | SpinCtrl and SearchCtrl |
+| wxgrid-dedicated-page.png | Grid crash error |
+| dialogs-msgbox-info-open.png | Dialog buttons (no popup) |
