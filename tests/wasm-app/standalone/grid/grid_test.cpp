@@ -66,7 +66,15 @@ GridTestFrame::GridTestFrame()
     : wxFrame(nullptr, wxID_ANY, "wxGrid WASM Test",
               wxDefaultPosition, wxSize(600, 500))
 {
+#ifdef __EMSCRIPTEN__
+    EM_ASM({ console.log('[GRID_DEBUG] 1. GridTestFrame constructor start'); });
+#endif
+
     wxBoxSizer* mainSizer = new wxBoxSizer(wxVERTICAL);
+
+#ifdef __EMSCRIPTEN__
+    EM_ASM({ console.log('[GRID_DEBUG] 2. BoxSizer created'); });
+#endif
 
     // Status message
     wxStaticText* status = new wxStaticText(this, wxID_ANY,
@@ -74,12 +82,30 @@ GridTestFrame::GridTestFrame()
     status->SetForegroundColour(*wxGREEN);
     mainSizer->Add(status, 0, wxALL, 10);
 
+#ifdef __EMSCRIPTEN__
+    EM_ASM({ console.log('[GRID_DEBUG] 3. StaticText created'); });
+#endif
+
     // Create wxGrid - THIS IS THE CRITICAL TEST
     // If wxGrid doesn't work in WASM, the app will crash HERE
+#ifdef __EMSCRIPTEN__
+    EM_ASM({ console.log('[GRID_DEBUG] 4. About to create wxGrid...'); });
+#endif
     m_grid = new wxGrid(this, ID_GRID, wxDefaultPosition, wxSize(500, 200));
 
+#ifdef __EMSCRIPTEN__
+    EM_ASM({ console.log('[GRID_DEBUG] 5. wxGrid created successfully!'); });
+#endif
+
     // Setup grid with sample data (like KiCad's property grids)
+#ifdef __EMSCRIPTEN__
+    EM_ASM({ console.log('[GRID_DEBUG] 6. About to call CreateGrid(5, 4)...'); });
+#endif
     m_grid->CreateGrid(5, 4);
+
+#ifdef __EMSCRIPTEN__
+    EM_ASM({ console.log('[GRID_DEBUG] 7. CreateGrid completed!'); });
+#endif
 
     // Set column labels (similar to KiCad's property dialogs)
     m_grid->SetColLabelValue(0, "Property");
@@ -153,6 +179,9 @@ GridTestFrame::GridTestFrame()
 
 void GridTestFrame::LogEvent(const wxString& msg)
 {
+    // Guard against events firing before m_log is initialized
+    if (!m_log)
+        return;
     m_log->AppendText(msg + "\n");
 
 #ifdef __EMSCRIPTEN__

@@ -1,5 +1,9 @@
 # Makefile for wxWidgets WASM test apps
 # Uses the local wxWidgets build
+#
+# Usage:
+#   make -f Makefile.wasm          # Optimized release build
+#   make -f Makefile.wasm DEBUG=1  # Debug build with DWARF symbols and source maps
 
 WXCONFIG = ../../build-wasm/wxwidgets-universal/wx-config
 TOOLS_ROOT = ../../wxwidgets/build/wasm
@@ -13,7 +17,16 @@ WX_LDFLAGS_GL := $(shell $(WXCONFIG) --libs base,core,gl,aui)
 # Libraries for non-GL apps (standalone tests don't need GL)
 WX_LDFLAGS_NOGL := $(shell $(WXCONFIG) --libs base,core,aui)
 
-CXXFLAGS = -O2 $(WX_CXXFLAGS)
+# Debug or Release build
+ifdef DEBUG
+    # Debug: DWARF info, source maps, minimal optimization
+    CXXFLAGS = -g -O0 $(WX_CXXFLAGS)
+    DEBUG_LDFLAGS = -g -gsource-map
+else
+    # Release: optimized
+    CXXFLAGS = -O2 $(WX_CXXFLAGS)
+    DEBUG_LDFLAGS =
+endif
 
 # Base Emscripten flags (for all apps)
 # ASYNCIFY enables blocking modal dialogs (ShowModal waits for user)
@@ -29,10 +42,10 @@ EM_GL_FLAGS = -sLEGACY_GL_EMULATION -sMAX_WEBGL_VERSION=2
 GL_SHIM = ../../lib/gl_immediate_shim.js
 
 # LDFLAGS for GL apps (minimal_test)
-LDFLAGS_GL = $(BASE_LDFLAGS) $(EM_GL_FLAGS) --js-library=$(GL_SHIM) $(WX_LDFLAGS_GL)
+LDFLAGS_GL = $(DEBUG_LDFLAGS) $(BASE_LDFLAGS) $(EM_GL_FLAGS) --js-library=$(GL_SHIM) $(WX_LDFLAGS_GL)
 
 # LDFLAGS for non-GL apps (standalone tests)
-LDFLAGS_NOGL = $(BASE_LDFLAGS) $(WX_LDFLAGS_NOGL)
+LDFLAGS_NOGL = $(DEBUG_LDFLAGS) $(BASE_LDFLAGS) $(WX_LDFLAGS_NOGL)
 
 JS = $(TOOLS_ROOT)/wx.js
 HTML = $(TOOLS_ROOT)/template.html

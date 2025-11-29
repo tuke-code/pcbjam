@@ -13,7 +13,7 @@ async function switchToGridTab(page: any, box: { x: number; y: number }) {
 test.describe('wxGrid Dedicated Test Page', () => {
 
   // This is THE critical test for wxGrid support.
-  test.fail('wxGrid test page loads successfully', async ({ page, testLogger }) => {
+  test('wxGrid test page loads successfully', async ({ page, testLogger }) => {
     // Navigate to the dedicated wxGrid test page
     await page.goto('/standalone/grid/grid_test.html');
 
@@ -45,7 +45,7 @@ test.describe('wxGrid Dedicated Test Page', () => {
     expect(hasSuccessMessage, 'wxGrid app should start successfully').toBe(true);
   });
 
-  test.fail('wxGrid test page shows grid controls', async ({ page, testLogger }) => {
+  test('wxGrid test page shows grid controls', async ({ page, testLogger }) => {
     await page.goto('/standalone/grid/grid_test.html');
 
     try {

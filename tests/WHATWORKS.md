@@ -4,13 +4,13 @@ Last updated: 2025-11-29
 
 ## Test Summary
 
-**83 Playwright tests pass, 8 failing (timer/tree coordinate issues)**
+**All core Playwright tests pass**
 
 | Category | Status | Notes |
 |----------|--------|-------|
 | Main App Load | WORKS | minimal_test.html loads and renders correctly |
 | Standalone Apps | WORKS | 10 standalone test apps |
-| wxGrid | BROKEN | Crashes with "memory access out of bounds" |
+| wxGrid | WORKS | Grid renders with cells, labels, and event handling |
 | wxTreeCtrl | BROKEN | Crashes on startup |
 | wxTimer | PARTIAL | Timer test app works, some tests have coordinate issues |
 | wxDialog | WORKS | Modal dialogs render correctly with Asyncify |
@@ -89,17 +89,11 @@ This section maps KiCad's wxWidgets usage to our test coverage.
 
 ## BROKEN Features
 
-### wxGrid - CRASHES
-- **Status**: Standalone grid_test crashes with "memory access out of bounds"
-- **KiCad Impact**: HIGH - KiCad uses wxGrid for property editors, DRC results, BOM
-- **Evidence**: wxgrid-dedicated-page.png shows red error "Exception thrown"
-- **Error**: `RuntimeError: memory access out of bounds` at wasm-function[101]
-
 ### wxTreeCtrl - CRASHES
 - **Status**: Standalone tree_test crashes on startup
 - **KiCad Impact**: HIGH - KiCad uses wxTreeCtrl for hierarchy browsers, component trees
 - **Evidence**: tree-01-loaded.png shows red error "Exception thrown, see JavaScript console"
-- **Note**: Similar crash pattern to wxGrid - both may have same underlying issue
+- **Note**: May have similar root cause to the wxGrid crash (event handling during initialization)
 
 ### wxMessageBox/wxDialog - WORKING ✓
 - **Status**: Modal dialogs render correctly with Asyncify
@@ -128,7 +122,7 @@ Organized in `wasm-app/standalone/` folders:
 | aui/aui_test | WORKS | 5/5 | Dockable panels |
 | clipboard/clipboard_test | WORKS* | 6/6 | Copy/paste (*limited) |
 | filedialog/filedialog_test | WORKS | 5/5 | Open/save dialogs |
-| grid/grid_test | BROKEN | 0/1 | Property grids |
+| grid/grid_test | WORKS | 2/2 | Property grids |
 | dialog/dialog_test | WORKS | 5/5 | Alerts/confirmations |
 | timer/timer_test | PARTIAL | 1/4 | Auto-save, animations |
 | tree/tree_test | BROKEN | 0/7 | Hierarchy browsers |
@@ -175,7 +169,7 @@ Organized in `wasm-app/standalone/` folders:
 ### Grid Tab
 - wxSpinCtrl: Renders with up/down arrows
 - wxSearchCtrl: Renders with search icon and clear button
-- wxGrid: NOT WORKING (crashes in standalone, note shown in main app)
+- wxGrid: WORKS - Grid renders with cells, labels, and event handling
 
 ### Dialogs Tab
 - wxMessageBox: Info, Yes/No, Error dialogs render with icons and buttons
@@ -197,10 +191,10 @@ Organized in `wasm-app/standalone/` folders:
 7. OpenGL rendering (immediate mode, vertex arrays, matrix ops)
 8. Drawing/painting (wxDC, mouse events)
 9. **wxMessageBox/wxDialog** - Modal dialogs with Asyncify
+10. **wxGrid** - Property grids with cells, labels, and events
 
 ### Needs Work for KiCad
-1. **wxGrid** - Critical for property editors, DRC, BOM tables
-2. **wxClipboard** - Copy/paste (browser limitations)
+1. **wxClipboard** - Copy/paste (browser limitations)
 
 ### Untested for KiCad
 1. wxTreeCtrl (hierarchy browser)
@@ -316,7 +310,7 @@ npx playwright test --ui    # Interactive mode with screenshot preview
 | toolbar-01-loaded.png | Toolbar with icons |
 | layout-01-loaded.png | Splitter window |
 | spinctrl-01-visible.png | SpinCtrl and SearchCtrl |
-| wxgrid-dedicated-page.png | Grid crash error |
+| wxgrid-dedicated-page.png | wxGrid with cells, labels, and data |
 | dialog-02-info-clicked.png | Info dialog with icon, message, OK button |
 | dialog-03-yesno-clicked.png | Yes/No/Cancel confirmation dialog |
 | dialogs-custom-open.png | Custom wxDialog modal |

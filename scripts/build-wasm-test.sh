@@ -1,8 +1,19 @@
 #!/bin/bash
 # Build the wxWidgets WASM test applications
 # This script creates library symlinks and builds the test apps
+#
+# Usage:
+#   ./build-wasm-test.sh          # Normal optimized build
+#   ./build-wasm-test.sh --debug  # Debug build with DWARF symbols and source maps
 
 set -e
+
+DEBUG_BUILD=0
+for arg in "$@"; do
+    if [ "$arg" = "--debug" ]; then
+        DEBUG_BUILD=1
+    fi
+done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -12,6 +23,11 @@ WASM_APP_DIR="$TESTS_DIR/wasm-app"
 STANDALONE_DIR="$WASM_APP_DIR/standalone"
 
 echo "=== Building wxWidgets WASM Test Applications ==="
+if [ "$DEBUG_BUILD" = "1" ]; then
+    echo "Mode: DEBUG (with DWARF symbols and source maps)"
+else
+    echo "Mode: Release (optimized)"
+fi
 echo "Project root: $PROJECT_ROOT"
 echo "wxWidgets build: $BUILD_DIR"
 echo "Test app dir: $WASM_APP_DIR"
@@ -45,8 +61,13 @@ cd "$WASM_APP_DIR"
 # Clean any previous build
 make -f Makefile.wasm clean 2>/dev/null || true
 
-# Build all
-make -f Makefile.wasm
+# Build all (pass DEBUG flag if requested)
+if [ "$DEBUG_BUILD" = "1" ]; then
+    # Debug build: -g for DWARF, -gsource-map for source maps, -O0 for no optimization
+    make -f Makefile.wasm DEBUG=1
+else
+    make -f Makefile.wasm
+fi
 
 echo ""
 echo "=== Build complete ==="

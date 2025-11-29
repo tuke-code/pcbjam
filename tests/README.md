@@ -114,8 +114,56 @@ Then open http://localhost:8000/minimal_test.html
 | `layout.spec.ts` | wxSplitter | Splitter and scrolled windows |
 | `toolbar.spec.ts` | wxToolBar | Toolbar buttons and status bar |
 
+## Debugging WASM Crashes
+
+When a test fails with a WASM crash (e.g., "memory access out of bounds"), you can build with debug symbols to get meaningful stack traces:
+
+### Debug Build
+
+```bash
+# Build test apps with DWARF symbols and source maps
+../scripts/build-wasm-test.sh --debug
+```
+
+This enables:
+- `-g` for DWARF debug info
+- `-gsource-map` for browser source maps
+- `-O0` for no optimization (preserves debugging context)
+
+### Reading Stack Traces
+
+With a debug build, WASM stack traces show actual function names:
+
+**Before (release build):**
+```
+RuntimeError: memory access out of bounds
+    at wasm-function[102]:0xfdf8
+    at wasm-function[99]:0xe6e0
+```
+
+**After (debug build):**
+```
+RuntimeError: memory access out of bounds
+    at grid_test.wasm.GridTestFrame::LogEvent(wxString const&)
+    at grid_test.wasm.GridTestFrame::OnGridCellSelect(wxGridEvent&)
+    at grid_test.wasm.wxEventFunctorMethod<...>::operator()
+```
+
+### Using LLVM Tools
+
+For deeper analysis, use Emscripten's LLVM tools:
+
+```bash
+LLVM_DIR="/opt/homebrew/Cellar/emscripten/4.0.20/libexec/llvm/bin"
+
+# Check if WASM has DWARF info
+$LLVM_DIR/llvm-dwarfdump --debug-info wasm-app/standalone/grid/grid_test.wasm
+
+# Disassemble with function names
+$LLVM_DIR/llvm-objdump -d grid_test.wasm | head -200
+```
+
 ## Known Issues
 
 - **Timer tests**: May fail due to timing sensitivity
 - **Tree tests**: Button click positions may vary
-- **wxGrid**: Not fully implemented (expected failures marked with `test.fail`)
