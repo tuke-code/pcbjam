@@ -73,6 +73,7 @@ export CXXFLAGS="-DZ_HAVE_UNISTD_H=1 -I$PCRE2_INCLUDE"
 
 emconfigure "$WX_SOURCE/configure" \
     --host=emscripten \
+    --without-subdirs \
     --enable-universal \
     --disable-shared \
     --with-opengl \
