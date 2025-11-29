@@ -1,0 +1,94 @@
+import { Page } from '@playwright/test';
+import * as fs from 'fs';
+import * as path from 'path';
+
+export const MAIN_CANVAS = '#canvas';
+export const LOGS_DIR = path.join(__dirname, '..', '..', 'logs');
+
+export interface TestLogger {
+  consoleLogs: string[];
+  errors: string[];
+  cleanup: () => void;
+}
+
+// Ensure logs directory exists
+export function ensureLogsDir() {
+  if (!fs.existsSync(LOGS_DIR)) {
+    fs.mkdirSync(LOGS_DIR, { recursive: true });
+  }
+}
+
+// Setup logging for a test - captures console and errors
+export function setupTestLogger(page: Page): TestLogger {
+  const consoleLogs: string[] = [];
+  const errors: string[] = [];
+
+  const consoleHandler = (msg: any) => {
+    const type = msg.type();
+    const text = msg.text();
+    const timestamp = new Date().toISOString();
+    consoleLogs.push(`[${timestamp}] [${type.toUpperCase()}] ${text}`);
+  };
+
+  const errorHandler = (err: Error) => {
+    const timestamp = new Date().toISOString();
+    const stack = err.stack || 'No stack trace available';
+    errors.push(`[${timestamp}] [ERROR] ${err.message}\n${stack}`);
+  };
+
+  page.on('console', consoleHandler);
+  page.on('pageerror', errorHandler);
+
+  const cleanup = () => {
+    page.off('console', consoleHandler);
+    page.off('pageerror', errorHandler);
+  };
+
+  return { consoleLogs, errors, cleanup };
+}
+
+// Write logs to files after test completion
+export function writeTestLogs(testName: string, logger: TestLogger) {
+  ensureLogsDir();
+
+  // Sanitize test name for filesystem
+  const safeTestName = testName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  // Always write console log file
+  const logFile = path.join(LOGS_DIR, `${safeTestName}.log`);
+  fs.writeFileSync(logFile, logger.consoleLogs.join('\n'));
+
+  // Only write error file if there are errors (excluding favicon)
+  const realErrors = logger.errors.filter(e => !e.includes('favicon'));
+  if (realErrors.length > 0) {
+    const errorFile = path.join(LOGS_DIR, `${safeTestName}.errors.log`);
+    fs.writeFileSync(errorFile, realErrors.join('\n\n'));
+  }
+}
+
+// Helper to wait for app initialization
+export async function waitForApp(page: Page, timeout = 30000) {
+  await page.waitForSelector(MAIN_CANVAS, { state: 'visible', timeout });
+  await page.waitForTimeout(500);
+}
+
+// Helper to try loading app with fallback
+export async function tryLoadApp(page: Page, timeout = 15000): Promise<boolean> {
+  try {
+    await waitForApp(page, timeout);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Get canvas bounding box helper
+export async function getCanvasBox(page: Page) {
+  const canvas = page.locator(MAIN_CANVAS);
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error('Canvas not found');
+  return box;
+}

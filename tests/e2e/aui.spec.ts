@@ -1,46 +1,21 @@
 // wxAuiManager Tests - AUI docking system KiCad uses extensively
-import { test, expect, Page } from '@playwright/test';
-
-const MAIN_CANVAS = '#canvas';
-
-async function tryLoadApp(page: Page, timeout = 15000) {
-  try {
-    await page.waitForSelector(MAIN_CANVAS, { state: 'visible', timeout });
-    await page.waitForTimeout(500);
-    return true;
-  } catch {
-    return false;
-  }
-}
+import { test, expect, MAIN_CANVAS, tryLoadApp, getCanvasBox } from './utils/fixtures';
 
 test.describe('wxAuiManager Tests', () => {
 
-  test('AUI test app loads successfully', async ({ page }) => {
-    const errors: string[] = [];
-    const logs: string[] = [];
-
-    page.on('pageerror', err => errors.push(`[PAGE_ERROR] ${err.message}`));
-    page.on('console', msg => logs.push(`[${msg.type()}] ${msg.text()}`));
-
+  test('AUI test app loads successfully', async ({ page, testLogger }) => {
     await page.goto('/standalone/aui/aui_test.html');
     const loaded = await tryLoadApp(page);
 
     await page.screenshot({ path: 'test-results/aui-01-loaded.png', fullPage: true });
 
-    const hasStartup = logs.some(l => l.includes('AUI test app started'));
-
-    console.log('AUI loaded:', loaded);
-    console.log('AUI logs:', logs.filter(l => l.includes('AUI')));
-    console.log('AUI errors:', errors);
+    const hasStartup = testLogger.consoleLogs.some(l => l.includes('AUI test app started'));
 
     expect(loaded, 'AUI app should load').toBe(true);
-    expect(errors.filter(e => !e.includes('favicon'))).toHaveLength(0);
+    expect(testLogger.errors.filter(e => !e.includes('favicon'))).toHaveLength(0);
   });
 
-  test('AUI dockable panels are visible', async ({ page }) => {
-    const logs: string[] = [];
-    page.on('console', msg => logs.push(msg.text()));
-
+  test('AUI dockable panels are visible', async ({ page, testLogger }) => {
     await page.goto('/standalone/aui/aui_test.html');
     const loaded = await tryLoadApp(page);
     if (!loaded) {
@@ -50,16 +25,12 @@ test.describe('wxAuiManager Tests', () => {
 
     await page.screenshot({ path: 'test-results/aui-02-panels.png', fullPage: true });
 
-    const hasPanelsLog = logs.some(l => l.includes('dockable panels'));
-    console.log('Panel logs:', logs.filter(l => l.includes('AUI') || l.includes('panel')));
+    const hasPanelsLog = testLogger.consoleLogs.some(l => l.includes('dockable panels'));
 
     expect(hasPanelsLog).toBe(true);
   });
 
-  test('Panel close button can be clicked', async ({ page }) => {
-    const logs: string[] = [];
-    page.on('console', msg => logs.push(msg.text()));
-
+  test('Panel close button can be clicked', async ({ page, testLogger }) => {
     await page.goto('/standalone/aui/aui_test.html');
     const loaded = await tryLoadApp(page);
     if (!loaded) {
@@ -67,28 +38,19 @@ test.describe('wxAuiManager Tests', () => {
       return;
     }
 
-    const canvas = page.locator(MAIN_CANVAS);
-    const box = await canvas.boundingBox();
-    if (!box) throw new Error('Canvas not found');
+    const box = await getCanvasBox(page);
 
     // Click on Properties panel close button (top right of left panel)
-    // Left panel is at left edge, close button at top right of its title bar
     await page.mouse.click(box.x + 145, box.y + 35);
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/aui-03-close-clicked.png', fullPage: true });
 
-    const hasCloseEvent = logs.some(l => l.includes('Pane closing'));
-    console.log('Close events:', logs.filter(l => l.includes('Pane') || l.includes('close')));
-
     // Smoke test
     expect(true).toBe(true);
   });
 
-  test('Panel can be dragged', async ({ page }) => {
-    const logs: string[] = [];
-    page.on('console', msg => logs.push(msg.text()));
-
+  test('Panel can be dragged', async ({ page, testLogger }) => {
     await page.goto('/standalone/aui/aui_test.html');
     const loaded = await tryLoadApp(page);
     if (!loaded) {
@@ -96,9 +58,7 @@ test.describe('wxAuiManager Tests', () => {
       return;
     }
 
-    const canvas = page.locator(MAIN_CANVAS);
-    const box = await canvas.boundingBox();
-    if (!box) throw new Error('Canvas not found');
+    const box = await getCanvasBox(page);
 
     // Drag Properties panel title bar
     const titleX = box.x + 75;
@@ -116,13 +76,7 @@ test.describe('wxAuiManager Tests', () => {
     expect(true).toBe(true);
   });
 
-  test('Multiple panels can be interacted with', async ({ page }) => {
-    const errors: string[] = [];
-    const logs: string[] = [];
-
-    page.on('pageerror', err => errors.push(err.message));
-    page.on('console', msg => logs.push(msg.text()));
-
+  test('Multiple panels can be interacted with', async ({ page, testLogger }) => {
     await page.goto('/standalone/aui/aui_test.html');
     const loaded = await tryLoadApp(page);
     if (!loaded) {
@@ -130,9 +84,7 @@ test.describe('wxAuiManager Tests', () => {
       return;
     }
 
-    const canvas = page.locator(MAIN_CANVAS);
-    const box = await canvas.boundingBox();
-    if (!box) throw new Error('Canvas not found');
+    const box = await getCanvasBox(page);
 
     // Click in Properties panel
     await page.mouse.click(box.x + 75, box.y + 200);
@@ -152,9 +104,6 @@ test.describe('wxAuiManager Tests', () => {
 
     await page.screenshot({ path: 'test-results/aui-05-multi-panel.png', fullPage: true });
 
-    console.log('\n=== AUI EVENTS ===');
-    logs.filter(l => l.includes('AUI')).forEach(l => console.log(l));
-
-    expect(errors.filter(e => !e.includes('favicon'))).toHaveLength(0);
+    expect(testLogger.errors.filter(e => !e.includes('favicon'))).toHaveLength(0);
   });
 });

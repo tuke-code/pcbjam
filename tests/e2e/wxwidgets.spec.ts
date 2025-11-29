@@ -1,13 +1,5 @@
-import { test, expect, Page } from '@playwright/test';
-
-// Use #canvas for the main canvas (wxWidgets creates window-specific canvases too)
-const MAIN_CANVAS = '#canvas';
-
-// Helper to wait for app to be fully loaded
-async function waitForApp(page: Page) {
-  await page.waitForSelector(MAIN_CANVAS, { state: 'visible', timeout: 30000 });
-  await page.waitForTimeout(500); // Let UI settle
-}
+import { test, expect, MAIN_CANVAS, waitForApp } from './utils/fixtures';
+import { Page } from '@playwright/test';
 
 // Capture console events with [EVENT] prefix
 function captureEvents(page: Page): string[] {
@@ -56,19 +48,7 @@ async function dragCanvas(page: Page, startX: number, startY: number, endX: numb
 }
 
 test.describe('wxWidgets WASM - Diagnostics', () => {
-  test('comprehensive UI interaction test', async ({ page }) => {
-    const allLogs: string[] = [];
-    const errors: string[] = [];
-
-    // Capture ALL console messages
-    page.on('console', msg => {
-      allLogs.push(`[${msg.type()}] ${msg.text()}`);
-    });
-    page.on('pageerror', err => {
-      // Include stack trace for better debugging
-      const stack = err.stack || 'No stack trace available';
-      errors.push(`[PAGE_ERROR] ${err.message}\n${stack}`);
-    });
+  test('comprehensive UI interaction test', async ({ page, testLogger }) => {
 
     await page.goto('/minimal_test.html');
 
@@ -80,8 +60,8 @@ test.describe('wxWidgets WASM - Diagnostics', () => {
       await page.waitForSelector('#canvas', { state: 'visible', timeout: 30000 });
     } catch (e) {
       await page.screenshot({ path: 'test-results/02-timeout.png', fullPage: true });
-      console.log('Logs so far:', allLogs);
-      console.log('Errors:', errors);
+      console.log('Logs so far:', testLogger.consoleLogs);
+      console.log('Errors:', testLogger.errors);
       throw e;
     }
 
@@ -302,18 +282,13 @@ test.describe('wxWidgets WASM - Diagnostics', () => {
 
     // Print all logs
     console.log('\n=== ALL CONSOLE LOGS ===');
-    allLogs.forEach(log => console.log(log));
+    testLogger.consoleLogs.forEach(log => console.log(log));
     console.log('\n=== ALL ERRORS ===');
-    errors.forEach(err => console.log(err));
+    testLogger.errors.forEach(err => console.log(err));
     console.log('========================\n');
 
-    // Save logs to file
-    const fs = require('fs');
-    fs.writeFileSync('test-results/console-logs.txt', allLogs.join('\n'));
-    fs.writeFileSync('test-results/errors.txt', errors.join('\n'));
-
     // Fail test if there are critical errors
-    const criticalErrors = errors.filter(e =>
+    const criticalErrors = testLogger.errors.filter(e =>
       !e.includes('SharedArrayBuffer') &&
       !e.includes('cross-origin')
     );
@@ -326,20 +301,12 @@ test.describe('wxWidgets WASM - Diagnostics', () => {
 });
 
 test.describe('wxWidgets WASM - Loading', () => {
-  test('app loads without JavaScript errors', async ({ page }) => {
-    const errors: string[] = [];
-    page.on('pageerror', err => errors.push(`${err.message}\n${err.stack || 'No stack'}`));
-    page.on('console', msg => {
-      if (msg.type() === 'error') {
-        errors.push(msg.text());
-      }
-    });
-
+  test('app loads without JavaScript errors', async ({ page, testLogger }) => {
     await page.goto('/minimal_test.html');
     await waitForApp(page);
 
     // Filter out known non-critical errors
-    const criticalErrors = errors.filter(e =>
+    const criticalErrors = testLogger.errors.filter(e =>
       !e.includes('SharedArrayBuffer') &&
       !e.includes('cross-origin') &&
       !isKnownWarning(e)
@@ -348,7 +315,7 @@ test.describe('wxWidgets WASM - Loading', () => {
     expect(criticalErrors).toHaveLength(0);
   });
 
-  test('canvas element is rendered with dimensions', async ({ page }) => {
+  test('canvas element is rendered with dimensions', async ({ page, testLogger }) => {
     await page.goto('/minimal_test.html');
 
     const canvas = page.locator(MAIN_CANVAS);
@@ -360,7 +327,7 @@ test.describe('wxWidgets WASM - Loading', () => {
     expect(box?.height).toBeGreaterThan(0);
   });
 
-  test('loading progress completes', async ({ page }) => {
+  test('loading progress completes', async ({ page, testLogger }) => {
     await page.goto('/minimal_test.html');
 
     await page.waitForFunction(() => {
@@ -373,7 +340,7 @@ test.describe('wxWidgets WASM - Loading', () => {
     }, { timeout: 30000 });
   });
 
-  test('WASM module initializes successfully', async ({ page }) => {
+  test('WASM module initializes successfully', async ({ page, testLogger }) => {
     await page.goto('/minimal_test.html');
     await waitForApp(page);
 
@@ -384,20 +351,19 @@ test.describe('wxWidgets WASM - Loading', () => {
     expect(moduleExists).toBe(true);
   });
 
-  test('application started event is logged', async ({ page }) => {
-    const events = captureEvents(page);
+  test('application started event is logged', async ({ page, testLogger }) => {
     await page.goto('/minimal_test.html');
     await waitForApp(page);
 
     // Wait for the startup event to be logged
     await page.waitForTimeout(500);
 
-    expect(events.some(e => e.includes('Application started'))).toBe(true);
+    expect(testLogger.consoleLogs.some(e => e.includes('Application started'))).toBe(true);
   });
 });
 
 test.describe('wxWidgets WASM - Canvas Interaction', () => {
-  test('canvas receives click events', async ({ page }) => {
+  test('canvas receives click events', async ({ page, testLogger }) => {
     const events = captureEvents(page);
     await page.goto('/minimal_test.html');
     await waitForApp(page);
@@ -411,7 +377,7 @@ test.describe('wxWidgets WASM - Canvas Interaction', () => {
     expect(events.length).toBeGreaterThanOrEqual(1);
   });
 
-  test('canvas receives keyboard events', async ({ page }) => {
+  test('canvas receives keyboard events', async ({ page, testLogger }) => {
     await page.goto('/minimal_test.html');
     await waitForApp(page);
 
@@ -428,7 +394,7 @@ test.describe('wxWidgets WASM - Canvas Interaction', () => {
 });
 
 test.describe('wxWidgets WASM - Mouse Drawing', () => {
-  test('mouse drag creates drawing stroke', async ({ page }) => {
+  test('mouse drag creates drawing stroke', async ({ page, testLogger }) => {
     const events = captureEvents(page);
     await page.goto('/minimal_test.html');
     await waitForApp(page);
@@ -458,7 +424,7 @@ test.describe('wxWidgets WASM - Mouse Drawing', () => {
 });
 
 test.describe('wxWidgets WASM - Event Logging', () => {
-  test('events are logged to console with [EVENT] prefix', async ({ page }) => {
+  test('events are logged to console with [EVENT] prefix', async ({ page, testLogger }) => {
     const events = captureEvents(page);
     await page.goto('/minimal_test.html');
     await waitForApp(page);
@@ -471,7 +437,7 @@ test.describe('wxWidgets WASM - Event Logging', () => {
     expect(events[0]).toContain('Application started');
   });
 
-  test('multiple interactions produce multiple log entries', async ({ page }) => {
+  test('multiple interactions produce multiple log entries', async ({ page, testLogger }) => {
     const events = captureEvents(page);
     await page.goto('/minimal_test.html');
     await waitForApp(page);
@@ -492,7 +458,7 @@ test.describe('wxWidgets WASM - Event Logging', () => {
 });
 
 test.describe('wxWidgets WASM - Visual Rendering', () => {
-  test('frame renders with visible content', async ({ page }) => {
+  test('frame renders with visible content', async ({ page, testLogger }) => {
     await page.goto('/minimal_test.html');
     await waitForApp(page);
 
@@ -508,7 +474,7 @@ test.describe('wxWidgets WASM - Visual Rendering', () => {
     expect(box?.height).toBeGreaterThan(100);
   });
 
-  test('window has reasonable dimensions', async ({ page }) => {
+  test('window has reasonable dimensions', async ({ page, testLogger }) => {
     await page.goto('/minimal_test.html');
     await waitForApp(page);
 
@@ -523,10 +489,7 @@ test.describe('wxWidgets WASM - Visual Rendering', () => {
 });
 
 test.describe('wxWidgets WASM - Stability', () => {
-  test('app remains stable after multiple interactions', async ({ page }) => {
-    const errors: string[] = [];
-    page.on('pageerror', err => errors.push(`${err.message}\n${err.stack || 'No stack'}`));
-
+  test('app remains stable after multiple interactions', async ({ page, testLogger }) => {
     await page.goto('/minimal_test.html');
     await waitForApp(page);
 
@@ -541,7 +504,7 @@ test.describe('wxWidgets WASM - Stability', () => {
     await expect(canvas).toBeVisible();
 
     // No JavaScript errors should have occurred
-    const criticalErrors = errors.filter(e =>
+    const criticalErrors = testLogger.errors.filter(e =>
       !e.includes('SharedArrayBuffer') &&
       !e.includes('cross-origin') &&
       !isKnownWarning(e)
@@ -549,7 +512,7 @@ test.describe('wxWidgets WASM - Stability', () => {
     expect(criticalErrors).toHaveLength(0);
   });
 
-  test('app handles rapid mouse movements', async ({ page }) => {
+  test('app handles rapid mouse movements', async ({ page, testLogger }) => {
     await page.goto('/minimal_test.html');
     await waitForApp(page);
 
@@ -570,12 +533,7 @@ test.describe('wxWidgets WASM - Stability', () => {
 });
 
 test.describe('wxWidgets WASM - OpenGL', () => {
-  test('OpenGL tab switches successfully', async ({ page }) => {
-    const logs: string[] = [];
-    page.on('console', msg => {
-      logs.push(msg.text());
-    });
-
+  test('OpenGL tab switches successfully', async ({ page, testLogger }) => {
     await page.goto('/minimal_test.html');
     await waitForApp(page);
 
@@ -588,25 +546,14 @@ test.describe('wxWidgets WASM - OpenGL', () => {
     await page.waitForTimeout(1500);  // Give GL time to initialize
 
     // Check that we switched to the OpenGL tab
-    const tabChanged = logs.some(log => log.includes('Tab changed to: OpenGL'));
+    const tabChanged = testLogger.consoleLogs.some(log => log.includes('Tab changed to: OpenGL'));
     expect(tabChanged).toBe(true);
 
     // Save screenshot for visual verification
     await page.screenshot({ path: 'test-results/opengl-tab-initial.png', fullPage: true });
   });
 
-  test('OpenGL tab interaction without crashes', async ({ page }) => {
-    const errors: string[] = [];
-    const logs: string[] = [];
-
-    page.on('pageerror', err => errors.push(`${err.message}\n${err.stack || 'No stack'}`));
-    page.on('console', msg => {
-      if (msg.type() === 'error' && !isKnownWarning(msg.text())) {
-        errors.push(msg.text());
-      }
-      logs.push(msg.text());
-    });
-
+  test('OpenGL tab interaction without crashes', async ({ page, testLogger }) => {
     await page.goto('/minimal_test.html');
     await waitForApp(page);
 
@@ -630,21 +577,11 @@ test.describe('wxWidgets WASM - OpenGL', () => {
 
     // Note: wxPrintf logs go to stdout which may not appear in browser console
     // The main verification is that the app doesn't crash
-    expect(errors.length).toBe(0);
+    const criticalErrors = testLogger.errors.filter(e => !isKnownWarning(e));
+    expect(criticalErrors.length).toBe(0);
   });
 
-  test('OpenGL tab renders without errors', async ({ page }) => {
-    const errors: string[] = [];
-    const logs: string[] = [];
-
-    page.on('pageerror', err => errors.push(`${err.message}\n${err.stack || 'No stack'}`));
-    page.on('console', msg => {
-      logs.push(`[${msg.type()}] ${msg.text()}`);
-      if (msg.type() === 'error' && !isKnownWarning(msg.text())) {
-        errors.push(msg.text());
-      }
-    });
-
+  test('OpenGL tab renders without errors', async ({ page, testLogger }) => {
     await page.goto('/minimal_test.html');
     await waitForApp(page);
 
@@ -692,26 +629,17 @@ test.describe('wxWidgets WASM - OpenGL', () => {
     const screenshot = await page.screenshot();
     expect(screenshot.length).toBeGreaterThan(0);
 
-    // Save for visual inspection including errors
-    const fs = require('fs');
-    fs.writeFileSync('test-results/opengl-render.png', screenshot);
-    fs.writeFileSync('test-results/opengl-debug.json', JSON.stringify({ glCanvasInfo, logs, errors }, null, 2));
-
     // App should still be responsive after GL rendering
     await expect(page.locator(MAIN_CANVAS)).toBeVisible();
 
     // No critical JavaScript errors
-    expect(errors.length).toBe(0);
+    const criticalErrors = testLogger.errors.filter(e => !isKnownWarning(e));
+    expect(criticalErrors.length).toBe(0);
   });
 });
 
 test.describe('wxWidgets WASM - Canvas Z-Ordering and Visibility', () => {
-  test('GL canvas should hide when switching away from OpenGL tab', async ({ page }) => {
-    const logs: string[] = [];
-    page.on('console', msg => {
-      logs.push(msg.text());
-    });
-
+  test('GL canvas should hide when switching away from OpenGL tab', async ({ page, testLogger }) => {
     await page.goto('/minimal_test.html');
     await waitForApp(page);
 
@@ -724,7 +652,7 @@ test.describe('wxWidgets WASM - Canvas Z-Ordering and Visibility', () => {
     await page.waitForTimeout(1000);
 
     // Verify we're on OpenGL tab
-    const onOpenGLTab = logs.some(log => log.includes('Tab changed to: OpenGL'));
+    const onOpenGLTab = testLogger.consoleLogs.some(log => log.includes('Tab changed to: OpenGL'));
     expect(onOpenGLTab).toBe(true);
 
     await page.screenshot({ path: 'test-results/glcanvas-01-on-opengl-tab.png', fullPage: true });
@@ -783,12 +711,7 @@ test.describe('wxWidgets WASM - Canvas Z-Ordering and Visibility', () => {
     }
   });
 
-  test('dropdown should appear above GL canvas on OpenGL tab', async ({ page }) => {
-    const logs: string[] = [];
-    page.on('console', msg => {
-      logs.push(msg.text());
-    });
-
+  test('dropdown should appear above GL canvas on OpenGL tab', async ({ page, testLogger }) => {
     await page.goto('/minimal_test.html');
     await waitForApp(page);
 
@@ -859,7 +782,7 @@ test.describe('wxWidgets WASM - Canvas Z-Ordering and Visibility', () => {
     console.log('Windows AFTER click:', JSON.stringify(windowsAfter));
 
     // Check for any logged events
-    const clickEvents = logs.filter(log =>
+    const clickEvents = testLogger.consoleLogs.filter(log =>
       log.includes('GL Test selected') ||
       log.includes('clicked') ||
       log.includes('Choice')
@@ -915,7 +838,7 @@ test.describe('wxWidgets WASM - Canvas Z-Ordering and Visibility', () => {
     // This will be verified by visual inspection of screenshots
   });
 
-  test('switching tabs multiple times maintains correct visibility', async ({ page }) => {
+  test('switching tabs multiple times maintains correct visibility', async ({ page, testLogger }) => {
     await page.goto('/minimal_test.html');
     await waitForApp(page);
 
