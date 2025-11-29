@@ -55,8 +55,8 @@ test.describe('wxTreeCtrl Tests', () => {
 
     const canvas = page.locator('canvas');
 
-    // Click Expand All button
-    await canvas.click({ position: { x: 80, y: 95 } });
+    // Click Expand All button (buttons are centered, at approximately y=90)
+    await canvas.click({ position: { x: 455, y: 90 } });
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/tree-04-expanded.png' });
@@ -72,8 +72,8 @@ test.describe('wxTreeCtrl Tests', () => {
 
     const canvas = page.locator('canvas');
 
-    // Click Collapse All button
-    await canvas.click({ position: { x: 200, y: 95 } });
+    // Click Collapse All button (buttons are centered, at approximately y=90)
+    await canvas.click({ position: { x: 545, y: 90 } });
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/tree-05-collapsed.png' });
@@ -89,12 +89,12 @@ test.describe('wxTreeCtrl Tests', () => {
 
     const canvas = page.locator('canvas');
 
-    // First select an item
-    await canvas.click({ position: { x: 100, y: 160 } });
+    // First select an item (tree starts around y=120)
+    await canvas.click({ position: { x: 100, y: 140 } });
     await page.waitForTimeout(300);
 
-    // Click Add Item button
-    await canvas.click({ position: { x: 310, y: 95 } });
+    // Click Add Item button (buttons are centered, at approximately y=90)
+    await canvas.click({ position: { x: 680, y: 90 } });
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/tree-06-added.png' });
@@ -110,12 +110,12 @@ test.describe('wxTreeCtrl Tests', () => {
 
     const canvas = page.locator('canvas');
 
-    // First select an item (not root)
-    await canvas.click({ position: { x: 150, y: 200 } });
+    // First select an item (not root) - select "Schematic" which is around y=145
+    await canvas.click({ position: { x: 80, y: 145 } });
     await page.waitForTimeout(300);
 
-    // Click Delete Selected button
-    await canvas.click({ position: { x: 440, y: 95 } });
+    // Click Delete Selected button (buttons are centered, at approximately y=90)
+    await canvas.click({ position: { x: 780, y: 90 } });
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/tree-07-deleted.png' });

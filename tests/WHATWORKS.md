@@ -11,7 +11,7 @@ Last updated: 2025-11-29
 | Main App Load | WORKS | minimal_test.html loads and renders correctly |
 | Standalone Apps | WORKS | 10 standalone test apps |
 | wxGrid | WORKS | Grid renders with cells, labels, and event handling |
-| wxTreeCtrl | BROKEN | Crashes on startup |
+| wxTreeCtrl | WORKS | Tree renders with expand/collapse, selection, add/delete items |
 | wxTimer | PARTIAL | Timer test app works, some tests have coordinate issues |
 | wxDialog | WORKS | Modal dialogs render correctly with Asyncify |
 
@@ -87,13 +87,13 @@ This section maps KiCad's wxWidgets usage to our test coverage.
 
 ---
 
-## BROKEN Features
+## Previously BROKEN Features (Now Fixed)
 
-### wxTreeCtrl - CRASHES
-- **Status**: Standalone tree_test crashes on startup
+### wxTreeCtrl - WORKS ✓
+- **Status**: Tree control fully functional with expand/collapse, selection, add/delete
 - **KiCad Impact**: HIGH - KiCad uses wxTreeCtrl for hierarchy browsers, component trees
-- **Evidence**: tree-01-loaded.png shows red error "Exception thrown, see JavaScript console"
-- **Note**: May have similar root cause to the wxGrid crash (event handling during initialization)
+- **Evidence**: tree-01-loaded.png shows tree with KiCad-like hierarchy
+- **Fix**: Added null guard in LogEvent() - events fired before m_log was initialized
 
 ### wxMessageBox/wxDialog - WORKING ✓
 - **Status**: Modal dialogs render correctly with Asyncify
@@ -125,7 +125,7 @@ Organized in `wasm-app/standalone/` folders:
 | grid/grid_test | WORKS | 2/2 | Property grids |
 | dialog/dialog_test | WORKS | 5/5 | Alerts/confirmations |
 | timer/timer_test | PARTIAL | 1/4 | Auto-save, animations |
-| tree/tree_test | BROKEN | 0/7 | Hierarchy browsers |
+| tree/tree_test | WORKS | 7/7 | Hierarchy browsers |
 
 ---
 
@@ -192,17 +192,17 @@ Organized in `wasm-app/standalone/` folders:
 8. Drawing/painting (wxDC, mouse events)
 9. **wxMessageBox/wxDialog** - Modal dialogs with Asyncify
 10. **wxGrid** - Property grids with cells, labels, and events
+11. **wxTreeCtrl** - Hierarchy browsers with expand/collapse, selection, add/delete
 
 ### Needs Work for KiCad
 1. **wxClipboard** - Copy/paste (browser limitations)
 
 ### Untested for KiCad
-1. wxTreeCtrl (hierarchy browser)
-2. wxDataViewCtrl (advanced lists)
-3. wxRichTextCtrl (formatted text)
-4. wxStyledTextCtrl (code editor)
-5. Printing support
-6. Drag and drop
+1. wxDataViewCtrl (advanced lists)
+2. wxRichTextCtrl (formatted text)
+3. wxStyledTextCtrl (code editor)
+4. Printing support
+5. Drag and drop
 
 ---
 

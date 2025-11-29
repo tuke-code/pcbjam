@@ -170,6 +170,9 @@ void TreeTestFrame::PopulateTree()
 
 void TreeTestFrame::LogEvent(const wxString& msg)
 {
+    // Guard against events firing before m_log is initialized
+    if (!m_log)
+        return;
     m_log->AppendText(msg + "\n");
     SetStatusText(msg);
 
