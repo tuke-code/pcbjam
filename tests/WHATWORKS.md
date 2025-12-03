@@ -9,7 +9,7 @@ Last updated: 2025-12-03
 | Category | Status | Notes |
 |----------|--------|-------|
 | Main App Load | WORKS | minimal_test.html loads and renders correctly |
-| Standalone Apps | WORKS | 29 standalone test apps (209 total tests passing) |
+| Standalone Apps | WORKS | 35 standalone test apps (246 total tests passing) |
 | wxGrid | WORKS | Grid renders with cells, labels, and event handling |
 | wxTreeCtrl | WORKS | Tree renders with expand/collapse, selection, add/delete items |
 | wxTimer | WORKS | Timer start/stop/interval all functional |
@@ -36,6 +36,11 @@ Last updated: 2025-12-03
 | wxTreebook | WORKS | Hierarchical settings pages |
 | wxBitmapComboBox | WORKS | Dropdown with color swatch icons |
 | wxCheckListBox | WORKS | List with checkboxes for layer visibility |
+| wxValidator | WORKS | Input validation (text, integer, floating point, custom) |
+| wxOwnerDrawnComboBox | WORKS | Custom dropdown rendering (layer selectors, font choosers) |
+| wxPopupWindow | WORKS | Transient popups (toolbar palettes, color pickers) |
+| wxXmlDocument | WORKS | XML parsing for config/project files (665 KiCad occurrences) |
+| wxGraphicsContext | PARTIAL | Vector graphics - has memory access issues in WASM |
 
 ---
 
@@ -208,6 +213,12 @@ Organized in `wasm-app/standalone/` folders:
 | printpreview/printpreview_test | WORKS | 5/5 | Print preview frame, page setup |
 | bitmapbuttons/bitmapbuttons_test | WORKS | 7/7 | Toolbar buttons, toggle state |
 | specialized/specialized_test | WORKS | 8/8 | Treebook, BitmapComboBox, layer list |
+| validators/validators_test | WORKS | 6/6 | Input validation (KiCad dialog validators) |
+| ownerdrawn/ownerdrawn_test | WORKS | 5/5 | Custom dropdown rendering (layer selectors) |
+| popup/popup_test | WORKS | 6/6 | Transient popups (toolbar palettes) |
+| graphicsctx/graphicsctx_test | PARTIAL | 6/6 | Vector graphics (has WASM memory issues) |
+| xml/xml_test | WORKS | 6/6 | XML parsing (config/project files) |
+| wasmedge/wasmedge_test | WORKS | 8/8 | WASM edge cases (file system, threading, fonts) |
 
 ---
 
@@ -299,6 +310,10 @@ Organized in `wasm-app/standalone/` folders:
 33. **wxTreebook** - Hierarchical settings pages (General, Display>Colors, etc.)
 34. **wxBitmapComboBox** - Layer chooser dropdown with color swatch icons
 35. **wxCheckListBox** - Layer visibility list with checkboxes
+36. **wxValidator** - Input validation (text, integer, float, custom validators)
+37. **wxOwnerDrawnComboBox** - Custom dropdown rendering (layer selectors, font choosers)
+38. **wxPopupWindow** - Transient popups (toolbar palettes, color pickers)
+39. **wxXmlDocument** - XML parsing for config and project files
 
 ### All KiCad-Critical Features Tested
 
@@ -318,10 +333,49 @@ All previously untested features have now been implemented and tested:
 | wxBitmapComboBox | Layer chooser with swatches | MEDIUM | ✓ TESTED |
 | wxCheckListBox | Layer visibility toggles | MEDIUM | ✓ TESTED |
 
-**Current Coverage**: ~98% of KiCad-critical features tested (209 tests across 29 apps)
+**Current Coverage**: ~99% of KiCad-critical features tested (246 tests across 35 apps)
 
 ### Not Needed for KiCad
 1. wxRichTextCtrl - Disabled in WASM build, KiCad doesn't use it
+
+---
+
+## WASM Implementation Limitations
+
+Some wxWidgets features have incomplete WASM implementations. These are documented below with their current status.
+
+### Known WASM Limitations
+
+| Feature | Status | Details |
+|---------|--------|---------|
+| wxFontEnumerator | STUBBED | Returns false - no native font enumeration in browser |
+| wxGraphicsContext | PARTIAL | Memory access errors - backend incomplete |
+| Threading (wxThread) | STUBBED | WASM is single-threaded, API exists but no-op |
+| wxFileName::GetSize | STUBBED | Returns wxInvalidSize for virtual filesystem |
+
+### Future WASM Layer Implementations (TODO)
+
+These features could be implemented to improve KiCad compatibility:
+
+| Feature | Priority | Implementation Notes |
+|---------|----------|----------------------|
+| Font enumeration | LOW | Could query CSS font-face declarations or use hardcoded list |
+| Bitmap masking | MEDIUM | Need to implement wxDC::DrawBitmap with mask support |
+| Text decorations | LOW | Underline/strikethrough in wxDC text rendering |
+| Non-rectangular regions | LOW | wxRegion clipping for complex shapes |
+
+### WASM Edge Cases Tested
+
+The `wasmedge_test` app verifies WASM-specific behaviors:
+
+- **File System**: `/tmp/` virtual filesystem read/write works
+- **Threading**: wxUSE_THREADS defined but stubbed (expected)
+- **Font Enumeration**: Returns false (expected, documented)
+- **Clipboard**: Works via Asyncify browser integration
+- **Memory Growth**: WASM memory growth works (10MB+ allocations)
+- **OS Info**: wxGetOsVersion returns stubbed values (expected)
+- **URL Launch**: wxLaunchDefaultBrowser works via window.open()
+- **wxFileName**: Path manipulation functions work correctly
 
 ---
 
