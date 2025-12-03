@@ -9,10 +9,10 @@ Last updated: 2025-12-03
 | Category | Status | Notes |
 |----------|--------|-------|
 | Main App Load | WORKS | minimal_test.html loads and renders correctly |
-| Standalone Apps | WORKS | 25 standalone test apps (184 total tests passing) |
+| Standalone Apps | WORKS | 29 standalone test apps (209 total tests passing) |
 | wxGrid | WORKS | Grid renders with cells, labels, and event handling |
 | wxTreeCtrl | WORKS | Tree renders with expand/collapse, selection, add/delete items |
-| wxTimer | PARTIAL | Timer test app works, some tests have coordinate issues |
+| wxTimer | WORKS | Timer start/stop/interval all functional |
 | wxDialog | WORKS | Modal dialogs render correctly with Asyncify |
 | wxDataViewCtrl | WORKS | List and tree views for Zone Manager, Net Inspector |
 | wxHtmlWindow | WORKS | HTML rendering for About dialogs, error formatting |
@@ -30,6 +30,12 @@ Last updated: 2025-12-03
 | wxWizard | WORKS | Step-by-step dialog for Footprint Wizard |
 | wxGrid cell editing | WORKS | Full editing support with text, number, choice, checkbox |
 | wxCalendarCtrl | WORKS | Date selection with navigation |
+| wxGrid cell renderers | WORKS | Custom color swatches, icon+text, striped rows |
+| wxPrintPreview | WORKS | Print preview frame with zoom, navigation |
+| wxBitmapButton | WORKS | Toolbar buttons with custom icons |
+| wxTreebook | WORKS | Hierarchical settings pages |
+| wxBitmapComboBox | WORKS | Dropdown with color swatch icons |
+| wxCheckListBox | WORKS | List with checkboxes for layer visibility |
 
 ---
 
@@ -186,7 +192,7 @@ Organized in `wasm-app/standalone/` folders:
 | filedialog/filedialog_test | WORKS | 5/5 | Open/save dialogs |
 | grid/grid_test | WORKS | 2/2 | Property grids |
 | dialog/dialog_test | WORKS | 5/5 | Alerts/confirmations |
-| timer/timer_test | PARTIAL | 1/4 | Auto-save, animations |
+| timer/timer_test | WORKS | 4/4 | Auto-save, animations |
 | tree/tree_test | WORKS | 7/7 | Hierarchy browsers |
 | dataview/dataview_test | WORKS | 10/10 | Zone Manager, Net Inspector |
 | htmlwin/htmlwin_test | WORKS | 8/8 | About dialogs, error formatting |
@@ -198,6 +204,10 @@ Organized in `wasm-app/standalone/` folders:
 | collapsible/collapsible_test | WORKS | 5/5 | Collapsible sections (property groups) |
 | listctrl/listctrl_test | WORKS | 5/5 | Virtual list (large component lists) |
 | infobar/infobar_test | WORKS | 5/5 | Notification bar (DRC messages) |
+| gridrenderers/gridrenderers_test | WORKS | 5/5 | Custom cell renderers (color swatches, icons) |
+| printpreview/printpreview_test | WORKS | 5/5 | Print preview frame, page setup |
+| bitmapbuttons/bitmapbuttons_test | WORKS | 7/7 | Toolbar buttons, toggle state |
+| specialized/specialized_test | WORKS | 8/8 | Treebook, BitmapComboBox, layer list |
 
 ---
 
@@ -283,6 +293,12 @@ Organized in `wasm-app/standalone/` folders:
 27. **wxWizard** - Step-by-step Footprint Wizard dialog
 28. **wxGrid cell editing** - Full editing with text, number, choice, checkbox editors
 29. **wxCalendarCtrl** - Date picker with month/year navigation
+30. **wxGrid custom renderers** - Color swatches, icon+text, striped rows for layer manager
+31. **wxPrintPreview frame** - Print preview with zoom, page navigation
+32. **wxBitmapButton** - Toolbar buttons with custom bitmap icons
+33. **wxTreebook** - Hierarchical settings pages (General, Display>Colors, etc.)
+34. **wxBitmapComboBox** - Layer chooser dropdown with color swatch icons
+35. **wxCheckListBox** - Layer visibility list with checkboxes
 
 ### All KiCad-Critical Features Tested
 
@@ -295,8 +311,14 @@ All previously untested features have now been implemented and tested:
 | wxWizard | Footprint wizard | MEDIUM | ✓ TESTED |
 | wxGrid cell editing | Property editing | MEDIUM | ✓ TESTED |
 | wxCalendarCtrl | Date selection | LOW | ✓ TESTED |
+| wxGrid custom renderers | Layer manager color swatches | HIGH | ✓ TESTED |
+| wxPrintPreview frame | Schematic/PCB print preview | MEDIUM | ✓ TESTED |
+| wxBitmapButton | Toolbar icons | MEDIUM | ✓ TESTED |
+| wxTreebook | Settings dialogs (hierarchical) | MEDIUM | ✓ TESTED |
+| wxBitmapComboBox | Layer chooser with swatches | MEDIUM | ✓ TESTED |
+| wxCheckListBox | Layer visibility toggles | MEDIUM | ✓ TESTED |
 
-**Current Coverage**: ~95% of KiCad-critical features tested (184 tests across 25 apps)
+**Current Coverage**: ~98% of KiCad-critical features tested (209 tests across 29 apps)
 
 ### Not Needed for KiCad
 1. wxRichTextCtrl - Disabled in WASM build, KiCad doesn't use it
@@ -326,7 +348,7 @@ The test suite captures screenshots during test runs for visual regression testi
 
 ```
 tests/
-├── baseline-screenshots/     # Known-good reference screenshots (121 files)
+├── baseline-screenshots/     # Known-good reference screenshots (146+ files)
 ├── test-results/            # Screenshots from latest test run
 └── wasm-app/
     └── e2e/                 # Playwright test specs

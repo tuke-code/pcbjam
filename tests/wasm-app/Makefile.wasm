@@ -110,7 +110,11 @@ all: minimal_test.html \
      $(S)/auinotebook/auinotebook_test.html \
      $(S)/wizard/wizard_test.html \
      $(S)/gridedit/gridedit_test.html \
-     $(S)/calendar/calendar_test.html
+     $(S)/calendar/calendar_test.html \
+     $(S)/gridrenderers/gridrenderers_test.html \
+     $(S)/printpreview/printpreview_test.html \
+     $(S)/bitmapbuttons/bitmapbuttons_test.html \
+     $(S)/specialized/specialized_test.html
 
 # Main test app (uses GL)
 minimal_test.o: minimal_test.cpp
@@ -294,6 +298,34 @@ $(S)/calendar/calendar_test.o: $(S)/calendar/calendar_test.cpp
 $(S)/calendar/calendar_test.html: $(S)/calendar/calendar_test.o
 	$(CXX) $< $(LDFLAGS_ADV) --pre-js $(JS) --shell-file $(HTML) -o $@
 
+# Grid Renderers test (no GL)
+$(S)/gridrenderers/gridrenderers_test.o: $(S)/gridrenderers/gridrenderers_test.cpp
+	$(CXX) -c $(CXXFLAGS) $< -o $@
+
+$(S)/gridrenderers/gridrenderers_test.html: $(S)/gridrenderers/gridrenderers_test.o
+	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
+
+# Print Preview test (no GL)
+$(S)/printpreview/printpreview_test.o: $(S)/printpreview/printpreview_test.cpp
+	$(CXX) -c $(CXXFLAGS) $< -o $@
+
+$(S)/printpreview/printpreview_test.html: $(S)/printpreview/printpreview_test.o
+	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
+
+# Bitmap Buttons test (no GL)
+$(S)/bitmapbuttons/bitmapbuttons_test.o: $(S)/bitmapbuttons/bitmapbuttons_test.cpp
+	$(CXX) -c $(CXXFLAGS) $< -o $@
+
+$(S)/bitmapbuttons/bitmapbuttons_test.html: $(S)/bitmapbuttons/bitmapbuttons_test.o
+	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
+
+# Specialized Controls test (needs adv for treebook)
+$(S)/specialized/specialized_test.o: $(S)/specialized/specialized_test.cpp
+	$(CXX) -c $(CXXFLAGS) $< -o $@
+
+$(S)/specialized/specialized_test.html: $(S)/specialized/specialized_test.o
+	$(CXX) $< $(LDFLAGS_ADV) --pre-js $(JS) --shell-file $(HTML) -o $@
+
 # Convenience targets
 menu: $(S)/menu/menu_test.html
 clipboard: $(S)/clipboard/clipboard_test.html
@@ -320,9 +352,13 @@ auinotebook: $(S)/auinotebook/auinotebook_test.html
 wizard: $(S)/wizard/wizard_test.html
 gridedit: $(S)/gridedit/gridedit_test.html
 calendar: $(S)/calendar/calendar_test.html
+gridrenderers: $(S)/gridrenderers/gridrenderers_test.html
+printpreview: $(S)/printpreview/printpreview_test.html
+bitmapbuttons: $(S)/bitmapbuttons/bitmapbuttons_test.html
+specialized: $(S)/specialized/specialized_test.html
 
 clean:
 	rm -f minimal_test.o minimal_test.html minimal_test.js minimal_test.wasm
 	rm -f $(S)/*/*.o $(S)/*/*.html $(S)/*/*.js $(S)/*/*.wasm
 
-.PHONY: all clean menu clipboard filedialog layout aui toolbar grid dialog timer tree dataview htmlwin stc print dnd propgrid pickers collapsible listctrl infobar dataviewvirtual auinotebook wizard gridedit calendar
+.PHONY: all clean menu clipboard filedialog layout aui toolbar grid dialog timer tree dataview htmlwin stc print dnd propgrid pickers collapsible listctrl infobar dataviewvirtual auinotebook wizard gridedit calendar gridrenderers printpreview bitmapbuttons specialized
