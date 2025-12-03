@@ -23,6 +23,9 @@ WX_LDFLAGS_HTML := $(shell $(WXCONFIG) --libs base,core,html)
 # Libraries for STC apps (stc_test needs stc)
 WX_LDFLAGS_STC := $(shell $(WXCONFIG) --libs base,core,stc)
 
+# Libraries for PropGrid apps (propgrid_test needs propgrid)
+WX_LDFLAGS_PROPGRID := $(shell $(WXCONFIG) --libs base,core,propgrid)
+
 # Debug or Release build
 ifdef DEBUG
     # Debug: DWARF info, source maps, minimal optimization
@@ -61,6 +64,9 @@ LDFLAGS_HTML = $(DEBUG_LDFLAGS) $(BASE_LDFLAGS) $(WX_LDFLAGS_HTML)
 # LDFLAGS for STC apps (stc_test)
 LDFLAGS_STC = $(DEBUG_LDFLAGS) $(BASE_LDFLAGS) $(WX_LDFLAGS_STC)
 
+# LDFLAGS for PropGrid apps (propgrid_test)
+LDFLAGS_PROPGRID = $(DEBUG_LDFLAGS) $(BASE_LDFLAGS) $(WX_LDFLAGS_PROPGRID)
+
 JS = $(TOOLS_ROOT)/wx.js
 HTML = $(TOOLS_ROOT)/template.html
 
@@ -82,7 +88,12 @@ all: minimal_test.html \
      $(S)/htmlwin/htmlwin_test.html \
      $(S)/stc/stc_test.html \
      $(S)/print/print_test.html \
-     $(S)/dnd/dnd_test.html
+     $(S)/dnd/dnd_test.html \
+     $(S)/propgrid/propgrid_test.html \
+     $(S)/pickers/pickers_test.html \
+     $(S)/collapsible/collapsible_test.html \
+     $(S)/listctrl/listctrl_test.html \
+     $(S)/infobar/infobar_test.html
 
 # Main test app (uses GL)
 minimal_test.o: minimal_test.cpp
@@ -196,6 +207,41 @@ $(S)/dnd/dnd_test.o: $(S)/dnd/dnd_test.cpp
 $(S)/dnd/dnd_test.html: $(S)/dnd/dnd_test.o
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
+# PropertyGrid test (needs propgrid library)
+$(S)/propgrid/propgrid_test.o: $(S)/propgrid/propgrid_test.cpp
+	$(CXX) -c $(CXXFLAGS) $< -o $@
+
+$(S)/propgrid/propgrid_test.html: $(S)/propgrid/propgrid_test.o
+	$(CXX) $< $(LDFLAGS_PROPGRID) --pre-js $(JS) --shell-file $(HTML) -o $@
+
+# Pickers test (colour/font pickers, no GL)
+$(S)/pickers/pickers_test.o: $(S)/pickers/pickers_test.cpp
+	$(CXX) -c $(CXXFLAGS) $< -o $@
+
+$(S)/pickers/pickers_test.html: $(S)/pickers/pickers_test.o
+	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
+
+# Collapsible pane test (no GL)
+$(S)/collapsible/collapsible_test.o: $(S)/collapsible/collapsible_test.cpp
+	$(CXX) -c $(CXXFLAGS) $< -o $@
+
+$(S)/collapsible/collapsible_test.html: $(S)/collapsible/collapsible_test.o
+	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
+
+# ListCtrl virtual mode test (no GL)
+$(S)/listctrl/listctrl_test.o: $(S)/listctrl/listctrl_test.cpp
+	$(CXX) -c $(CXXFLAGS) $< -o $@
+
+$(S)/listctrl/listctrl_test.html: $(S)/listctrl/listctrl_test.o
+	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
+
+# InfoBar test (no GL)
+$(S)/infobar/infobar_test.o: $(S)/infobar/infobar_test.cpp
+	$(CXX) -c $(CXXFLAGS) $< -o $@
+
+$(S)/infobar/infobar_test.html: $(S)/infobar/infobar_test.o
+	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
+
 # Convenience targets
 menu: $(S)/menu/menu_test.html
 clipboard: $(S)/clipboard/clipboard_test.html
@@ -212,9 +258,14 @@ htmlwin: $(S)/htmlwin/htmlwin_test.html
 stc: $(S)/stc/stc_test.html
 print: $(S)/print/print_test.html
 dnd: $(S)/dnd/dnd_test.html
+propgrid: $(S)/propgrid/propgrid_test.html
+pickers: $(S)/pickers/pickers_test.html
+collapsible: $(S)/collapsible/collapsible_test.html
+listctrl: $(S)/listctrl/listctrl_test.html
+infobar: $(S)/infobar/infobar_test.html
 
 clean:
 	rm -f minimal_test.o minimal_test.html minimal_test.js minimal_test.wasm
 	rm -f $(S)/*/*.o $(S)/*/*.html $(S)/*/*.js $(S)/*/*.wasm
 
-.PHONY: all clean menu clipboard filedialog layout aui toolbar grid dialog timer tree dataview htmlwin stc print dnd
+.PHONY: all clean menu clipboard filedialog layout aui toolbar grid dialog timer tree dataview htmlwin stc print dnd propgrid pickers collapsible listctrl infobar
