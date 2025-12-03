@@ -9,7 +9,7 @@ Last updated: 2025-12-03
 | Category | Status | Notes |
 |----------|--------|-------|
 | Main App Load | WORKS | minimal_test.html loads and renders correctly |
-| Standalone Apps | WORKS | 14 standalone test apps (127 total tests passing) |
+| Standalone Apps | WORKS | 15 standalone test apps (136 total tests passing) |
 | wxGrid | WORKS | Grid renders with cells, labels, and event handling |
 | wxTreeCtrl | WORKS | Tree renders with expand/collapse, selection, add/delete items |
 | wxTimer | PARTIAL | Timer test app works, some tests have coordinate issues |
@@ -18,6 +18,7 @@ Last updated: 2025-12-03
 | wxHtmlWindow | WORKS | HTML rendering for About dialogs, error formatting |
 | wxStyledTextCtrl | WORKS | Syntax highlighting for DRC rules, Python console |
 | wxPrinting | WORKS | Print preview, print dialog, browser print via window.print() |
+| wxDragDrop | WORKS | HTML5 file drop support for external files |
 
 ---
 
@@ -146,6 +147,18 @@ This section maps KiCad's wxWidgets usage to our test coverage.
   - Browser Print triggers `window.print()` for native browser print dialog
   - Page Setup dialog works with margins configuration
 
+### wxDragDrop (HTML5 File Drop) - WORKS ✓
+- **Status**: External file drops via HTML5 drag and drop API fully functional
+- **KiCad Impact**: HIGH - Loading projects, schematics, PCBs via file drops
+- **Evidence**: dnd-01-loaded.png shows test app, dnd-05-drop.png shows file drop processing
+- **Tests**: 9/9 pass - App load, handlers registered, dragenter, dragleave, drop, file write, event fire
+- **Details**:
+  - HTML5 drag/drop events (dragenter, dragleave, drop) captured on canvas
+  - Files read via `File.arrayBuffer()` and written to WASM `/tmp/` filesystem
+  - wxDropFilesEvent dispatched to target window via C++ callback
+  - Multiple file drops supported
+  - KiCad file types (.kicad_pcb, .kicad_sch, .kicad_pro, etc.) work correctly
+
 ---
 
 ## Standalone Test Apps
@@ -168,6 +181,7 @@ Organized in `wasm-app/standalone/` folders:
 | htmlwin/htmlwin_test | WORKS | 8/8 | About dialogs, error formatting |
 | stc/stc_test | WORKS | 10/10 | DRC rules editor, Python console |
 | print/print_test | WORKS | 8/8 | Schematic/PCB printing |
+| dnd/dnd_test | WORKS | 9/9 | External file drop support |
 
 ---
 
@@ -240,9 +254,28 @@ Organized in `wasm-app/standalone/` folders:
 14. **wxHtmlWindow** - About dialogs, error message formatting
 15. **wxStyledTextCtrl** - DRC rules editor, Python console, script editors
 16. **wxPrinting** - Print preview, print dialog, browser print via window.print()
+17. **wxDragDrop** - External file drops via HTML5 drag and drop API
 
-### Untested for KiCad
-1. Drag and drop (HTML5 file drop support)
+### Untested for KiCad - Identified Gaps
+
+Based on comprehensive audit of KiCad's wxWidgets usage (~85 classes, ~105 event types):
+
+| Feature | KiCad Usage | Priority | Status |
+|---------|-------------|----------|--------|
+| wxPropertyGrid | Property panels in ALL editors | CRITICAL | NOT TESTED |
+| wxPropertyGridManager | Multi-page property organization | CRITICAL | NOT TESTED |
+| wxListCtrl virtual mode | Large component lists (10000+ items) | HIGH | NOT TESTED |
+| wxDataViewCtrl virtual mode | Zone Manager, Net Inspector (large data) | HIGH | NOT TESTED |
+| wxColourPickerCtrl | Color preferences, layer colors | HIGH | NOT TESTED |
+| wxFontPickerCtrl | Font preferences | HIGH | NOT TESTED |
+| wxCollapsiblePane | Property panel grouping | HIGH | NOT TESTED |
+| wxAuiNotebook | Tab panels (variant) | MEDIUM | NOT TESTED |
+| wxInfoBar | Notifications | MEDIUM | NOT TESTED |
+| wxWizard | Footprint wizard | MEDIUM | NOT TESTED |
+| wxGrid cell editing | Property editing | MEDIUM | PARTIAL |
+| wxCalendarCtrl | Date selection | LOW | NOT TESTED |
+
+**Current Coverage**: ~70% of KiCad-critical features tested
 
 ### Not Needed for KiCad
 1. wxRichTextCtrl - Disabled in WASM build, KiCad doesn't use it
