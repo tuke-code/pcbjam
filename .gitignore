@@ -22,6 +22,7 @@ cmake-build-*/
 *.wasm
 !Makefile.wasm
 *.js.map
+*.wasm.map
 
 # macOS
 .DS_Store
