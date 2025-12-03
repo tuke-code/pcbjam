@@ -163,6 +163,76 @@ $LLVM_DIR/llvm-dwarfdump --debug-info wasm-app/standalone/grid/grid_test.wasm
 $LLVM_DIR/llvm-objdump -d grid_test.wasm | head -200
 ```
 
+## Button Finder Utility
+
+The wxWidgets WASM apps render to a canvas, so UI tests need to click at specific pixel coordinates. The button-finder utility scans a test app to find clickable button positions.
+
+**Note:** This utility is excluded from regular test runs (`npm test`). Run it explicitly when needed.
+
+### Usage
+
+```bash
+cd tests
+
+# Scan clipboard test app
+APP_URL=/standalone/clipboard/clipboard_test.html npx playwright test button-finder --reporter=list
+
+# Scan dialog test app
+APP_URL=/standalone/dialog/dialog_test.html npx playwright test button-finder --reporter=list
+
+# Scan tree test app
+APP_URL=/standalone/tree/tree_test.html npx playwright test button-finder --reporter=list
+
+# Scan with custom region (faster - focus on likely button area)
+APP_URL=/standalone/dialog/dialog_test.html START_Y=150 END_Y=300 STEP=8 npx playwright test button-finder --reporter=list
+```
+
+### Available Test Apps
+
+| App URL | Description |
+|---------|-------------|
+| `/standalone/clipboard/clipboard_test.html` | Copy, Paste, Check, Clear buttons |
+| `/standalone/dialog/dialog_test.html` | Info, Yes/No, Error, Custom dialog buttons |
+| `/standalone/tree/tree_test.html` | Expand All, Collapse All, etc. |
+| `/standalone/menu/menu_test.html` | Menu bar testing |
+| `/standalone/grid/grid_test.html` | Grid controls |
+| `/standalone/aui/aui_test.html` | AUI panel controls |
+| `/standalone/toolbar/toolbar_test.html` | Toolbar buttons |
+| `/standalone/timer/timer_test.html` | Timer controls |
+| `/standalone/filedialog/filedialog_test.html` | File dialog buttons |
+| `/standalone/layout/layout_test.html` | Layout controls |
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `APP_URL` | (required) | URL path to scan |
+| `STEP` | `10` | Pixel step size for scanning (smaller = more accurate but slower) |
+| `START_X` | `0` | X coordinate to start scanning |
+| `END_X` | canvas width | X coordinate to end scanning |
+| `START_Y` | `0` | Y coordinate to start scanning |
+| `END_Y` | canvas height | Y coordinate to end scanning |
+
+### Output
+
+The utility outputs:
+- Button positions with labels (from console log keywords)
+- Generated test code snippets
+- Results JSON file at `test-results/button-finder-results.json`
+
+Example output:
+```
+RESULTS: Found 4 buttons
+
+Button positions (relative to canvas):
+
+  Copy         at (352, 196)
+    Log: [CLIPBOARD_EVENT] Attempting to copy text to clipboard...
+
+  Paste        at (600, 196)
+    Log: [CLIPBOARD_EVENT] Attempting to paste from clipboard...
+```
+
 ## Known Issues
 
 - **Timer tests**: May fail due to timing sensitivity

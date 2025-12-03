@@ -1,6 +1,6 @@
 # wxWidgets WASM Test Status
 
-Last updated: 2025-11-29
+Last updated: 2025-12-03
 
 ## Test Summary
 
@@ -102,11 +102,12 @@ This section maps KiCad's wxWidgets usage to our test coverage.
 - **Fix**: Enabled Asyncify in build flags (`-sASYNCIFY=1 -sASYNCIFY_IMPORTS=['startModal']`)
 - **Details**: ShowModal() now properly blocks until user closes dialog
 
-### wxClipboard - LIMITED
-- **Status**: App loads but "Could not open clipboard" errors
+### wxClipboard - WORKS ✓
+- **Status**: Full clipboard support via browser Clipboard API with Asyncify
 - **KiCad Impact**: MEDIUM - Copy/paste operations
-- **Evidence**: Clipboard logs show open errors
-- **Cause**: Browser clipboard API restrictions
+- **Evidence**: clipboard-03-copy-clicked.png shows successful copy, all 6 clipboard tests pass
+- **Fix**: Implemented browser Clipboard API integration with Asyncify for async-to-sync bridging
+- **Details**: Added `js_writeTextToClipboard`, `js_readTextFromClipboard`, `js_clipboardHasText`, `js_clearClipboard` to ASYNCIFY_IMPORTS
 
 ---
 
@@ -120,7 +121,7 @@ Organized in `wasm-app/standalone/` folders:
 | toolbar/toolbar_test | WORKS | 6/6 | Tool palettes |
 | layout/layout_test | WORKS | 5/5 | Split panel layout |
 | aui/aui_test | WORKS | 5/5 | Dockable panels |
-| clipboard/clipboard_test | WORKS* | 6/6 | Copy/paste (*limited) |
+| clipboard/clipboard_test | WORKS | 6/6 | Copy/paste |
 | filedialog/filedialog_test | WORKS | 5/5 | Open/save dialogs |
 | grid/grid_test | WORKS | 2/2 | Property grids |
 | dialog/dialog_test | WORKS | 5/5 | Alerts/confirmations |
@@ -193,9 +194,7 @@ Organized in `wasm-app/standalone/` folders:
 9. **wxMessageBox/wxDialog** - Modal dialogs with Asyncify
 10. **wxGrid** - Property grids with cells, labels, and events
 11. **wxTreeCtrl** - Hierarchy browsers with expand/collapse, selection, add/delete
-
-### Needs Work for KiCad
-1. **wxClipboard** - Copy/paste (browser limitations)
+12. **wxClipboard** - Copy/paste via browser Clipboard API with Asyncify
 
 ### Untested for KiCad
 1. wxDataViewCtrl (advanced lists)

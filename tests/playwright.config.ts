@@ -9,9 +9,14 @@ export default defineConfig({
   reporter: 'html',
   timeout: 60000,  // WASM can be slow to load
 
+  // Exclude button-finder from regular test runs - it's a utility, not a test
+  testIgnore: ['**/button-finder.spec.ts'],
+
   use: {
     baseURL: 'http://localhost:8080',
     trace: 'on-first-retry',
+    // Grant clipboard permissions for clipboard tests
+    permissions: ['clipboard-read', 'clipboard-write'],
   },
 
   projects: [
