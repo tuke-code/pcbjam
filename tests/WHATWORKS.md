@@ -9,7 +9,7 @@ Last updated: 2025-12-03
 | Category | Status | Notes |
 |----------|--------|-------|
 | Main App Load | WORKS | minimal_test.html loads and renders correctly |
-| Standalone Apps | WORKS | 13 standalone test apps (119 total tests passing) |
+| Standalone Apps | WORKS | 14 standalone test apps (127 total tests passing) |
 | wxGrid | WORKS | Grid renders with cells, labels, and event handling |
 | wxTreeCtrl | WORKS | Tree renders with expand/collapse, selection, add/delete items |
 | wxTimer | PARTIAL | Timer test app works, some tests have coordinate issues |
@@ -17,6 +17,7 @@ Last updated: 2025-12-03
 | wxDataViewCtrl | WORKS | List and tree views for Zone Manager, Net Inspector |
 | wxHtmlWindow | WORKS | HTML rendering for About dialogs, error formatting |
 | wxStyledTextCtrl | WORKS | Syntax highlighting for DRC rules, Python console |
+| wxPrinting | WORKS | Print preview, print dialog, browser print via window.print() |
 
 ---
 
@@ -133,6 +134,18 @@ This section maps KiCad's wxWidgets usage to our test coverage.
 - **Tests**: 10/10 pass - Python lexer, DRC Rules lexer, plain text, line numbers toggle, fold all
 - **Details**: Test app demonstrates Python and DRC rules syntax highlighting like KiCad uses
 
+### wxPrinting - WORKS ✓
+- **Status**: Print preview, print dialog, page setup, and browser print all functional
+- **KiCad Impact**: MEDIUM - Schematic and PCB printing
+- **Evidence**: print-01-loaded.png shows print test app, print-04-preview-clicked.png shows preview frame
+- **Tests**: 8/8 pass - App load, preview, print dialog, browser print, page setup, callbacks
+- **Details**:
+  - wxPrintout callbacks all fire correctly (OnBeginPrinting, OnPrintPage, OnEndDocument, etc.)
+  - wxPrintPreview opens and renders preview frame
+  - wxPrinter::Print() shows print dialog
+  - Browser Print triggers `window.print()` for native browser print dialog
+  - Page Setup dialog works with margins configuration
+
 ---
 
 ## Standalone Test Apps
@@ -154,6 +167,7 @@ Organized in `wasm-app/standalone/` folders:
 | dataview/dataview_test | WORKS | 10/10 | Zone Manager, Net Inspector |
 | htmlwin/htmlwin_test | WORKS | 8/8 | About dialogs, error formatting |
 | stc/stc_test | WORKS | 10/10 | DRC rules editor, Python console |
+| print/print_test | WORKS | 8/8 | Schematic/PCB printing |
 
 ---
 
@@ -225,11 +239,13 @@ Organized in `wasm-app/standalone/` folders:
 13. **wxDataViewCtrl** - Zone Manager, Net Inspector, Library browsers
 14. **wxHtmlWindow** - About dialogs, error message formatting
 15. **wxStyledTextCtrl** - DRC rules editor, Python console, script editors
+16. **wxPrinting** - Print preview, print dialog, browser print via window.print()
 
 ### Untested for KiCad
-1. wxRichTextCtrl (formatted text)
-2. Printing support
-3. Drag and drop
+1. Drag and drop (HTML5 file drop support)
+
+### Not Needed for KiCad
+1. wxRichTextCtrl - Disabled in WASM build, KiCad doesn't use it
 
 ---
 
