@@ -110,7 +110,9 @@ Then open http://localhost:8000/minimal_test.html
 | `opengl.spec.ts` | OpenGL | GL tests (immediate mode, vertex arrays) |
 | `aui.spec.ts` | wxAuiManager | Dockable panels |
 | `clipboard.spec.ts` | wxClipboard | Copy/paste operations |
+| `dataview.spec.ts` | wxDataViewCtrl | List and tree data views (Zone Manager-like) |
 | `filedialog.spec.ts` | wxFileDialog | File open/save dialogs |
+| `htmlwin.spec.ts` | wxHtmlWindow | HTML rendering (About dialogs, error formatting) |
 | `layout.spec.ts` | wxSplitter | Splitter and scrolled windows |
 | `toolbar.spec.ts` | wxToolBar | Toolbar buttons and status bar |
 
@@ -167,24 +169,24 @@ $LLVM_DIR/llvm-objdump -d grid_test.wasm | head -200
 
 The wxWidgets WASM apps render to a canvas, so UI tests need to click at specific pixel coordinates. The button-finder utility scans a test app to find clickable button positions.
 
-**Note:** This utility is excluded from regular test runs (`npm test`). Run it explicitly when needed.
+**Note:** This utility is excluded from regular test runs (`npm test`). Use the dedicated config to run it.
 
 ### Usage
 
 ```bash
 cd tests
 
-# Scan clipboard test app
-APP_URL=/standalone/clipboard/clipboard_test.html npx playwright test button-finder --reporter=list
-
-# Scan dialog test app
-APP_URL=/standalone/dialog/dialog_test.html npx playwright test button-finder --reporter=list
-
-# Scan tree test app
-APP_URL=/standalone/tree/tree_test.html npx playwright test button-finder --reporter=list
+# Use the dedicated button-finder config (recommended)
+APP_URL=/standalone/clipboard/clipboard_test.html npx playwright test --config=playwright-button-finder.config.ts
 
 # Scan with custom region (faster - focus on likely button area)
-APP_URL=/standalone/dialog/dialog_test.html START_Y=150 END_Y=300 STEP=8 npx playwright test button-finder --reporter=list
+APP_URL=/standalone/dialog/dialog_test.html START_Y=150 END_Y=300 STEP=8 npx playwright test --config=playwright-button-finder.config.ts
+
+# Scan dataview test app for button positions
+APP_URL=/standalone/dataview/dataview_test.html STEP=8 START_Y=80 END_Y=180 npx playwright test --config=playwright-button-finder.config.ts
+
+# Scan htmlwin test app
+APP_URL=/standalone/htmlwin/htmlwin_test.html STEP=8 START_Y=80 END_Y=160 npx playwright test --config=playwright-button-finder.config.ts
 ```
 
 ### Available Test Apps
@@ -192,7 +194,9 @@ APP_URL=/standalone/dialog/dialog_test.html START_Y=150 END_Y=300 STEP=8 npx pla
 | App URL | Description |
 |---------|-------------|
 | `/standalone/clipboard/clipboard_test.html` | Copy, Paste, Check, Clear buttons |
+| `/standalone/dataview/dataview_test.html` | wxDataViewListCtrl and wxDataViewTreeCtrl (Zone Manager-like data) |
 | `/standalone/dialog/dialog_test.html` | Info, Yes/No, Error, Custom dialog buttons |
+| `/standalone/htmlwin/htmlwin_test.html` | wxHtmlWindow with various HTML content |
 | `/standalone/tree/tree_test.html` | Expand All, Collapse All, etc. |
 | `/standalone/menu/menu_test.html` | Menu bar testing |
 | `/standalone/grid/grid_test.html` | Grid controls |

@@ -9,11 +9,14 @@ Last updated: 2025-12-03
 | Category | Status | Notes |
 |----------|--------|-------|
 | Main App Load | WORKS | minimal_test.html loads and renders correctly |
-| Standalone Apps | WORKS | 10 standalone test apps |
+| Standalone Apps | WORKS | 13 standalone test apps (119 total tests passing) |
 | wxGrid | WORKS | Grid renders with cells, labels, and event handling |
 | wxTreeCtrl | WORKS | Tree renders with expand/collapse, selection, add/delete items |
 | wxTimer | PARTIAL | Timer test app works, some tests have coordinate issues |
 | wxDialog | WORKS | Modal dialogs render correctly with Asyncify |
+| wxDataViewCtrl | WORKS | List and tree views for Zone Manager, Net Inspector |
+| wxHtmlWindow | WORKS | HTML rendering for About dialogs, error formatting |
+| wxStyledTextCtrl | WORKS | Syntax highlighting for DRC rules, Python console |
 
 ---
 
@@ -109,6 +112,27 @@ This section maps KiCad's wxWidgets usage to our test coverage.
 - **Fix**: Implemented browser Clipboard API integration with Asyncify for async-to-sync bridging
 - **Details**: Added `js_writeTextToClipboard`, `js_readTextFromClipboard`, `js_clipboardHasText`, `js_clearClipboard` to ASYNCIFY_IMPORTS
 
+### wxDataViewCtrl - WORKS ✓
+- **Status**: Both wxDataViewListCtrl and wxDataViewTreeCtrl fully functional
+- **KiCad Impact**: CRITICAL - Zone Manager, Net Inspector, Symbol/Footprint library browsers
+- **Evidence**: dataview-01-loaded.png shows list with columns, dataview-02-tree-tab.png shows hierarchical tree
+- **Tests**: 10/10 pass - List rendering, tree expand/collapse, tab switching, column headers
+- **Details**: Test app mimics KiCad Zone Manager with zone data (name, net, priority, layer)
+
+### wxHtmlWindow - WORKS ✓
+- **Status**: HTML rendering works including tables, styled text, and scrolling
+- **KiCad Impact**: MEDIUM - About dialogs, error message formatting, help content
+- **Evidence**: htmlwin-01-loaded.png shows HTML rendering, htmlwin-04-about.png shows KiCad-style About dialog
+- **Tests**: 8/8 pass - Basic HTML, tables, long content scrolling, KiCad About dialog
+- **Details**: Test app demonstrates HTML features used in KiCad dialogs
+
+### wxStyledTextCtrl (Scintilla) - WORKS ✓
+- **Status**: Syntax highlighting, line numbers, code folding all functional
+- **KiCad Impact**: MEDIUM - DRC rules editor, Python console, custom script editors
+- **Evidence**: stc-01-loaded.png shows Python syntax highlighting with colors
+- **Tests**: 10/10 pass - Python lexer, DRC Rules lexer, plain text, line numbers toggle, fold all
+- **Details**: Test app demonstrates Python and DRC rules syntax highlighting like KiCad uses
+
 ---
 
 ## Standalone Test Apps
@@ -127,6 +151,9 @@ Organized in `wasm-app/standalone/` folders:
 | dialog/dialog_test | WORKS | 5/5 | Alerts/confirmations |
 | timer/timer_test | PARTIAL | 1/4 | Auto-save, animations |
 | tree/tree_test | WORKS | 7/7 | Hierarchy browsers |
+| dataview/dataview_test | WORKS | 10/10 | Zone Manager, Net Inspector |
+| htmlwin/htmlwin_test | WORKS | 8/8 | About dialogs, error formatting |
+| stc/stc_test | WORKS | 10/10 | DRC rules editor, Python console |
 
 ---
 
@@ -195,13 +222,14 @@ Organized in `wasm-app/standalone/` folders:
 10. **wxGrid** - Property grids with cells, labels, and events
 11. **wxTreeCtrl** - Hierarchy browsers with expand/collapse, selection, add/delete
 12. **wxClipboard** - Copy/paste via browser Clipboard API with Asyncify
+13. **wxDataViewCtrl** - Zone Manager, Net Inspector, Library browsers
+14. **wxHtmlWindow** - About dialogs, error message formatting
+15. **wxStyledTextCtrl** - DRC rules editor, Python console, script editors
 
 ### Untested for KiCad
-1. wxDataViewCtrl (advanced lists)
-2. wxRichTextCtrl (formatted text)
-3. wxStyledTextCtrl (code editor)
-4. Printing support
-5. Drag and drop
+1. wxRichTextCtrl (formatted text)
+2. Printing support
+3. Drag and drop
 
 ---
 
@@ -313,3 +341,9 @@ npx playwright test --ui    # Interactive mode with screenshot preview
 | dialog-02-info-clicked.png | Info dialog with icon, message, OK button |
 | dialog-03-yesno-clicked.png | Yes/No/Cancel confirmation dialog |
 | dialogs-custom-open.png | Custom wxDialog modal |
+| dataview-01-loaded.png | wxDataViewListCtrl with zone data |
+| dataview-02-tree-tab.png | wxDataViewTreeCtrl with hierarchical data |
+| htmlwin-01-loaded.png | wxHtmlWindow with basic HTML |
+| htmlwin-04-about.png | KiCad-style About dialog |
+| stc-01-loaded.png | wxStyledTextCtrl with Python syntax highlighting |
+| stc-03-drc-mode.png | DRC rules syntax highlighting |

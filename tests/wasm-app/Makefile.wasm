@@ -17,6 +17,12 @@ WX_LDFLAGS_GL := $(shell $(WXCONFIG) --libs base,core,gl,aui)
 # Libraries for non-GL apps (standalone tests don't need GL)
 WX_LDFLAGS_NOGL := $(shell $(WXCONFIG) --libs base,core,aui)
 
+# Libraries for HTML apps (htmlwin_test needs html)
+WX_LDFLAGS_HTML := $(shell $(WXCONFIG) --libs base,core,html)
+
+# Libraries for STC apps (stc_test needs stc)
+WX_LDFLAGS_STC := $(shell $(WXCONFIG) --libs base,core,stc)
+
 # Debug or Release build
 ifdef DEBUG
     # Debug: DWARF info, source maps, minimal optimization
@@ -49,6 +55,12 @@ LDFLAGS_GL = $(DEBUG_LDFLAGS) $(BASE_LDFLAGS) $(EM_GL_FLAGS) --js-library=$(GL_S
 # LDFLAGS for non-GL apps (standalone tests)
 LDFLAGS_NOGL = $(DEBUG_LDFLAGS) $(BASE_LDFLAGS) $(WX_LDFLAGS_NOGL)
 
+# LDFLAGS for HTML apps (htmlwin_test)
+LDFLAGS_HTML = $(DEBUG_LDFLAGS) $(BASE_LDFLAGS) $(WX_LDFLAGS_HTML)
+
+# LDFLAGS for STC apps (stc_test)
+LDFLAGS_STC = $(DEBUG_LDFLAGS) $(BASE_LDFLAGS) $(WX_LDFLAGS_STC)
+
 JS = $(TOOLS_ROOT)/wx.js
 HTML = $(TOOLS_ROOT)/template.html
 
@@ -65,7 +77,10 @@ all: minimal_test.html \
      $(S)/grid/grid_test.html \
      $(S)/dialog/dialog_test.html \
      $(S)/timer/timer_test.html \
-     $(S)/tree/tree_test.html
+     $(S)/tree/tree_test.html \
+     $(S)/dataview/dataview_test.html \
+     $(S)/htmlwin/htmlwin_test.html \
+     $(S)/stc/stc_test.html
 
 # Main test app (uses GL)
 minimal_test.o: minimal_test.cpp
@@ -144,6 +159,27 @@ $(S)/tree/tree_test.o: $(S)/tree/tree_test.cpp
 $(S)/tree/tree_test.html: $(S)/tree/tree_test.o
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
+# DataView test (no GL)
+$(S)/dataview/dataview_test.o: $(S)/dataview/dataview_test.cpp
+	$(CXX) -c $(CXXFLAGS) $< -o $@
+
+$(S)/dataview/dataview_test.html: $(S)/dataview/dataview_test.o
+	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
+
+# HtmlWindow test (needs HTML library)
+$(S)/htmlwin/htmlwin_test.o: $(S)/htmlwin/htmlwin_test.cpp
+	$(CXX) -c $(CXXFLAGS) $< -o $@
+
+$(S)/htmlwin/htmlwin_test.html: $(S)/htmlwin/htmlwin_test.o
+	$(CXX) $< $(LDFLAGS_HTML) --pre-js $(JS) --shell-file $(HTML) -o $@
+
+# StyledTextCtrl test (needs STC library)
+$(S)/stc/stc_test.o: $(S)/stc/stc_test.cpp
+	$(CXX) -c $(CXXFLAGS) $< -o $@
+
+$(S)/stc/stc_test.html: $(S)/stc/stc_test.o
+	$(CXX) $< $(LDFLAGS_STC) --pre-js $(JS) --shell-file $(HTML) -o $@
+
 # Convenience targets
 menu: $(S)/menu/menu_test.html
 clipboard: $(S)/clipboard/clipboard_test.html
@@ -155,9 +191,12 @@ grid: $(S)/grid/grid_test.html
 dialog: $(S)/dialog/dialog_test.html
 timer: $(S)/timer/timer_test.html
 tree: $(S)/tree/tree_test.html
+dataview: $(S)/dataview/dataview_test.html
+htmlwin: $(S)/htmlwin/htmlwin_test.html
+stc: $(S)/stc/stc_test.html
 
 clean:
 	rm -f minimal_test.o minimal_test.html minimal_test.js minimal_test.wasm
 	rm -f $(S)/*/*.o $(S)/*/*.html $(S)/*/*.js $(S)/*/*.wasm
 
-.PHONY: all clean menu clipboard filedialog layout aui toolbar grid dialog timer tree
+.PHONY: all clean menu clipboard filedialog layout aui toolbar grid dialog timer tree dataview htmlwin stc
