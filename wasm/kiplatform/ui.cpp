@@ -1,0 +1,198 @@
+/*
+ * WASM implementation of kiplatform/ui.h
+ * Provides UI functions for browser environment
+ */
+
+#include <kiplatform/ui.h>
+#include <wx/window.h>
+#include <wx/choice.h>
+#include <wx/toplevel.h>
+#include <wx/nonownedwnd.h>
+#include <wx/colour.h>
+#include <wx/settings.h>
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
+namespace KIPLATFORM
+{
+namespace UI
+{
+
+bool IsDarkTheme()
+{
+#ifdef __EMSCRIPTEN__
+    // Check if browser prefers dark color scheme
+    int isDark = EM_ASM_INT({
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            return 1;
+        }
+        return 0;
+    });
+    return isDark == 1;
+#else
+    return false;
+#endif
+}
+
+wxColour GetDialogBGColour()
+{
+    return wxSystemSettings::GetColour( wxSYS_COLOUR_BTNFACE );
+}
+
+void ForceFocus( wxWindow* aWindow )
+{
+    if( aWindow )
+        aWindow->SetFocus();
+}
+
+bool IsWindowActive( wxWindow* aWindow )
+{
+    if( !aWindow )
+        return false;
+
+    wxTopLevelWindow* tlw = dynamic_cast<wxTopLevelWindow*>( aWindow );
+    if( tlw )
+        return tlw->IsActive();
+
+    // For non-TLW, check if it has focus
+    return aWindow->HasFocus();
+}
+
+void ReparentModal( wxNonOwnedWindow* aWindow )
+{
+    // No-op in browser - modal handling is different
+}
+
+void ReparentWindow( wxNonOwnedWindow* aWindow, wxTopLevelWindow* aParent )
+{
+    // Reparenting not typically needed in browser
+}
+
+void FixupCancelButtonCmdKeyCollision( wxWindow* aWindow )
+{
+    // Not needed in browser - no Cmd key
+}
+
+bool IsStockCursorOk( wxStockCursor aCursor )
+{
+    // All stock cursors should work in browser via CSS
+    return true;
+}
+
+void LargeChoiceBoxHack( wxChoice* aChoice )
+{
+    // Not needed in browser
+}
+
+void EllipsizeChoiceBox( wxChoice* aChoice )
+{
+    // Browser handles text overflow via CSS
+}
+
+double GetPixelScaleFactor( const wxWindow* aWindow )
+{
+#ifdef __EMSCRIPTEN__
+    double scale = EM_ASM_DOUBLE({
+        return window.devicePixelRatio || 1.0;
+    });
+    return scale;
+#else
+    if( aWindow )
+        return aWindow->GetContentScaleFactor();
+    return 1.0;
+#endif
+}
+
+double GetContentScaleFactor( const wxWindow* aWindow )
+{
+    return GetPixelScaleFactor( aWindow );
+}
+
+void GetInfoBarColours( wxColour& aFGColour, wxColour& aBGColour )
+{
+    // Use standard info bar colors
+    if( IsDarkTheme() )
+    {
+        aFGColour = wxColour( 255, 255, 255 );
+        aBGColour = wxColour( 50, 50, 120 );  // Dark blue
+    }
+    else
+    {
+        aFGColour = wxColour( 0, 0, 0 );
+        aBGColour = wxColour( 200, 220, 255 );  // Light blue
+    }
+}
+
+wxSize GetUnobscuredSize( const wxWindow* aWindow )
+{
+    if( aWindow )
+        return aWindow->GetClientSize();
+    return wxSize( 0, 0 );
+}
+
+void SetOverlayScrolling( const wxWindow* aWindow, bool overlay )
+{
+    // Browser handles scrollbar styling via CSS
+}
+
+bool AllowIconsInMenus()
+{
+    // Icons in menus are fine in browser
+    return true;
+}
+
+wxPoint GetMousePosition()
+{
+    return wxGetMousePosition();
+}
+
+bool WarpPointer( wxWindow* aWindow, int aX, int aY )
+{
+    // Pointer warping is restricted in browsers for security
+    // We can still call WarpPointer but it may not work
+    if( aWindow )
+    {
+        aWindow->WarpPointer( aX, aY );
+        return true;
+    }
+    return false;
+}
+
+void ImmControl( wxWindow* aWindow, bool aEnable )
+{
+    // IME control not needed in browser - handled natively
+}
+
+void ImeNotifyCancelComposition( wxWindow* aWindow )
+{
+    // IME control not needed in browser
+}
+
+bool InfiniteDragPrepareWindow( wxWindow* aWindow )
+{
+    // Pointer lock API could be used for infinite drag
+    // but requires user gesture and permission
+    return false;
+}
+
+void InfiniteDragReleaseWindow()
+{
+    // No-op
+}
+
+void EnsureVisible( wxWindow* aWindow )
+{
+    // In browser, window is always visible (single page)
+    if( aWindow )
+        aWindow->Raise();
+}
+
+void SetFloatLevel( wxWindow* aWindow )
+{
+    // No floating window levels in browser
+}
+
+} // namespace UI
+} // namespace KIPLATFORM

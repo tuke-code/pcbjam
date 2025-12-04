@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KiCad PCBnew - WASM</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #2c2c2c;
+            color: #fff;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #toolbar {
+            background: #3c3c3c;
+            padding: 8px 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-bottom: 1px solid #555;
+        }
+
+        #toolbar h1 {
+            font-size: 16px;
+            font-weight: 500;
+            flex: 1;
+        }
+
+        .btn {
+            padding: 6px 12px;
+            background: #5c5c5c;
+            border: none;
+            border-radius: 4px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        .btn:hover {
+            background: #6c6c6c;
+        }
+
+        .btn:active {
+            background: #4c4c4c;
+        }
+
+        #main-container {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        #canvas-container {
+            flex: 1;
+            position: relative;
+            background: #1a1a1a;
+        }
+
+        #canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        #sidebar {
+            width: 300px;
+            background: #353535;
+            border-left: 1px solid #555;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #status-bar {
+            background: #3c3c3c;
+            padding: 4px 16px;
+            font-size: 12px;
+            border-top: 1px solid #555;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        #loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        #loading-overlay.hidden {
+            display: none;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid #333;
+            border-top-color: #007bff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        #loading-text {
+            margin-top: 20px;
+            font-size: 14px;
+        }
+
+        #progress-bar {
+            width: 300px;
+            height: 4px;
+            background: #333;
+            border-radius: 2px;
+            margin-top: 16px;
+            overflow: hidden;
+        }
+
+        #progress-fill {
+            height: 100%;
+            background: #007bff;
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+        #log-panel {
+            flex: 1;
+            overflow: auto;
+            padding: 8px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 11px;
+            background: #2a2a2a;
+        }
+
+        .log-entry {
+            padding: 2px 0;
+            border-bottom: 1px solid #3a3a3a;
+        }
+
+        .log-info { color: #a0a0a0; }
+        .log-warn { color: #ffcc00; }
+        .log-error { color: #ff6b6b; }
+        .log-success { color: #69db7c; }
+    </style>
+</head>
+<body>
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+        <div id="loading-text">Loading PCBnew...</div>
+        <div id="progress-bar">
+            <div id="progress-fill"></div>
+        </div>
+    </div>
+
+    <div id="toolbar">
+        <h1>KiCad PCBnew (WASM)</h1>
+        <button class="btn" id="btn-new">New</button>
+        <button class="btn" id="btn-open">Open</button>
+        <button class="btn" id="btn-save">Save</button>
+        <button class="btn" id="btn-zoom-in">Zoom +</button>
+        <button class="btn" id="btn-zoom-out">Zoom -</button>
+        <button class="btn" id="btn-fit">Fit</button>
+    </div>
+
+    <div id="main-container">
+        <div id="canvas-container">
+            <canvas id="canvas"></canvas>
+        </div>
+        <div id="sidebar">
+            <div id="log-panel"></div>
+        </div>
+    </div>
+
+    <div id="status-bar">
+        <span id="status-coords">X: 0.00mm Y: 0.00mm</span>
+        <span id="status-info">Ready</span>
+        <span id="status-memory">Memory: --</span>
+    </div>
+
+    <script type="module">
+        // Logger
+        const logPanel = document.getElementById('log-panel');
+        const log = (msg, type = 'info') => {
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            logPanel.appendChild(entry);
+            logPanel.scrollTop = logPanel.scrollHeight;
+            console.log(`[${type}] ${msg}`);
+        };
+
+        // Loading state
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const loadingText = document.getElementById('loading-text');
+        const progressFill = document.getElementById('progress-fill');
+
+        const updateProgress = (percent, text) => {
+            progressFill.style.width = `${percent}%`;
+            if (text) loadingText.textContent = text;
+        };
+
+        // Memory monitoring
+        const updateMemory = () => {
+            if (performance.memory) {
+                const used = (performance.memory.usedJSHeapSize / 1024 / 1024).toFixed(1);
+                document.getElementById('status-memory').textContent = `Memory: ${used}MB`;
+            }
+        };
+        setInterval(updateMemory, 1000);
+
+        // Main initialization
+        async function init() {
+            try {
+                log('Starting PCBnew initialization...', 'info');
+                updateProgress(10, 'Loading WebAssembly module...');
+
+                // Import the PCBnew module
+                // In production, this would be the compiled KiCad WASM
+                const moduleUrl = './pcbnew.js';
+
+                log(`Loading module from ${moduleUrl}`, 'info');
+                updateProgress(30, 'Compiling WebAssembly...');
+
+                // For now, just show that we're ready to load
+                // The actual module loading would happen here
+                log('Note: PCBnew WASM module not yet built', 'warn');
+                log('Run: ./scripts/build-pcbnew-wasm.sh', 'warn');
+
+                updateProgress(100, 'Ready (module not loaded)');
+
+                setTimeout(() => {
+                    loadingOverlay.classList.add('hidden');
+                    log('UI ready', 'success');
+                }, 500);
+
+            } catch (error) {
+                log(`Failed to initialize: ${error.message}`, 'error');
+                loadingText.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        // Button handlers
+        document.getElementById('btn-new').addEventListener('click', () => {
+            log('New project', 'info');
+        });
+
+        document.getElementById('btn-open').addEventListener('click', () => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.kicad_pcb,.kicad_mod';
+            input.onchange = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    log(`Opening: ${file.name}`, 'info');
+                }
+            };
+            input.click();
+        });
+
+        document.getElementById('btn-save').addEventListener('click', () => {
+            log('Save project', 'info');
+        });
+
+        document.getElementById('btn-zoom-in').addEventListener('click', () => {
+            log('Zoom in', 'info');
+        });
+
+        document.getElementById('btn-zoom-out').addEventListener('click', () => {
+            log('Zoom out', 'info');
+        });
+
+        document.getElementById('btn-fit').addEventListener('click', () => {
+            log('Fit to view', 'info');
+        });
+
+        // Canvas mouse tracking
+        const canvas = document.getElementById('canvas');
+        const statusCoords = document.getElementById('status-coords');
+
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = ((e.clientX - rect.left) * 0.1).toFixed(2);
+            const y = ((e.clientY - rect.top) * 0.1).toFixed(2);
+            statusCoords.textContent = `X: ${x}mm Y: ${y}mm`;
+        });
+
+        // Resize handling
+        function resizeCanvas() {
+            const container = document.getElementById('canvas-container');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Start initialization
+        init();
+    </script>
+</body>
+</html>

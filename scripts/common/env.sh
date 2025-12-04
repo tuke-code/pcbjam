@@ -1,0 +1,67 @@
+#!/bin/bash
+# Environment setup for KiCad WASM build scripts
+
+# Get script and project directories using unique names to avoid conflicts
+_KICAD_WASM_COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_KICAD_WASM_SCRIPTS_DIR="$(dirname "$_KICAD_WASM_COMMON_DIR")"
+_KICAD_WASM_PROJECT_ROOT="$(dirname "$_KICAD_WASM_SCRIPTS_DIR")"
+
+# Export paths
+export PROJECT_ROOT="$_KICAD_WASM_PROJECT_ROOT"
+export SCRIPTS_DIR="$_KICAD_WASM_SCRIPTS_DIR"
+export COMMON_DIR="$_KICAD_WASM_COMMON_DIR"
+
+# Build output directories (inside the project)
+export BUILD_ROOT="$PROJECT_ROOT/build-wasm"
+export DEPS_ROOT="$BUILD_ROOT/deps"
+export SYSROOT="$BUILD_ROOT/sysroot"
+export STAMPS_DIR="$BUILD_ROOT/stamps"
+
+# Source directories
+export KICAD_SOURCE="$PROJECT_ROOT/kicad"
+export WXWIDGETS_SOURCE="$PROJECT_ROOT/wxwidgets"
+export WASM_COMPAT="$PROJECT_ROOT/wasm"
+export STUBS_DIR="$PROJECT_ROOT/stubs"
+export CMAKE_MODULES="$PROJECT_ROOT/cmake"
+
+# wxWidgets build location
+export WX_BUILD="$BUILD_ROOT/wxwidgets-universal"
+
+# Emscripten settings
+export EMSDK_QUIET=1
+
+# Common compiler flags
+export EMCC_CFLAGS="-fPIC -DEMSCRIPTEN"
+export EMCC_CXXFLAGS="-fPIC -DEMSCRIPTEN -std=c++17"
+
+# Common linker flags for WASM
+export WASM_LDFLAGS="\
+-sALLOW_MEMORY_GROWTH=1 \
+-sINITIAL_MEMORY=256MB \
+-sSTACK_SIZE=5MB \
+-sASYNCIFY=1 \
+-sASYNCIFY_STACK_SIZE=16384 \
+-sLEGACY_GL_EMULATION \
+-sMAX_WEBGL_VERSION=2"
+
+# Threading flags (when enabled)
+export PTHREAD_LDFLAGS="\
+-pthread \
+-sPROXY_TO_PTHREAD=1 \
+-sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency \
+-sOFFSCREENCANVAS_SUPPORT=1"
+
+# Create output directories
+mkdir -p "$BUILD_ROOT" "$DEPS_ROOT" "$SYSROOT"/{lib,include,share} "$STAMPS_DIR"
+
+# Source other common files
+source "$COMMON_DIR/versions.sh"
+source "$COMMON_DIR/functions.sh"
+
+# Print environment info (only if not in quiet mode)
+if [ "${QUIET:-0}" != "1" ]; then
+    echo "KiCad WASM Build Environment"
+    echo "  Project root: $PROJECT_ROOT"
+    echo "  Build root:   $BUILD_ROOT"
+    echo "  Sysroot:      $SYSROOT"
+fi

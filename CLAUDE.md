@@ -6,6 +6,8 @@ The e2e tests are in /tests, with a README and WHATWORKS md files
 The e2e tests are separated per feature
 The tests depend on canvas, there's an app to find button positions, use that, don't find buttons by estimating pixels
 The test have screenshots that are tracked with git, use compare-screenshots.sh to see what changed, update them when a new image is added
+The tests have log files after each run where the js console and cpp logs are visible
+Always check screenshots for validating tests
 
 Our current goal is to test every wxwidgets feature kicad uses, write the wasm layer and e2e tests, documented in WHATWORKS
 Never run builds manually, we have scripts that run the builds in the /scripts folder
