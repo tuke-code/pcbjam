@@ -77,7 +77,7 @@ cpu = 'wasm32'
 endian = 'little'
 
 [built-in options]
-c_args = [${MESON_DEBUG_FLAGS}, '-pthread']
+c_args = [${MESON_DEBUG_FLAGS}, '-pthread', '-matomics', '-mbulk-memory']
 c_link_args = ['-pthread']
 EOF
 

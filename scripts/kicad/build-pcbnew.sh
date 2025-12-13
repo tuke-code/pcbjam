@@ -87,9 +87,10 @@ else
 fi
 
 # Step 2: Build dependencies
+# Note: --with-occ for OpenCASCADE, but NOT ngspice since KICAD_SPICE=OFF
 if [ $SKIP_DEPS -eq 0 ]; then
     log_info "Building dependencies..."
-    "${SCRIPT_DIR}/../deps/build-all-deps.sh" --all
+    "${SCRIPT_DIR}/../deps/build-all-deps.sh" --with-occ
 else
     log_info "Skipping dependencies (--skip-deps specified)"
 fi
@@ -100,26 +101,33 @@ if [ $NO_CLEAN -eq 1 ] && check_stamp "${KICAD_STAMP}"; then
     exit 0
 fi
 
-# Step 4: Verify wxWidgets is built
+# Step 4: Build wxWidgets if not present
+WXWIDGETS_STAMP="${BUILD_ROOT}/stamps/wxwidgets.stamp"
 if [ ! -f "${WX_BUILD}/lib/libwx_baseu-3.2.a" ]; then
-    log_error "wxWidgets not found. Please build wxWidgets first with:"
-    log_error "  ./scripts/build-wxuniversal-wasm.sh"
-    exit 1
+    log_info "Building wxWidgets..."
+    "${SCRIPT_DIR}/../build-wxuniversal-wasm.sh" --no-clean
+    # Create stamp after successful build
+    touch "${WXWIDGETS_STAMP}"
+elif [ ! -f "${WXWIDGETS_STAMP}" ]; then
+    # Library exists but no stamp - create one
+    touch "${WXWIDGETS_STAMP}"
 fi
 
 log_info "Building KiCad PCBnew ${KICAD_VERSION} for WASM..."
 
 # Step 5: Set build type
 # Use environment DEBUG_BUILD if set, otherwise check local --debug flag
+# -fexceptions is required because wxWidgets is built with exceptions enabled
+# -matomics -mbulk-memory are required for shared memory (pthreads)
 if [ "${DEBUG_BUILD:-0}" = "1" ] || [ $DEBUG -eq 1 ]; then
     BUILD_TYPE="Debug"
-    EXTRA_FLAGS="-g -O0"
-    LINKER_DEBUG_FLAGS="-g -gsource-map"
+    EXTRA_FLAGS="-g -O0 -fexceptions -matomics -mbulk-memory"
+    LINKER_DEBUG_FLAGS="-g -gsource-map -fexceptions"
     log_info "Building KiCad in DEBUG mode (with source maps)"
 else
     BUILD_TYPE="Release"
-    EXTRA_FLAGS="-O2"
-    LINKER_DEBUG_FLAGS=""
+    EXTRA_FLAGS="-O2 -fexceptions -matomics -mbulk-memory"
+    LINKER_DEBUG_FLAGS="-fexceptions"
     log_info "Building KiCad in RELEASE mode"
 fi
 

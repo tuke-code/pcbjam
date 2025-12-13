@@ -56,8 +56,8 @@ emcmake cmake "${FREETYPE_DIR}" \
     -DCMAKE_BUILD_TYPE=${BUILD_TYPE:-Debug} \
     -DCMAKE_INSTALL_PREFIX="${SYSROOT}" \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-    -DCMAKE_C_FLAGS="${DEBUG_CFLAGS:--g -O0}" \
-    -DCMAKE_CXX_FLAGS="${DEBUG_CFLAGS:--g -O0}" \
+    -DCMAKE_C_FLAGS="${DEBUG_CFLAGS:--g -O0} -pthread -matomics -mbulk-memory" \
+    -DCMAKE_CXX_FLAGS="${DEBUG_CFLAGS:--g -O0} -pthread -matomics -mbulk-memory" \
     -DFT_DISABLE_BZIP2=ON \
     -DFT_DISABLE_BROTLI=ON \
     -DFT_DISABLE_HARFBUZZ=ON \
@@ -67,6 +67,13 @@ emcmake cmake "${FREETYPE_DIR}" \
 
 emmake make -j${JOBS}
 emmake make install
+
+# Create symlink without debug suffix for pkg-config compatibility
+# FreeType CMake adds 'd' suffix for Debug builds but pkg-config expects 'libfreetype'
+if [ -f "${SYSROOT}/lib/libfreetyped.a" ] && [ ! -f "${SYSROOT}/lib/libfreetype.a" ]; then
+    ln -sf libfreetyped.a "${SYSROOT}/lib/libfreetype.a"
+    log_info "Created libfreetype.a symlink for pkg-config"
+fi
 
 create_stamp "${FREETYPE_STAMP}"
 log_info "FreeType build complete!"

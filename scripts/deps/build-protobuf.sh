@@ -57,8 +57,8 @@ cd "${PROTOBUF_BUILD}"
 emcmake cmake "${PROTOBUF_DIR}" \
     -DCMAKE_BUILD_TYPE=${BUILD_TYPE:-Debug} \
     -DCMAKE_INSTALL_PREFIX="${SYSROOT}" \
-    -DCMAKE_C_FLAGS="${DEBUG_CFLAGS:--g -O0} -pthread" \
-    -DCMAKE_CXX_FLAGS="${DEBUG_CFLAGS:--g -O0} -pthread" \
+    -DCMAKE_C_FLAGS="${DEBUG_CFLAGS:--g -O0} -pthread -matomics -mbulk-memory" \
+    -DCMAKE_CXX_FLAGS="${DEBUG_CFLAGS:--g -O0} -pthread -matomics -mbulk-memory" \
     -Dprotobuf_BUILD_TESTS=OFF \
     -Dprotobuf_BUILD_EXAMPLES=OFF \
     -Dprotobuf_BUILD_PROTOC_BINARIES=OFF \
@@ -67,6 +67,17 @@ emcmake cmake "${PROTOBUF_DIR}" \
 
 emmake make -j${JOBS}
 emmake make install
+
+# Create symlinks without debug suffix for pkg-config compatibility
+# Protobuf CMake adds 'd' suffix for Debug builds but pkg-config expects 'libprotobuf'
+if [ -f "${SYSROOT}/lib/libprotobufd.a" ] && [ ! -f "${SYSROOT}/lib/libprotobuf.a" ]; then
+    ln -sf libprotobufd.a "${SYSROOT}/lib/libprotobuf.a"
+    log_info "Created libprotobuf.a symlink for pkg-config"
+fi
+if [ -f "${SYSROOT}/lib/libprotobuf-lited.a" ] && [ ! -f "${SYSROOT}/lib/libprotobuf-lite.a" ]; then
+    ln -sf libprotobuf-lited.a "${SYSROOT}/lib/libprotobuf-lite.a"
+    log_info "Created libprotobuf-lite.a symlink for pkg-config"
+fi
 
 create_stamp "${PROTOBUF_STAMP}"
 log_info "Protobuf build complete!"

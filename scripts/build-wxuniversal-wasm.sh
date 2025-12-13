@@ -59,7 +59,7 @@ cd "$BUILD_DIR"
 # --enable-universal         Use wxUniversal (draws widgets directly)
 # --disable-shared           Build static libraries
 # --with-opengl              Enable OpenGL/WebGL support
-# --disable-exceptions       Emscripten doesn't support C++ exceptions well
+# --enable-exceptions        Enable C++ exceptions (needed for KiCad debug builds)
 # --disable-richtext         Not needed for KiCad, simplifies build
 # --without-libtiff          Avoid external dependencies
 # --disable-xlocale          Browser environment handles locale
@@ -83,8 +83,8 @@ else
     echo "Building wxWidgets in RELEASE mode"
 fi
 
-export CFLAGS="-DZ_HAVE_UNISTD_H=1 ${WX_DEBUG_FLAGS}"
-export CXXFLAGS="-DZ_HAVE_UNISTD_H=1 -I$PCRE2_INCLUDE ${WX_DEBUG_FLAGS}"
+export CFLAGS="-DZ_HAVE_UNISTD_H=1 ${WX_DEBUG_FLAGS} -fexceptions -pthread -matomics -mbulk-memory"
+export CXXFLAGS="-DZ_HAVE_UNISTD_H=1 -I$PCRE2_INCLUDE ${WX_DEBUG_FLAGS} -fexceptions -pthread -matomics -mbulk-memory"
 
 emconfigure "$WX_SOURCE/configure" \
     --host=emscripten \
@@ -92,7 +92,7 @@ emconfigure "$WX_SOURCE/configure" \
     --enable-universal \
     --disable-shared \
     --with-opengl \
-    --disable-exceptions \
+    --enable-exceptions \
     --disable-richtext \
     --without-libtiff \
     --disable-xlocale \

@@ -62,8 +62,8 @@ emcmake cmake "${ZSTD_DIR}/build/cmake" \
     -DZSTD_BUILD_SHARED=OFF \
     -DZSTD_BUILD_STATIC=ON \
     -DZSTD_MULTITHREAD_SUPPORT=ON \
-    -DCMAKE_C_FLAGS="${DEBUG_CFLAGS:--g -O0} -pthread" \
-    -DCMAKE_CXX_FLAGS="${DEBUG_CFLAGS:--g -O0} -pthread"
+    -DCMAKE_C_FLAGS="${DEBUG_CFLAGS:--g -O0} -pthread -matomics -mbulk-memory" \
+    -DCMAKE_CXX_FLAGS="${DEBUG_CFLAGS:--g -O0} -pthread -matomics -mbulk-memory"
 
 emmake make -j${JOBS}
 emmake make install

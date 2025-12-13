@@ -13,8 +13,8 @@ services:
           memory: 32G
 
     volumes:
-      # Source code (read-write for git operations)
-      - ..:/workspace:cached
+      # Source code (read-only - all modifications happen in build-wasm volume)
+      - ..:/workspace:ro
       # Named volume for build cache (faster than bind mount on macOS)
       - kicad-build-cache:/workspace/build-wasm
       # Output directory for easy access to final WASM files

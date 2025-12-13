@@ -43,6 +43,7 @@ log_info "=== Phase 1: Header-only libraries ==="
 log_info "=== Phase 2: Basic compression/serialization ==="
 "${SCRIPT_DIR}/build-zstd.sh" ${CLEAN}
 "${SCRIPT_DIR}/build-protobuf.sh" ${CLEAN}
+"${SCRIPT_DIR}/build-boost.sh" ${CLEAN}
 
 # 3. Font rendering stack
 log_info "=== Phase 3: Font rendering ==="
@@ -53,6 +54,11 @@ log_info "=== Phase 3: Font rendering ==="
 log_info "=== Phase 4: Graphics libraries ==="
 "${SCRIPT_DIR}/build-pixman.sh" ${CLEAN}
 "${SCRIPT_DIR}/build-cairo.sh" ${CLEAN}
+
+# 4b. Stub headers (needed for KiCad compilation but functionality is stubbed)
+log_info "=== Phase 4b: Stub dependencies (headers only) ==="
+"${SCRIPT_DIR}/build-curl-headers.sh" ${CLEAN}
+"${SCRIPT_DIR}/build-libgit2-headers.sh" ${CLEAN}
 
 # 5. Optional heavy dependencies
 if [ $WITH_OCC -eq 1 ]; then

@@ -63,8 +63,8 @@ emcmake cmake "${OCC_DIR}" \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     -DCMAKE_BUILD_TYPE=${BUILD_TYPE:-Debug} \
     -DCMAKE_INSTALL_PREFIX="${SYSROOT}" \
-    -DCMAKE_CXX_FLAGS="${DEBUG_CFLAGS:--g -O0} -pthread" \
-    -DCMAKE_C_FLAGS="${DEBUG_CFLAGS:--g -O0} -pthread" \
+    -DCMAKE_CXX_FLAGS="${DEBUG_CFLAGS:--g -O0} -pthread -matomics -mbulk-memory" \
+    -DCMAKE_C_FLAGS="${DEBUG_CFLAGS:--g -O0} -pthread -matomics -mbulk-memory" \
     -DBUILD_LIBRARY_TYPE=Static \
     -DBUILD_MODULE_ApplicationFramework=OFF \
     -DBUILD_MODULE_Draw=OFF \

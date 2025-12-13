@@ -82,15 +82,19 @@ cpu = 'wasm32'
 endian = 'little'
 
 [properties]
-# Prevent finding system libraries when cross-compiling
-sys_root = '${SYSROOT}'
+# Don't set sys_root - it gets prepended to pkg-config paths which are already absolute
+# Just use pkg_config_libdir to control where we find .pc files
 pkg_config_libdir = '${SYSROOT}/lib/pkgconfig'
 
 [built-in options]
 default_library = 'static'
 b_staticpic = false
 b_pie = false
-c_args = [${MESON_DEBUG_FLAGS}, '-pthread', '-I${SYSROOT}/include', '-I${SYSROOT}/include/freetype2', '-I${SYSROOT}/include/pixman-1']
+# Emscripten has these functions but meson checks fail - provide HAVE_ defines
+# to prevent Cairo from defining its own conflicting implementations
+# Include ft2build.h and ftcolor.h to fix FT_Color forward declaration bug in cairo-ft-private.h
+# (the forward declaration is inside HAVE_FT_SVG_DOCUMENT but used in HAVE_FT_COLR_V1)
+c_args = [${MESON_DEBUG_FLAGS}, '-pthread', '-matomics', '-mbulk-memory', '-I${SYSROOT}/include', '-I${SYSROOT}/include/freetype2', '-I${SYSROOT}/include/pixman-1', '-DHAVE_CTIME_R=1', '-DHAVE_LOCALTIME_R=1', '-DHAVE_GMTIME_R=1', '-DHAVE_STRNDUP=1', '-include', 'ft2build.h', '-include', 'freetype/ftcolor.h']
 c_link_args = ['-pthread', '-L${SYSROOT}/lib']
 pkg_config_path = '${SYSROOT}/lib/pkgconfig'
 EOF
@@ -119,8 +123,38 @@ meson setup "${CAIRO_DIR}" \
     -Dlibpng:default_library=static
 
 # JOBS is set in env.sh (default: 1 for sequential builds, use -j N to override)
-ninja -j${JOBS}
-ninja install
+# Build only the library targets we need - utility executables fail to link and aren't needed
+ninja -j${JOBS} src/libcairo.a
+
+# Manual installation - ninja install tries to build everything including utilities
+# which fail due to freetype atomics issues
+log_info "Installing Cairo library and headers..."
+mkdir -p "${SYSROOT}/lib" "${SYSROOT}/include/cairo" "${SYSROOT}/lib/pkgconfig"
+cp src/libcairo.a "${SYSROOT}/lib/"
+cp "${CAIRO_DIR}/src/cairo.h" "${SYSROOT}/include/cairo/"
+cp "${CAIRO_DIR}/src/cairo-deprecated.h" "${SYSROOT}/include/cairo/"
+cp "${CAIRO_DIR}/src/cairo-version.h" "${SYSROOT}/include/cairo/"
+# cairo-features.h is generated during configure in the build directory
+cp src/cairo-features.h "${SYSROOT}/include/cairo/"
+cp "${CAIRO_DIR}/src/cairo-ft.h" "${SYSROOT}/include/cairo/"
+cp "${CAIRO_DIR}/src/cairo-pdf.h" "${SYSROOT}/include/cairo/"
+cp "${CAIRO_DIR}/src/cairo-ps.h" "${SYSROOT}/include/cairo/"
+cp "${CAIRO_DIR}/src/cairo-script.h" "${SYSROOT}/include/cairo/"
+
+# Create pkg-config file
+cat > "${SYSROOT}/lib/pkgconfig/cairo.pc" << PKGEOF
+prefix=${SYSROOT}
+exec_prefix=\${prefix}
+libdir=\${prefix}/lib
+includedir=\${prefix}/include
+
+Name: cairo
+Description: Multi-platform 2D graphics library
+Version: 1.18.0
+Libs: -L\${libdir} -lcairo
+Cflags: -I\${includedir}/cairo
+Requires.private: freetype2 pixman-1
+PKGEOF
 
 create_stamp "${CAIRO_STAMP}"
 log_info "Cairo build complete!"

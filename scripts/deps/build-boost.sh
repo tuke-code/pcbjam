@@ -76,7 +76,7 @@ fi
 cat > user-config.jam << EOF
 using clang : emscripten
     : em++
-    : <cxxflags>"${BOOST_DEBUG_FLAGS} -pthread"
+    : <cxxflags>"${BOOST_DEBUG_FLAGS} -pthread -matomics -mbulk-memory"
       <linkflags>"-pthread"
     ;
 EOF
@@ -94,7 +94,7 @@ log_info "Building Boost.Locale (${BOOST_VARIANT})..."
     link=static \
     threading=multi \
     runtime-link=static \
-    cxxflags="${BOOST_DEBUG_FLAGS} -pthread" \
+    cxxflags="${BOOST_DEBUG_FLAGS} -pthread -matomics -mbulk-memory" \
     install
 
 create_stamp "${BOOST_STAMP}"
