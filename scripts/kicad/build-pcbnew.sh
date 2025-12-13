@@ -119,16 +119,22 @@ log_info "Building KiCad PCBnew ${KICAD_VERSION} for WASM..."
 # Use environment DEBUG_BUILD if set, otherwise check local --debug flag
 # -fexceptions is required because wxWidgets is built with exceptions enabled
 # -matomics -mbulk-memory are required for shared memory (pthreads)
+# NOTE: We use -O1 for debug builds because -O0 produces WASM with too many
+# locals for V8/Chrome to compile (error: "local count too large").
+# -O1 keeps debug info but optimizes enough to stay under V8's limits.
 if [ "${DEBUG_BUILD:-0}" = "1" ] || [ $DEBUG -eq 1 ]; then
     BUILD_TYPE="Debug"
-    EXTRA_FLAGS="-g -O0 -fexceptions -matomics -mbulk-memory"
-    LINKER_DEBUG_FLAGS="-g -gsource-map -fexceptions"
-    log_info "Building KiCad in DEBUG mode (with source maps)"
+    EXTRA_FLAGS="-g -O1 -fexceptions -matomics -mbulk-memory"
+    # -O0 at link time skips wasm-opt (which can OOM on large WASM with debug symbols)
+    LINKER_DEBUG_FLAGS="-O0 -g -gsource-map -fexceptions"
+    log_info "Building KiCad in DEBUG mode (with source maps, -O1 for WASM compatibility)"
 else
     BUILD_TYPE="Release"
     EXTRA_FLAGS="-O2 -fexceptions -matomics -mbulk-memory"
-    LINKER_DEBUG_FLAGS="-fexceptions"
-    log_info "Building KiCad in RELEASE mode"
+    # -O0 at link time skips wasm-opt (which can OOM on large WASM files)
+    # Compilation is still -O2 for optimized code, but we skip post-link wasm-opt
+    LINKER_DEBUG_FLAGS="-O0 -fexceptions"
+    log_info "Building KiCad in RELEASE mode (skipping wasm-opt due to memory limits)"
 fi
 
 # Step 6: Create build directory
@@ -178,7 +184,7 @@ emcmake cmake "${KICAD_DIR}" \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     -DCMAKE_CXX_FLAGS="${EXTRA_FLAGS} -pthread -sUSE_ZLIB=1 -DKICAD_USE_PLATFORM_WASM=1 -I${SYSROOT}/include" \
     -DCMAKE_C_FLAGS="${EXTRA_FLAGS} -pthread -sUSE_ZLIB=1 -I${SYSROOT}/include" \
-    -DCMAKE_EXE_LINKER_FLAGS="${LINKER_DEBUG_FLAGS} -pthread -sUSE_ZLIB=1 -sASYNCIFY=1 -sASYNCIFY_STACK_SIZE=65536 -sUSE_PTHREADS=1 -sPTHREAD_POOL_SIZE=4 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=256MB -sMAXIMUM_MEMORY=4GB -L${SYSROOT}/lib ${STUBS_BUILD}/libgit2_stub.a ${STUBS_BUILD}/libcurl_stub.a" \
+    -DCMAKE_EXE_LINKER_FLAGS="${LINKER_DEBUG_FLAGS} -pthread -sUSE_ZLIB=1 -sUSE_PTHREADS=1 -sPTHREAD_POOL_SIZE=4 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=256MB -sMAXIMUM_MEMORY=4GB -L${SYSROOT}/lib ${STUBS_BUILD}/libgit2_stub.a ${STUBS_BUILD}/libcurl_stub.a" \
     -DCMAKE_PREFIX_PATH="${SYSROOT};${WX_BUILD}" \
     -DwxWidgets_CONFIG_EXECUTABLE="${WX_BUILD}/wx-config" \
     \

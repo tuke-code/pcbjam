@@ -4,9 +4,14 @@ This document describes how to build KiCad for WebAssembly using the Docker-base
 
 ## Prerequisites
 
+### Docker
 - Docker Desktop with ARM64 support (for Apple Silicon) or x86_64
 - 10+ GB disk space for build cache
-- Recommended: 10 CPUs, 16GB RAM allocated to Docker
+- Recommended: 10 CPUs, 32GB RAM allocated to Docker
+
+### Host Tools
+
+Binaryen (wasm-opt) is downloaded automatically by the build script. No manual installation needed.
 
 ## Quick Start
 
@@ -30,6 +35,48 @@ This document describes how to build KiCad for WebAssembly using the Docker-base
 - `build-wasm/kicad-pcbnew/pcbnew/pcbnew.js` - Main WASM loader
 - `build-wasm/kicad-pcbnew/pcbnew/pcbnew.wasm` - WASM binary
 - `build-wasm/kicad-pcbnew/pcbnew/pcbnew.wasm.map` - Source map (debug builds)
+
+## Two-Phase Build
+
+The build is split into two phases due to memory requirements:
+
+### Phase 1: Docker Compilation
+Compiles KiCad to WASM **without** asyncify transformation. This runs inside Docker with 32GB memory limit.
+
+### Phase 2: Host Asyncify
+Applies `wasm-opt --asyncify` on the host machine using Binaryen v121 (downloaded automatically to `tools/`). This transformation uses ~20-30GB RAM.
+
+**Note:** Binaryen v121 is used because v125 has a regression causing crashes in the asyncify liveness analysis.
+
+### Why Asyncify?
+
+Asyncify is an Emscripten transformation that allows WASM code to pause and resume execution. This is required for:
+
+- **Modal dialogs** - `wxDialog::ShowModal()` blocks until user closes the dialog
+- **Message boxes** - `wxMessageBox()` waits for user response
+- **Clipboard operations** - Browser clipboard API is async
+- **Sleep/wait operations** - Any blocking call that needs to yield to the browser
+
+Without asyncify, modal dialogs would freeze the browser because WASM cannot yield control back to JavaScript's event loop.
+
+### How It Works
+
+1. `docker/build.sh` compiles KiCad in Docker (no asyncify flags)
+2. Output is copied to `./output/` directory
+3. `wasm-opt --asyncify` runs on host, transforming the WASM binary
+4. Final output is ready for browser execution
+
+### Technical Details
+
+The asyncify transformation:
+- Instruments every function that might be on the call stack during an async operation
+- Adds stack save/restore logic to unwind and rewind the WASM stack
+- Increases binary size by ~20% (141MB → 171MB for KiCad)
+- Uses `asyncify-imports` pattern matching to identify async entry points
+
+Import patterns used:
+- `env.invoke_*` - Exception handling trampolines
+- `env.__asyncjs__*` - EM_ASYNC_JS functions (like `startModal()`)
 
 ## Docker Architecture
 
