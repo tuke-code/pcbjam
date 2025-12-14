@@ -67,6 +67,15 @@ cd "$BUILD_DIR"
 echo ""
 echo "=== Configuring ==="
 
+# Ensure Emscripten's zlib port is built (works in Docker and on host)
+# This populates the cache sysroot with zlib.h and libz.a
+echo "Building Emscripten zlib port..."
+embuilder build zlib
+
+# Get Emscripten cache sysroot path (portable across environments)
+EM_CACHE_SYSROOT="$(em-config CACHE)/sysroot"
+echo "Emscripten cache sysroot: $EM_CACHE_SYSROOT"
+
 # Set flags for Emscripten compatibility
 # Z_HAVE_UNISTD_H ensures zlib includes <unistd.h> for read/write/lseek
 # Include pcre2 headers from the build directory (generated during configure)
@@ -83,8 +92,10 @@ else
     echo "Building wxWidgets in RELEASE mode"
 fi
 
-export CFLAGS="-DZ_HAVE_UNISTD_H=1 ${WX_DEBUG_FLAGS} -fexceptions -pthread -matomics -mbulk-memory"
-export CXXFLAGS="-DZ_HAVE_UNISTD_H=1 -I$PCRE2_INCLUDE ${WX_DEBUG_FLAGS} -fexceptions -pthread -matomics -mbulk-memory"
+# Include emscripten cache sysroot for zlib headers
+export CFLAGS="-DZ_HAVE_UNISTD_H=1 -I$EM_CACHE_SYSROOT/include ${WX_DEBUG_FLAGS} -fexceptions -pthread -matomics -mbulk-memory"
+export CXXFLAGS="-DZ_HAVE_UNISTD_H=1 -I$EM_CACHE_SYSROOT/include -I$PCRE2_INCLUDE ${WX_DEBUG_FLAGS} -fexceptions -pthread -matomics -mbulk-memory"
+export LDFLAGS="-L$EM_CACHE_SYSROOT/lib/wasm32-emscripten"
 
 emconfigure "$WX_SOURCE/configure" \
     --host=emscripten \
@@ -117,8 +128,10 @@ echo ""
 echo "=== Creating library symlinks ==="
 cd "$BUILD_DIR/lib"
 for lib in *-emscripten.a; do
-    if [ -f "$lib" ]; then
+    # Skip symlinks - only process real files (stub symlinks are handled below)
+    if [ -f "$lib" ] && [ ! -L "$lib" ]; then
         newname="${lib/-emscripten/}"
+        rm -f "$newname"  # Remove existing symlink/file to avoid conflicts
         ln -sf "$lib" "$newname"
     fi
 done
@@ -127,6 +140,8 @@ done
 # KiCad doesn't use these directly
 echo "Creating stub libraries..."
 for stub in richtext webview; do
+    # Remove any existing symlinks first to avoid "same file" errors
+    rm -f "libwx_wasmunivu_${stub}-3.2.a" "libwx_wasmunivu_${stub}-3.2-emscripten.a"
     emar rcs "libwx_wasmunivu_${stub}-3.2.a"
     ln -sf "libwx_wasmunivu_${stub}-3.2.a" "libwx_wasmunivu_${stub}-3.2-emscripten.a"
 done
