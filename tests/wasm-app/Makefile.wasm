@@ -86,6 +86,13 @@ LDFLAGS_ADV = $(DEBUG_LDFLAGS) $(BASE_LDFLAGS) $(WX_LDFLAGS_ADV)
 # LDFLAGS for XML apps (xml_test)
 LDFLAGS_XML = $(DEBUG_LDFLAGS) $(BASE_LDFLAGS) $(WX_LDFLAGS_XML)
 
+# LDFLAGS for pthread test - uses dynamic PTHREAD_POOL_SIZE to match hardware_concurrency
+# This fixes the KiCad deadlock: pre-warm enough workers for all threads
+LDFLAGS_PTHREAD = $(DEBUG_LDFLAGS) $(BASE_LDFLAGS) -pthread \
+                  -sPTHREAD_POOL_SIZE='navigator.hardwareConcurrency' \
+                  -sPTHREAD_POOL_SIZE_STRICT=0 \
+                  $(WX_LDFLAGS_NOGL)
+
 JS = $(TOOLS_ROOT)/wx.js
 HTML = $(TOOLS_ROOT)/template.html
 
@@ -132,7 +139,8 @@ all: minimal_test.html \
      $(S)/bitmask/bitmask_test.html \
      $(S)/regions/regions_test.html \
      $(S)/maximize/maximize_test.html \
-     $(S)/earlysize/earlysize_test.html
+     $(S)/earlysize/earlysize_test.html \
+     $(S)/threadpool/threadpool_test.html
 
 # Main test app (uses GL)
 minimal_test.o: minimal_test.cpp
@@ -421,6 +429,13 @@ $(S)/earlysize/earlysize_test.o: $(S)/earlysize/earlysize_test.cpp
 $(S)/earlysize/earlysize_test.html: $(S)/earlysize/earlysize_test.o
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
+# Thread Pool test (pthread) - reproduces KiCad deadlock when hardware_concurrency() > PTHREAD_POOL_SIZE
+$(S)/threadpool/threadpool_test.o: $(S)/threadpool/threadpool_test.cpp
+	$(CXX) -c $(CXXFLAGS) -pthread $< -o $@
+
+$(S)/threadpool/threadpool_test.html: $(S)/threadpool/threadpool_test.o
+	$(CXX) $< $(LDFLAGS_PTHREAD) --pre-js $(JS) --shell-file $(HTML) -o $@
+
 # Convenience targets
 menu: $(S)/menu/menu_test.html
 clipboard: $(S)/clipboard/clipboard_test.html
@@ -462,9 +477,10 @@ bitmask: $(S)/bitmask/bitmask_test.html
 regions: $(S)/regions/regions_test.html
 maximize: $(S)/maximize/maximize_test.html
 earlysize: $(S)/earlysize/earlysize_test.html
+threadpool: $(S)/threadpool/threadpool_test.html
 
 clean:
 	rm -f minimal_test.o minimal_test.html minimal_test.js minimal_test.wasm
 	rm -f $(S)/*/*.o $(S)/*/*.html $(S)/*/*.js $(S)/*/*.wasm
 
-.PHONY: all clean menu clipboard filedialog layout aui toolbar grid dialog timer tree dataview htmlwin stc print dnd propgrid pickers collapsible listctrl infobar dataviewvirtual auinotebook wizard gridedit calendar gridrenderers printpreview bitmapbuttons specialized validators ownerdrawn popup xml wasmedge fontenum textdecor bitmask regions maximize earlysize
+.PHONY: all clean menu clipboard filedialog layout aui toolbar grid dialog timer tree dataview htmlwin stc print dnd propgrid pickers collapsible listctrl infobar dataviewvirtual auinotebook wizard gridedit calendar gridrenderers printpreview bitmapbuttons specialized validators ownerdrawn popup xml wasmedge fontenum textdecor bitmask regions maximize earlysize threadpool

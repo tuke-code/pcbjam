@@ -3,15 +3,22 @@
 # This script creates library symlinks and builds the test apps
 #
 # Usage:
-#   ./build-wasm-test.sh          # Normal optimized build
-#   ./build-wasm-test.sh --debug  # Debug build with DWARF symbols and source maps
+#   ./build-wasm-test.sh              # Build all test apps (optimized)
+#   ./build-wasm-test.sh --debug      # Build all test apps with debug symbols
+#   ./build-wasm-test.sh threadpool   # Build only the threadpool test
+#   ./build-wasm-test.sh --debug menu # Build only menu test with debug symbols
 
 set -e
 
 DEBUG_BUILD=0
+TARGET=""
+
+# Parse arguments
 for arg in "$@"; do
     if [ "$arg" = "--debug" ]; then
         DEBUG_BUILD=1
+    elif [ "$arg" != "" ]; then
+        TARGET="$arg"
     fi
 done
 
@@ -27,6 +34,11 @@ if [ "$DEBUG_BUILD" = "1" ]; then
     echo "Mode: DEBUG (with DWARF symbols and source maps)"
 else
     echo "Mode: Release (optimized)"
+fi
+if [ -n "$TARGET" ]; then
+    echo "Target: $TARGET"
+else
+    echo "Target: all"
 fi
 echo "Project root: $PROJECT_ROOT"
 echo "wxWidgets build: $BUILD_DIR"
@@ -58,33 +70,61 @@ echo ""
 echo "=== Building test applications ==="
 cd "$WASM_APP_DIR"
 
-# Clean any previous build
-make -f Makefile.wasm clean 2>/dev/null || true
-
-# Build all (pass DEBUG flag if requested)
-if [ "$DEBUG_BUILD" = "1" ]; then
-    # Debug build: -g for DWARF, -gsource-map for source maps, -O0 for no optimization
-    make -f Makefile.wasm DEBUG=1
+# Determine make target and clean behavior
+if [ -n "$TARGET" ]; then
+    # Single target: only clean and build that specific target
+    MAKE_TARGET="$TARGET"
+    # Clean just the target's files
+    rm -f "standalone/$TARGET/${TARGET}_test.o" \
+          "standalone/$TARGET/${TARGET}_test.html" \
+          "standalone/$TARGET/${TARGET}_test.js" \
+          "standalone/$TARGET/${TARGET}_test.wasm" \
+          2>/dev/null || true
 else
-    make -f Makefile.wasm
+    # All targets: clean everything first
+    MAKE_TARGET="all"
+    make -f Makefile.wasm clean 2>/dev/null || true
+fi
+
+# Build (pass DEBUG flag if requested)
+if [ "$DEBUG_BUILD" = "1" ]; then
+    make -f Makefile.wasm DEBUG=1 "$MAKE_TARGET"
+else
+    make -f Makefile.wasm "$MAKE_TARGET"
 fi
 
 echo ""
 echo "=== Build complete ==="
-echo ""
-echo "Main test app:"
-ls -lh "$WASM_APP_DIR"/minimal_test.html 2>/dev/null || echo "  (not built)"
 
-echo ""
-echo "Standalone test apps:"
-for test in menu clipboard filedialog layout aui toolbar grid dialog timer tree; do
-    if [ -f "$STANDALONE_DIR/$test/${test}_test.html" ]; then
-        echo "  $test: OK"
-        ls -lh "$STANDALONE_DIR/$test/${test}_test.html"
+if [ -n "$TARGET" ]; then
+    # Show just the built target
+    echo ""
+    if [ -f "$STANDALONE_DIR/$TARGET/${TARGET}_test.html" ]; then
+        echo "Built: $TARGET"
+        ls -lh "$STANDALONE_DIR/$TARGET/${TARGET}_test.html"
+    elif [ -f "$WASM_APP_DIR/${TARGET}_test.html" ]; then
+        echo "Built: $TARGET"
+        ls -lh "$WASM_APP_DIR/${TARGET}_test.html"
     else
-        echo "  $test: (not built)"
+        echo "Warning: Expected output file not found"
     fi
-done
+else
+    # Show all built targets
+    echo ""
+    echo "Main test app:"
+    ls -lh "$WASM_APP_DIR"/minimal_test.html 2>/dev/null || echo "  (not built)"
+
+    echo ""
+    echo "Standalone test apps:"
+    for test in menu clipboard filedialog layout aui toolbar grid dialog timer tree; do
+        if [ -f "$STANDALONE_DIR/$test/${test}_test.html" ]; then
+            echo "  $test: OK"
+            ls -lh "$STANDALONE_DIR/$test/${test}_test.html"
+        else
+            echo "  $test: (not built)"
+        fi
+    done
+fi
 
 echo ""
 echo "To run the tests:"

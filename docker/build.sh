@@ -11,12 +11,18 @@ set -e
 
 cd "$(dirname "$0")/.."
 
+# Add -j 10 by default if no -j flag is given
+ARGS=("$@")
+if [[ ! " ${ARGS[*]} " =~ " -j " ]]; then
+    ARGS+=("-j" "10")
+fi
+
 # Start container if not running
 docker compose -f docker/docker-compose.yml up -d
 
 # Run build command (without asyncify - handled on host due to memory requirements)
 docker compose -f docker/docker-compose.yml exec kicad-wasm-builder \
-    /workspace/scripts/kicad/build-pcbnew.sh "$@"
+    /workspace/scripts/kicad/build-pcbnew.sh "${ARGS[@]}"
 
 # Copy output to host-accessible directory
 echo "Copying build output to ./output/..."
