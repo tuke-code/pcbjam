@@ -3,20 +3,24 @@
 # This script creates library symlinks and builds the test apps
 #
 # Usage:
-#   ./build-wasm-test.sh              # Build all test apps (optimized)
-#   ./build-wasm-test.sh --debug      # Build all test apps with debug symbols
-#   ./build-wasm-test.sh threadpool   # Build only the threadpool test
-#   ./build-wasm-test.sh --debug menu # Build only menu test with debug symbols
+#   ./build-wasm-test.sh              # Incremental build (default)
+#   ./build-wasm-test.sh --clean      # Clean build from scratch
+#   ./build-wasm-test.sh --debug      # Build with debug symbols
+#   ./build-wasm-test.sh menu         # Build only the menu test
+#   ./build-wasm-test.sh --debug menu # Build menu test with debug symbols
 
 set -e
 
 DEBUG_BUILD=0
+CLEAN_BUILD=0
 TARGET=""
 
 # Parse arguments
 for arg in "$@"; do
     if [ "$arg" = "--debug" ]; then
         DEBUG_BUILD=1
+    elif [ "$arg" = "--clean" ]; then
+        CLEAN_BUILD=1
     elif [ "$arg" != "" ]; then
         TARGET="$arg"
     fi
@@ -70,19 +74,16 @@ echo ""
 echo "=== Building test applications ==="
 cd "$WASM_APP_DIR"
 
-# Determine make target and clean behavior
+# Determine make target
 if [ -n "$TARGET" ]; then
-    # Single target: only clean and build that specific target
     MAKE_TARGET="$TARGET"
-    # Clean just the target's files
-    rm -f "standalone/$TARGET/${TARGET}_test.o" \
-          "standalone/$TARGET/${TARGET}_test.html" \
-          "standalone/$TARGET/${TARGET}_test.js" \
-          "standalone/$TARGET/${TARGET}_test.wasm" \
-          2>/dev/null || true
 else
-    # All targets: clean everything first
     MAKE_TARGET="all"
+fi
+
+# Clean if requested
+if [ "$CLEAN_BUILD" = "1" ]; then
+    echo "Cleaning build artifacts..."
     make -f Makefile.wasm clean 2>/dev/null || true
 fi
 
