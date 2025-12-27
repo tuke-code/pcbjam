@@ -206,9 +206,10 @@ After changing build flags (debug/release), use `--full` to force a complete reb
 
 | Script | Purpose |
 |--------|---------|
-| `scripts/build-kicad-wasm.sh` | Master build orchestrator |
-| `scripts/kicad/build-pcbnew.sh` | KiCad PCBnew build |
-| `scripts/build-wxuniversal-wasm.sh` | wxWidgets GUI build |
+| `docker/build.sh` | Host entry point (starts Docker, runs build) |
+| `scripts/kicad/build-pcbnew.sh` | KiCad PCBnew build (runs inside Docker) |
+| `scripts/build-wxuniversal-wasm.sh` | wxWidgets build |
+| `scripts/build-wasm-test.sh` | Build wxWidgets test apps |
 | `scripts/deps/build-all-deps.sh` | All dependencies |
 | `scripts/deps/build-*.sh` | Individual dependency builds |
 | `scripts/common/env.sh` | Environment setup |
@@ -261,7 +262,6 @@ The WASM port requires compatibility layers for browser execution:
 | `wasm/libcontext/` | Coroutine/fiber implementation for Asyncify |
 | `wasm/stubs/` | Stub implementations (libgit2, curl) |
 | `wasm/config/` | Build configuration headers |
-| `cmake/` | CMake find modules for dependencies |
 
 ## Emscripten Flags
 
@@ -282,8 +282,11 @@ Key flags used in the build:
 After building, run the test suite:
 
 ```bash
+# Copy WASM output to test directory
+./tests/scripts/setup-kicad-wasm.sh
+
+# Run KiCad tests
 cd tests
 npm install
-npm run setup:kicad    # Copy WASM from build
 npm run test:kicad     # Run Playwright tests
 ```
