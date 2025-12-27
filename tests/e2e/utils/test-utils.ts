@@ -3,7 +3,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 export const MAIN_CANVAS = '#canvas';
-export const LOGS_DIR = path.join(__dirname, '..', '..', 'logs');
+export const LOGS_BASE_DIR = path.join(__dirname, '..', '..', 'logs');
+export const WXWIDGETS_LOGS_DIR = path.join(LOGS_BASE_DIR, 'wxwidgets');
+export const KICAD_LOGS_DIR = path.join(LOGS_BASE_DIR, 'kicad');
 
 export interface TestLogger {
   consoleLogs: string[];
@@ -12,9 +14,9 @@ export interface TestLogger {
 }
 
 // Ensure logs directory exists
-export function ensureLogsDir() {
-  if (!fs.existsSync(LOGS_DIR)) {
-    fs.mkdirSync(LOGS_DIR, { recursive: true });
+export function ensureLogsDir(dir: string = LOGS_BASE_DIR) {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
   }
 }
 
@@ -48,8 +50,11 @@ export function setupTestLogger(page: Page): TestLogger {
 }
 
 // Write logs to files after test completion
-export function writeTestLogs(testName: string, logger: TestLogger) {
-  ensureLogsDir();
+export function writeTestLogs(testName: string, logger: TestLogger, logsDir: string) {
+  // Ensure logs directory exists
+  if (!fs.existsSync(logsDir)) {
+    fs.mkdirSync(logsDir, { recursive: true });
+  }
 
   // Sanitize test name for filesystem
   const safeTestName = testName
@@ -58,15 +63,20 @@ export function writeTestLogs(testName: string, logger: TestLogger) {
     .replace(/^-+|-+$/g, '');
 
   // Always write console log file
-  const logFile = path.join(LOGS_DIR, `${safeTestName}.log`);
+  const logFile = path.join(logsDir, `${safeTestName}.log`);
   fs.writeFileSync(logFile, logger.consoleLogs.join('\n'));
 
   // Only write error file if there are errors (excluding favicon)
   const realErrors = logger.errors.filter(e => !e.includes('favicon'));
   if (realErrors.length > 0) {
-    const errorFile = path.join(LOGS_DIR, `${safeTestName}.errors.log`);
+    const errorFile = path.join(logsDir, `${safeTestName}.errors.log`);
     fs.writeFileSync(errorFile, realErrors.join('\n\n'));
   }
+}
+
+// Helper to get test file name without extension
+export function getTestFileName(filePath: string): string {
+  return path.basename(filePath, '.spec.ts');
 }
 
 // Helper to wait for app initialization

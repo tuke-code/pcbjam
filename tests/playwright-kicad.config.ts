@@ -40,6 +40,7 @@ function findFreePort(): number {
 const port = getOrFindPort();
 
 export default defineConfig({
+  globalSetup: './global-setup.ts',
   testDir: './kicad',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
