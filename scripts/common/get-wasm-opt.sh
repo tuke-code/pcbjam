@@ -13,7 +13,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 BINARYEN_VERSION="121"
-BINARYEN_DIR="${PROJECT_ROOT}/tools/binaryen-${BINARYEN_VERSION}"
+BINARYEN_DIR="${PROJECT_ROOT}/build-wasm/tools/binaryen-${BINARYEN_VERSION}"
 WASM_OPT="${BINARYEN_DIR}/bin/wasm-opt"
 
 download_binaryen() {
@@ -34,15 +34,15 @@ download_binaryen() {
     esac
 
     local url="https://github.com/WebAssembly/binaryen/releases/download/version_${BINARYEN_VERSION}/binaryen-version_${BINARYEN_VERSION}-${platform}.tar.gz"
-    local tarball="${PROJECT_ROOT}/tools/binaryen-${BINARYEN_VERSION}.tar.gz"
+    local tarball="${PROJECT_ROOT}/build-wasm/tools/binaryen-${BINARYEN_VERSION}.tar.gz"
 
     echo "Downloading Binaryen v${BINARYEN_VERSION} for ${platform}..." >&2
-    mkdir -p "${PROJECT_ROOT}/tools"
+    mkdir -p "${PROJECT_ROOT}/build-wasm/tools"
     curl -L -o "${tarball}" "${url}"
 
     echo "Extracting..." >&2
-    tar -xzf "${tarball}" -C "${PROJECT_ROOT}/tools"
-    mv "${PROJECT_ROOT}/tools/binaryen-version_${BINARYEN_VERSION}" "${BINARYEN_DIR}"
+    tar -xzf "${tarball}" -C "${PROJECT_ROOT}/build-wasm/tools"
+    mv "${PROJECT_ROOT}/build-wasm/tools/binaryen-version_${BINARYEN_VERSION}" "${BINARYEN_DIR}"
     rm "${tarball}"
 
     echo "Binaryen v${BINARYEN_VERSION} installed to ${BINARYEN_DIR}" >&2
