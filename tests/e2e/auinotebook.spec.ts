@@ -1,5 +1,6 @@
 // wxAuiNotebook Tests - Tab panels for KiCad editors
 import { test, expect, tryLoadApp } from './utils/fixtures';
+import { clickByLabel, clickTab } from './utils/element-tracker';
 
 test.describe('wxAuiNotebook Tests', () => {
 
@@ -23,13 +24,10 @@ test.describe('wxAuiNotebook Tests', () => {
 
     await page.waitForTimeout(300);
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // Click on PCB tab
-      await page.mouse.click(box.x + 200, box.y + 95);
-      await page.waitForTimeout(200);
-    }
+    // Click on PCB tab using element registry
+    const clicked = await clickTab(page, 'PCB');
+    expect(clicked, 'PCB tab should be found and clicked').toBe(true);
+    await page.waitForTimeout(200);
 
     await page.screenshot({ path: 'test-results/auinotebook-02-tab-switch.png', fullPage: true });
   });
@@ -44,13 +42,10 @@ test.describe('wxAuiNotebook Tests', () => {
 
     await page.waitForTimeout(300);
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // Click Add Tab button
-      await page.mouse.click(box.x + 60, box.y + 60);
-      await page.waitForTimeout(200);
-    }
+    // Click Add Tab button using element registry
+    const clicked = await clickByLabel(page, 'Add Tab');
+    expect(clicked, 'Add Tab button should be found and clicked').toBe(true);
+    await page.waitForTimeout(200);
 
     await page.screenshot({ path: 'test-results/auinotebook-03-add-tab.png', fullPage: true });
   });
@@ -65,13 +60,10 @@ test.describe('wxAuiNotebook Tests', () => {
 
     await page.waitForTimeout(300);
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // Click Remove Tab button
-      await page.mouse.click(box.x + 160, box.y + 60);
-      await page.waitForTimeout(200);
-    }
+    // Click Remove Tab button using element registry
+    const clicked = await clickByLabel(page, 'Remove Tab');
+    expect(clicked, 'Remove Tab button should be found and clicked').toBe(true);
+    await page.waitForTimeout(200);
 
     await page.screenshot({ path: 'test-results/auinotebook-04-remove-tab.png', fullPage: true });
   });
@@ -86,13 +78,10 @@ test.describe('wxAuiNotebook Tests', () => {
 
     await page.waitForTimeout(300);
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // Click Bottom button
-      await page.mouse.click(box.x + 470, box.y + 60);
-      await page.waitForTimeout(200);
-    }
+    // Click Bottom button using element registry
+    const clicked = await clickByLabel(page, 'Bottom');
+    expect(clicked, 'Bottom button should be found and clicked').toBe(true);
+    await page.waitForTimeout(200);
 
     await page.screenshot({ path: 'test-results/auinotebook-05-tab-style.png', fullPage: true });
   });

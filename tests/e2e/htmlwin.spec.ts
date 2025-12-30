@@ -1,4 +1,5 @@
 import { test, expect } from './utils/fixtures';
+import { clickByLabel } from './utils/element-tracker';
 
 /**
  * wxHtmlWindow Tests
@@ -48,10 +49,8 @@ test.describe('wxHtmlWindow Tests', () => {
   test('Tables button loads table content', async ({ page, testLogger }) => {
     await page.waitForTimeout(500);
 
-    const canvas = page.locator('canvas');
-
-    // Click Tables button (x≈528, y≈96 from button-finder)
-    await canvas.click({ position: { x: 528, y: 96 } });
+    // Click Tables button using element registry
+    await clickByLabel(page, 'Tables');
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/htmlwin-03-tables.png' });
@@ -65,10 +64,8 @@ test.describe('wxHtmlWindow Tests', () => {
   test('Long Content button loads scrollable content', async ({ page, testLogger }) => {
     await page.waitForTimeout(500);
 
-    const canvas = page.locator('canvas');
-
-    // Click Long Content button (x≈608, y≈96 from button-finder)
-    await canvas.click({ position: { x: 608, y: 96 } });
+    // Click Long Content button using element registry
+    await clickByLabel(page, 'Long Content');
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/htmlwin-04-long-content.png' });
@@ -82,10 +79,8 @@ test.describe('wxHtmlWindow Tests', () => {
   test('KiCad About button loads KiCad-style content', async ({ page, testLogger }) => {
     await page.waitForTimeout(500);
 
-    const canvas = page.locator('canvas');
-
-    // Click KiCad About button (x≈736, y≈96 from button-finder)
-    await canvas.click({ position: { x: 736, y: 96 } });
+    // Click KiCad About button using element registry
+    await clickByLabel(page, 'KiCad-style About');
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/htmlwin-05-kicad-about.png' });
@@ -101,11 +96,11 @@ test.describe('wxHtmlWindow Tests', () => {
 
     const canvas = page.locator('canvas');
 
-    // Click Basic HTML first to ensure links are visible (x≈416, y≈96)
-    await canvas.click({ position: { x: 416, y: 96 } });
+    // Click Basic HTML first to ensure links are visible
+    await clickByLabel(page, 'Basic HTML');
     await page.waitForTimeout(500);
 
-    // Click on a link in the HTML content (approximate position in content area)
+    // Click on a link in the HTML content (link positions not in registry)
     await canvas.click({ position: { x: 200, y: 350 } });
     await page.waitForTimeout(500);
 
@@ -122,11 +117,11 @@ test.describe('wxHtmlWindow Tests', () => {
 
     const canvas = page.locator('canvas');
 
-    // Load long content first (x≈608, y≈96)
-    await canvas.click({ position: { x: 608, y: 96 } });
+    // Load long content first
+    await clickByLabel(page, 'Long Content');
     await page.waitForTimeout(500);
 
-    // Scroll the content
+    // Scroll the content (scroll position not in registry)
     await canvas.hover({ position: { x: 350, y: 300 } });
     await page.mouse.wheel(0, 300);
     await page.waitForTimeout(500);
@@ -139,18 +134,16 @@ test.describe('wxHtmlWindow Tests', () => {
   test('Content can be switched between buttons', async ({ page, testLogger }) => {
     await page.waitForTimeout(500);
 
-    const canvas = page.locator('canvas');
-
-    // Click each button in sequence using correct positions
-    await canvas.click({ position: { x: 416, y: 96 } }); // Basic HTML
+    // Click each button in sequence using element registry
+    await clickByLabel(page, 'Basic HTML');
     await page.waitForTimeout(300);
     await page.screenshot({ path: 'test-results/htmlwin-08a-basic.png' });
 
-    await canvas.click({ position: { x: 528, y: 96 } }); // Tables
+    await clickByLabel(page, 'Tables');
     await page.waitForTimeout(300);
     await page.screenshot({ path: 'test-results/htmlwin-08b-tables.png' });
 
-    await canvas.click({ position: { x: 736, y: 96 } }); // KiCad About
+    await clickByLabel(page, 'KiCad-style About');
     await page.waitForTimeout(300);
     await page.screenshot({ path: 'test-results/htmlwin-08c-about.png' });
 

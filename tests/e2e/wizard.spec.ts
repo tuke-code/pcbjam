@@ -1,5 +1,6 @@
 // wxWizard Tests - Footprint Wizard simulation
 import { test, expect, tryLoadApp } from './utils/fixtures';
+import { clickByLabel } from './utils/element-tracker';
 
 test.describe('wxWizard Tests', () => {
 
@@ -23,13 +24,10 @@ test.describe('wxWizard Tests', () => {
 
     await page.waitForTimeout(300);
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // Click Launch button
-      await page.mouse.click(box.x + 120, box.y + 60);
-      await page.waitForTimeout(500);
-    }
+    // Click Launch button using element registry
+    const clicked = await clickByLabel(page, 'Launch Footprint Wizard');
+    expect(clicked, 'Launch Wizard button should be found and clicked').toBe(true);
+    await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/wizard-02-launch.png', fullPage: true });
   });
@@ -44,16 +42,15 @@ test.describe('wxWizard Tests', () => {
 
     await page.waitForTimeout(300);
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // Launch wizard
-      await page.mouse.click(box.x + 120, box.y + 60);
-      await page.waitForTimeout(500);
-      // Click Next
-      await page.mouse.click(box.x + 500, box.y + 400);
-      await page.waitForTimeout(200);
-    }
+    // Launch wizard using element registry
+    const launchClicked = await clickByLabel(page, 'Launch Footprint Wizard');
+    expect(launchClicked, 'Launch Wizard button should be found').toBe(true);
+    await page.waitForTimeout(500);
+
+    // Click Next using element registry
+    const nextClicked = await clickByLabel(page, 'Next');
+    expect(nextClicked, 'Next button should be found and clicked').toBe(true);
+    await page.waitForTimeout(200);
 
     await page.screenshot({ path: 'test-results/wizard-03-next-page.png', fullPage: true });
   });
@@ -68,19 +65,20 @@ test.describe('wxWizard Tests', () => {
 
     await page.waitForTimeout(300);
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // Launch wizard
-      await page.mouse.click(box.x + 120, box.y + 60);
-      await page.waitForTimeout(500);
-      // Click Next
-      await page.mouse.click(box.x + 500, box.y + 400);
-      await page.waitForTimeout(200);
-      // Click Back
-      await page.mouse.click(box.x + 400, box.y + 400);
-      await page.waitForTimeout(200);
-    }
+    // Launch wizard using element registry
+    const launchClicked = await clickByLabel(page, 'Launch Footprint Wizard');
+    expect(launchClicked, 'Launch Wizard button should be found').toBe(true);
+    await page.waitForTimeout(500);
+
+    // Click Next using element registry
+    const nextClicked = await clickByLabel(page, 'Next');
+    expect(nextClicked, 'Next button should be found').toBe(true);
+    await page.waitForTimeout(200);
+
+    // Click Back using element registry
+    const backClicked = await clickByLabel(page, 'Back');
+    expect(backClicked, 'Back button should be found and clicked').toBe(true);
+    await page.waitForTimeout(200);
 
     await page.screenshot({ path: 'test-results/wizard-04-back-page.png', fullPage: true });
   });
@@ -95,16 +93,15 @@ test.describe('wxWizard Tests', () => {
 
     await page.waitForTimeout(300);
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // Launch wizard
-      await page.mouse.click(box.x + 120, box.y + 60);
-      await page.waitForTimeout(500);
-      // Click Cancel
-      await page.mouse.click(box.x + 300, box.y + 400);
-      await page.waitForTimeout(200);
-    }
+    // Launch wizard using element registry
+    const launchClicked = await clickByLabel(page, 'Launch Footprint Wizard');
+    expect(launchClicked, 'Launch Wizard button should be found').toBe(true);
+    await page.waitForTimeout(500);
+
+    // Click Cancel using element registry
+    const cancelClicked = await clickByLabel(page, 'Cancel');
+    expect(cancelClicked, 'Cancel button should be found and clicked').toBe(true);
+    await page.waitForTimeout(200);
 
     await page.screenshot({ path: 'test-results/wizard-05-cancel.png', fullPage: true });
   });

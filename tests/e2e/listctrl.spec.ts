@@ -1,5 +1,6 @@
 // wxListCtrl Virtual Mode Tests - Large list handling for KiCad
 import { test, expect, tryLoadApp } from './utils/fixtures';
+import { clickByLabel, clickListItemByIndex } from './utils/element-tracker';
 
 test.describe('wxListCtrl Virtual Mode Tests', () => {
 
@@ -55,15 +56,11 @@ test.describe('wxListCtrl Virtual Mode Tests', () => {
       return;
     }
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (!box) {
-      test.skip();
-      return;
-    }
+    await page.waitForTimeout(300);
 
-    // Click on a list item
-    await page.mouse.click(box.x + 300, box.y + 300);
+    // Click on a list item using element registry (item at index 5)
+    const clicked = await clickListItemByIndex(page, 5);
+    expect(clicked, 'List item should be found and clicked').toBe(true);
     await page.waitForTimeout(200);
 
     await page.screenshot({ path: 'test-results/listctrl-04-selected.png', fullPage: true });
@@ -82,15 +79,11 @@ test.describe('wxListCtrl Virtual Mode Tests', () => {
       return;
     }
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (!box) {
-      test.skip();
-      return;
-    }
+    await page.waitForTimeout(300);
 
-    // Click the "Bottom" button (approximate position)
-    await page.mouse.click(box.x + 550, box.y + 90);
+    // Click the "Bottom" button using element registry
+    const clicked = await clickByLabel(page, 'Bottom');
+    expect(clicked, 'Bottom button should be found').toBe(true);
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/listctrl-05-scrolled.png', fullPage: true });

@@ -1,5 +1,6 @@
 // wxInfoBar Tests - Notification bar for KiCad messages
 import { test, expect, tryLoadApp } from './utils/fixtures';
+import { clickByLabel } from './utils/element-tracker';
 
 test.describe('wxInfoBar Tests', () => {
 
@@ -23,15 +24,9 @@ test.describe('wxInfoBar Tests', () => {
       return;
     }
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (!box) {
-      test.skip();
-      return;
-    }
-
-    // Click Show Info Message button
-    await page.mouse.click(box.x + 150, box.y + 160);
+    // Click Show Info Message button using element registry
+    const clicked = await clickByLabel(page, 'Show Info Message');
+    expect(clicked, 'Show Info Message button should be found and clicked').toBe(true);
     await page.waitForTimeout(300);
 
     await page.screenshot({ path: 'test-results/infobar-02-info.png', fullPage: true });
@@ -50,15 +45,9 @@ test.describe('wxInfoBar Tests', () => {
       return;
     }
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (!box) {
-      test.skip();
-      return;
-    }
-
-    // Click Show Warning Message button
-    await page.mouse.click(box.x + 150, box.y + 200);
+    // Click Show Warning Message button using element registry
+    const clicked = await clickByLabel(page, 'Show Warning Message');
+    expect(clicked, 'Show Warning Message button should be found and clicked').toBe(true);
     await page.waitForTimeout(300);
 
     await page.screenshot({ path: 'test-results/infobar-03-warning.png', fullPage: true });
@@ -77,15 +66,9 @@ test.describe('wxInfoBar Tests', () => {
       return;
     }
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (!box) {
-      test.skip();
-      return;
-    }
-
-    // Click Show Error Message button
-    await page.mouse.click(box.x + 150, box.y + 240);
+    // Click Show Error Message button using element registry
+    const clicked = await clickByLabel(page, 'Show Error Message');
+    expect(clicked, 'Show Error Message button should be found and clicked').toBe(true);
     await page.waitForTimeout(300);
 
     await page.screenshot({ path: 'test-results/infobar-04-error.png', fullPage: true });
@@ -104,19 +87,14 @@ test.describe('wxInfoBar Tests', () => {
       return;
     }
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (!box) {
-      test.skip();
-      return;
-    }
-
-    // First show a message
-    await page.mouse.click(box.x + 150, box.y + 160);
+    // First show a message using element registry
+    const infoClicked = await clickByLabel(page, 'Show Info Message');
+    expect(infoClicked, 'Show Info Message button should be found').toBe(true);
     await page.waitForTimeout(300);
 
-    // Then dismiss
-    await page.mouse.click(box.x + 150, box.y + 310);
+    // Then dismiss using element registry
+    const dismissClicked = await clickByLabel(page, 'Dismiss');
+    expect(dismissClicked, 'Dismiss button should be found and clicked').toBe(true);
     await page.waitForTimeout(300);
 
     await page.screenshot({ path: 'test-results/infobar-05-dismiss.png', fullPage: true });

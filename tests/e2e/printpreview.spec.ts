@@ -1,5 +1,6 @@
 // wxPrintPreview Tests - Print preview, page setup
 import { test, expect, tryLoadApp } from './utils/fixtures';
+import { clickByLabel } from './utils/element-tracker';
 
 test.describe('wxPrintPreview Tests', () => {
 
@@ -37,13 +38,10 @@ test.describe('wxPrintPreview Tests', () => {
 
     await page.waitForTimeout(300);
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // Click Print Preview button
-      await page.mouse.click(box.x + 70, box.y + 70);
-      await page.waitForTimeout(500);
-    }
+    // Click Print Preview button using element registry
+    const clicked = await clickByLabel(page, 'Print Preview');
+    expect(clicked, 'Print Preview button should be found and clicked').toBe(true);
+    await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/printpreview-03-preview-frame.png', fullPage: true });
   });
@@ -58,13 +56,10 @@ test.describe('wxPrintPreview Tests', () => {
 
     await page.waitForTimeout(300);
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // Click Page Setup button
-      await page.mouse.click(box.x + 180, box.y + 70);
-      await page.waitForTimeout(500);
-    }
+    // Click Page Setup button using element registry
+    const clicked = await clickByLabel(page, 'Page Setup');
+    expect(clicked, 'Page Setup button should be found and clicked').toBe(true);
+    await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/printpreview-04-page-setup.png', fullPage: true });
   });

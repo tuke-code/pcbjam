@@ -1,5 +1,6 @@
 // wxCalendarCtrl Tests - Date selection
 import { test, expect, tryLoadApp } from './utils/fixtures';
+import { clickByLabel, clickCalendarDate } from './utils/element-tracker';
 
 test.describe('wxCalendarCtrl Tests', () => {
 
@@ -23,13 +24,10 @@ test.describe('wxCalendarCtrl Tests', () => {
 
     await page.waitForTimeout(300);
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // Click on a day in the calendar
-      await page.mouse.click(box.x + 150, box.y + 200);
-      await page.waitForTimeout(200);
-    }
+    // Click on day 15 in the calendar using element registry
+    const clicked = await clickCalendarDate(page, 15);
+    expect(clicked, 'Calendar date 15 should be found and clicked').toBe(true);
+    await page.waitForTimeout(200);
 
     await page.screenshot({ path: 'test-results/calendar-02-select-date.png', fullPage: true });
   });
@@ -44,13 +42,10 @@ test.describe('wxCalendarCtrl Tests', () => {
 
     await page.waitForTimeout(300);
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // Click Next Month button
-      await page.mouse.click(box.x + 480, box.y + 170);
-      await page.waitForTimeout(200);
-    }
+    // Click Next Month button using element registry
+    const clicked = await clickByLabel(page, 'Next Month');
+    expect(clicked, 'Next Month button should be found').toBe(true);
+    await page.waitForTimeout(200);
 
     await page.screenshot({ path: 'test-results/calendar-03-next-month.png', fullPage: true });
   });
@@ -65,13 +60,10 @@ test.describe('wxCalendarCtrl Tests', () => {
 
     await page.waitForTimeout(300);
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // Click Previous Month button
-      await page.mouse.click(box.x + 480, box.y + 200);
-      await page.waitForTimeout(200);
-    }
+    // Click Previous Month button using element registry
+    const clicked = await clickByLabel(page, 'Previous Month');
+    expect(clicked, 'Previous Month button should be found').toBe(true);
+    await page.waitForTimeout(200);
 
     await page.screenshot({ path: 'test-results/calendar-04-prev-month.png', fullPage: true });
   });
@@ -86,16 +78,15 @@ test.describe('wxCalendarCtrl Tests', () => {
 
     await page.waitForTimeout(300);
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // First go to next month
-      await page.mouse.click(box.x + 480, box.y + 170);
-      await page.waitForTimeout(100);
-      // Click Today button
-      await page.mouse.click(box.x + 480, box.y + 140);
-      await page.waitForTimeout(200);
-    }
+    // First go to next month
+    const nextClicked = await clickByLabel(page, 'Next Month');
+    expect(nextClicked, 'Next Month button should be found').toBe(true);
+    await page.waitForTimeout(100);
+
+    // Click Today button using element registry
+    const todayClicked = await clickByLabel(page, 'Today');
+    expect(todayClicked, 'Today button should be found').toBe(true);
+    await page.waitForTimeout(200);
 
     await page.screenshot({ path: 'test-results/calendar-05-today.png', fullPage: true });
   });

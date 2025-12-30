@@ -1,4 +1,5 @@
 import { test, expect } from './utils/fixtures';
+import { clickByLabel } from './utils/element-tracker';
 
 /**
  * wxPrinting Tests
@@ -53,8 +54,6 @@ test.describe('wxPrinting Tests', () => {
   test('Browser Print button triggers window.print()', async ({ page, testLogger }) => {
     await page.waitForTimeout(500);
 
-    const canvas = page.locator('canvas');
-
     // Mock window.print to track calls
     let printCalled = false;
     await page.evaluate(() => {
@@ -66,8 +65,8 @@ test.describe('wxPrinting Tests', () => {
       };
     });
 
-    // Find and click Browser Print button (button finder: 685, 95)
-    await canvas.click({ position: { x: 685, y: 95 } });
+    // Click Browser Print button using element registry
+    await clickByLabel(page, 'Browser Print');
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/print-03-browser-print-clicked.png' });
@@ -92,10 +91,8 @@ test.describe('wxPrinting Tests', () => {
   test('Print Preview button works', async ({ page, testLogger }) => {
     await page.waitForTimeout(500);
 
-    const canvas = page.locator('canvas');
-
-    // Click Print Preview button (button finder: 425, 95)
-    await canvas.click({ position: { x: 425, y: 95 } });
+    // Click Print Preview button using element registry
+    await clickByLabel(page, 'Print Preview');
     await page.waitForTimeout(1000);
 
     await page.screenshot({ path: 'test-results/print-04-preview-clicked.png' });
@@ -112,10 +109,8 @@ test.describe('wxPrinting Tests', () => {
   test('Page Setup button works', async ({ page, testLogger }) => {
     await page.waitForTimeout(500);
 
-    const canvas = page.locator('canvas');
-
-    // Click Page Setup button (button finder: 755, 95)
-    await canvas.click({ position: { x: 755, y: 95 } });
+    // Click Page Setup button using element registry
+    await clickByLabel(page, 'Page Setup');
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/print-05-page-setup-clicked.png' });
@@ -129,10 +124,8 @@ test.describe('wxPrinting Tests', () => {
   test('Print button works', async ({ page, testLogger }) => {
     await page.waitForTimeout(500);
 
-    const canvas = page.locator('canvas');
-
-    // Click Print... button (button finder: 550, 95)
-    await canvas.click({ position: { x: 550, y: 95 } });
+    // Click Print... button using element registry
+    await clickByLabel(page, 'Print...');
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/print-06-print-clicked.png' });
@@ -146,10 +139,8 @@ test.describe('wxPrinting Tests', () => {
   test('Printout callbacks are triggered', async ({ page, testLogger }) => {
     await page.waitForTimeout(500);
 
-    const canvas = page.locator('canvas');
-
-    // Try to trigger print preview to see callbacks (button finder: 425, 95)
-    await canvas.click({ position: { x: 425, y: 95 } });
+    // Try to trigger print preview to see callbacks
+    await clickByLabel(page, 'Print Preview');
     await page.waitForTimeout(1500);
 
     await page.screenshot({ path: 'test-results/print-07-callbacks.png' });
@@ -167,16 +158,8 @@ test.describe('wxPrinting Tests', () => {
   test('No JavaScript errors during print operations', async ({ page, testLogger }) => {
     await page.waitForTimeout(500);
 
-    const canvas = page.locator('#canvas');
-
-    // Click each button to test for crashes
-    // Button positions from button finder
-    const buttonPositions = [
-      { x: 425, y: 95, name: 'Print Preview' },
-      { x: 550, y: 95, name: 'Print' },
-      { x: 685, y: 95, name: 'Browser Print' },
-      { x: 755, y: 95, name: 'Page Setup' },
-    ];
+    // Button labels to click
+    const buttonLabels = ['Print Preview', 'Print...', 'Browser Print', 'Page Setup'];
 
     // Mock window.print to prevent actual print dialog
     await page.evaluate(() => {
@@ -184,8 +167,9 @@ test.describe('wxPrinting Tests', () => {
       window.print = () => console.log('[MOCK] window.print() called');
     });
 
-    for (const btn of buttonPositions) {
-      await canvas.click({ position: { x: btn.x, y: btn.y } });
+    // Click each button using element registry
+    for (const label of buttonLabels) {
+      await clickByLabel(page, label);
       await page.waitForTimeout(500);
     }
 

@@ -1,5 +1,6 @@
 // wxPropertyGrid Tests - Property panels for KiCad editors
 import { test, expect, tryLoadApp } from './utils/fixtures';
+import { clickPropertyRow } from './utils/element-tracker';
 
 test.describe('wxPropertyGrid Tests', () => {
 
@@ -41,15 +42,9 @@ test.describe('wxPropertyGrid Tests', () => {
       return;
     }
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (!box) {
-      test.skip();
-      return;
-    }
-
-    // Click on a property row
-    await page.mouse.click(box.x + 200, box.y + 200);
+    // Click on a property row using element registry
+    const clicked = await clickPropertyRow(page, 'Reference');
+    expect(clicked).toBe(true);
     await page.waitForTimeout(200);
 
     await page.screenshot({ path: 'test-results/propgrid-03-selected.png', fullPage: true });

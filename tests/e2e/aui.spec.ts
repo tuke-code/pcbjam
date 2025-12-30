@@ -1,6 +1,6 @@
 // wxAuiManager Tests - AUI docking system KiCad uses extensively
 import { test, expect, MAIN_CANVAS, tryLoadApp, getCanvasBox } from './utils/fixtures';
-import { clickAuiButton, findRenderedByLabel, findRenderedByType } from './utils/element-tracker';
+import { clickAuiButton, clickAuiPaneContent, findRenderedByLabel, findRenderedByType } from './utils/element-tracker';
 
 test.describe('wxAuiManager Tests', () => {
 
@@ -83,22 +83,24 @@ test.describe('wxAuiManager Tests', () => {
       return;
     }
 
-    const box = await getCanvasBox(page);
-
-    // Click in Properties panel
-    await page.mouse.click(box.x + 75, box.y + 200);
+    // Click in Properties panel using element tracking
+    const propsClicked = await clickAuiPaneContent(page, 'Properties');
+    expect(propsClicked, 'Should be able to click Properties pane').toBe(true);
     await page.waitForTimeout(200);
 
-    // Click in Layers panel (right side)
-    await page.mouse.click(box.x + 720, box.y + 200);
+    // Click in Layers panel using element tracking
+    const layersClicked = await clickAuiPaneContent(page, 'Layers');
+    expect(layersClicked, 'Should be able to click Layers pane').toBe(true);
     await page.waitForTimeout(200);
 
-    // Click in Messages panel (bottom)
-    await page.mouse.click(box.x + 400, box.y + 550);
+    // Click in Messages panel using element tracking
+    const messagesClicked = await clickAuiPaneContent(page, 'Messages');
+    expect(messagesClicked, 'Should be able to click Messages pane').toBe(true);
     await page.waitForTimeout(200);
 
-    // Click in center (Event Log)
-    await page.mouse.click(box.x + 400, box.y + 300);
+    // Click in Event Log panel using element tracking
+    const eventLogClicked = await clickAuiPaneContent(page, 'Event Log');
+    expect(eventLogClicked, 'Should be able to click Event Log pane').toBe(true);
     await page.waitForTimeout(200);
 
     await page.screenshot({ path: 'test-results/aui-05-multi-panel.png', fullPage: true });

@@ -1,8 +1,12 @@
-import { test, expect, MAIN_CANVAS, waitForApp, getCanvasBox } from './utils/fixtures';
+import { test, expect, waitForApp } from './utils/fixtures';
+import { clickTab, clickByLabel } from './utils/element-tracker';
 
-async function switchToDialogsTab(page: any, box: { x: number; y: number }) {
-  // Dialogs tab is the 7th tab (after Grid)
-  await page.mouse.click(box.x + 370, box.y + 35);
+async function switchToDialogsTab(page: any) {
+  // Click Dialogs tab using element registry
+  const clicked = await clickTab(page, 'Dialogs');
+  if (!clicked) {
+    await clickByLabel(page, 'Dialogs');
+  }
   await page.waitForTimeout(1000);
 }
 
@@ -12,13 +16,11 @@ test.describe('Dialogs Tab Tests', () => {
     await page.goto('/minimal_test.html');
     await waitForApp(page);
 
-    const box = await getCanvasBox(page);
-
     // Screenshot before switching to Dialogs tab
     await page.screenshot({ path: 'test-results/dialogs-00-initial.png', fullPage: true });
 
     // Switch to Dialogs tab
-    await switchToDialogsTab(page, box);
+    await switchToDialogsTab(page);
     await page.screenshot({ path: 'test-results/dialogs-01-tab-selected.png', fullPage: true });
 
     // Verify app is still responsive
@@ -37,18 +39,16 @@ test.describe('Dialogs Tab Tests', () => {
       await page.goto('/minimal_test.html');
       await waitForApp(page);
 
-      const box = await getCanvasBox(page);
+      await switchToDialogsTab(page);
 
-      await switchToDialogsTab(page, box);
-
-      // Click "Info Dialog" button (first button in wxMessageBox section)
-      await page.mouse.click(box.x + 80, box.y + 110);
+      // Click "Info" button using element registry
+      await clickByLabel(page, 'Info');
       await page.waitForTimeout(500);
 
       await page.screenshot({ path: 'test-results/dialogs-msgbox-info-open.png', fullPage: true });
 
       // Click OK to close
-      await page.mouse.click(box.x + 350, box.y + 250);
+      await clickByLabel(page, 'OK');
       await page.waitForTimeout(300);
 
       await page.screenshot({ path: 'test-results/dialogs-msgbox-info-closed.png', fullPage: true });
@@ -60,18 +60,16 @@ test.describe('Dialogs Tab Tests', () => {
       await page.goto('/minimal_test.html');
       await waitForApp(page);
 
-      const box = await getCanvasBox(page);
+      await switchToDialogsTab(page);
 
-      await switchToDialogsTab(page, box);
-
-      // Click "Yes/No Dialog" button (second button)
-      await page.mouse.click(box.x + 180, box.y + 110);
+      // Click "Yes/No" button using element registry
+      await clickByLabel(page, 'Yes/No');
       await page.waitForTimeout(500);
 
       await page.screenshot({ path: 'test-results/dialogs-msgbox-yesno-open.png', fullPage: true });
 
-      // Click somewhere to close (Yes or No)
-      await page.mouse.click(box.x + 300, box.y + 250);
+      // Click Yes to close
+      await clickByLabel(page, 'Yes');
       await page.waitForTimeout(300);
 
       await page.screenshot({ path: 'test-results/dialogs-msgbox-yesno-closed.png', fullPage: true });
@@ -81,18 +79,16 @@ test.describe('Dialogs Tab Tests', () => {
       await page.goto('/minimal_test.html');
       await waitForApp(page);
 
-      const box = await getCanvasBox(page);
+      await switchToDialogsTab(page);
 
-      await switchToDialogsTab(page, box);
-
-      // Click "Error Dialog" button (third button)
-      await page.mouse.click(box.x + 280, box.y + 110);
+      // Click "Error" button using element registry
+      await clickByLabel(page, 'Error');
       await page.waitForTimeout(500);
 
       await page.screenshot({ path: 'test-results/dialogs-msgbox-error-open.png', fullPage: true });
 
-      // Close the dialog
-      await page.mouse.click(box.x + 350, box.y + 250);
+      // Close the dialog with OK
+      await clickByLabel(page, 'OK');
       await page.waitForTimeout(300);
 
       await page.screenshot({ path: 'test-results/dialogs-msgbox-error-closed.png', fullPage: true });
@@ -105,18 +101,16 @@ test.describe('Dialogs Tab Tests', () => {
       await page.goto('/minimal_test.html');
       await waitForApp(page);
 
-      const box = await getCanvasBox(page);
+      await switchToDialogsTab(page);
 
-      await switchToDialogsTab(page, box);
-
-      // Click "Open Custom Dialog" button (in wxDialog section, around y=160)
-      await page.mouse.click(box.x + 100, box.y + 160);
+      // Click "Open Custom Dialog" button using element registry
+      await clickByLabel(page, 'Open Custom Dialog');
       await page.waitForTimeout(500);
 
       await page.screenshot({ path: 'test-results/dialogs-custom-open.png', fullPage: true });
 
       // Click OK to close
-      await page.mouse.click(box.x + 300, box.y + 300);
+      await clickByLabel(page, 'OK');
       await page.waitForTimeout(300);
 
       await page.screenshot({ path: 'test-results/dialogs-custom-closed.png', fullPage: true });
@@ -129,14 +123,12 @@ test.describe('Dialogs Tab Tests', () => {
       await page.goto('/minimal_test.html');
       await waitForApp(page);
 
-      const box = await getCanvasBox(page);
-
-      await switchToDialogsTab(page, box);
+      await switchToDialogsTab(page);
 
       await page.screenshot({ path: 'test-results/dialogs-timer-initial.png', fullPage: true });
 
-      // Click "Start Timer" button (centered buttons)
-      await page.mouse.click(box.x + 500, box.y + 230);
+      // Click "Start Timer" button using element registry
+      await clickByLabel(page, 'Start Timer');
       await page.waitForTimeout(500);
 
       await page.screenshot({ path: 'test-results/dialogs-timer-started.png', fullPage: true });
@@ -147,7 +139,7 @@ test.describe('Dialogs Tab Tests', () => {
       await page.screenshot({ path: 'test-results/dialogs-timer-running.png', fullPage: true });
 
       // Click "Stop Timer"
-      await page.mouse.click(box.x + 600, box.y + 230);
+      await clickByLabel(page, 'Stop Timer');
       await page.waitForTimeout(500);
 
       await page.screenshot({ path: 'test-results/dialogs-timer-stopped.png', fullPage: true });
@@ -160,24 +152,22 @@ test.describe('Dialogs Tab Tests', () => {
       await page.goto('/minimal_test.html');
       await waitForApp(page);
 
-      const box = await getCanvasBox(page);
+      await switchToDialogsTab(page);
 
-      await switchToDialogsTab(page, box);
-
-      // Start timer (centered buttons)
-      await page.mouse.click(box.x + 500, box.y + 230);
+      // Start timer using element registry
+      await clickByLabel(page, 'Start Timer');
       await page.waitForTimeout(1500);
 
       // Stop timer
-      await page.mouse.click(box.x + 600, box.y + 230);
+      await clickByLabel(page, 'Stop Timer');
       await page.waitForTimeout(500);
 
       // Start again
-      await page.mouse.click(box.x + 500, box.y + 230);
+      await clickByLabel(page, 'Start Timer');
       await page.waitForTimeout(1500);
 
       // Stop again
-      await page.mouse.click(box.x + 600, box.y + 230);
+      await clickByLabel(page, 'Stop Timer');
       await page.waitForTimeout(300);
 
       await page.screenshot({ path: 'test-results/dialogs-timer-multiple.png', fullPage: true });
@@ -191,26 +181,24 @@ test.describe('Dialogs Tab Tests', () => {
     await page.goto('/minimal_test.html');
     await waitForApp(page);
 
-    const box = await getCanvasBox(page);
+    await switchToDialogsTab(page);
 
-    await switchToDialogsTab(page, box);
-
-    // 1. Click Info button
-    await page.mouse.click(box.x + 80, box.y + 110);
+    // 1. Click Info button and close
+    await clickByLabel(page, 'Info');
     await page.waitForTimeout(400);
-    await page.mouse.click(box.x + 350, box.y + 250);  // Close
+    await clickByLabel(page, 'OK');
     await page.waitForTimeout(200);
 
-    // 2. Click Custom Dialog button
-    await page.mouse.click(box.x + 100, box.y + 160);
+    // 2. Click Custom Dialog button and close
+    await clickByLabel(page, 'Open Custom Dialog');
     await page.waitForTimeout(400);
-    await page.mouse.click(box.x + 300, box.y + 300);  // Close
+    await clickByLabel(page, 'OK');
     await page.waitForTimeout(200);
 
-    // 3. Start and stop timer (centered buttons)
-    await page.mouse.click(box.x + 500, box.y + 230);  // Start
+    // 3. Start and stop timer
+    await clickByLabel(page, 'Start Timer');
     await page.waitForTimeout(2000);
-    await page.mouse.click(box.x + 600, box.y + 230);  // Stop
+    await clickByLabel(page, 'Stop Timer');
     await page.waitForTimeout(200);
 
     await page.screenshot({ path: 'test-results/dialogs-full-flow.png', fullPage: true });

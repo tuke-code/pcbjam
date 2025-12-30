@@ -38,7 +38,7 @@ export interface RegistryStats {
 export interface WxRenderedElement {
   id: string;
   parentId: string;
-  elementType: 'tool' | 'menuitem' | 'sash' | 'auipart';
+  elementType: 'tool' | 'menuitem' | 'sash' | 'auipart' | 'tab' | 'gridcell' | 'listitem' | 'datecell' | 'treeitem' | 'dataviewitem' | 'proprow' | 'listboxitem' | 'spinbutton' | 'slider' | 'slidertrack' | 'textctrl' | 'combobutton' | 'combotextarea' | 'searchctrl' | 'searchbutton' | 'columnheader' | 'styledtext';
   subType: string;
   label: string;
   tooltip: string;
@@ -485,6 +485,40 @@ export async function clickAuiButton(
 }
 
 /**
+ * Find an AUI pane content area by panel caption
+ */
+export async function findAuiPaneContent(
+  page: Page,
+  paneCaption: string
+): Promise<WxRenderedElement | null> {
+  const contents = await findRenderedByType(page, 'auipart', { subType: 'content' });
+  return contents.find(c => c.label === paneCaption) || null;
+}
+
+/**
+ * Click on an AUI pane content area by panel caption
+ */
+export async function clickAuiPaneContent(
+  page: Page,
+  paneCaption: string
+): Promise<boolean> {
+  const content = await findAuiPaneContent(page, paneCaption);
+  if (!content) {
+    console.warn(`AUI pane content "${paneCaption}" not found`);
+    return false;
+  }
+  await page.mouse.click(content.centerX, content.centerY);
+  return true;
+}
+
+/**
+ * Get all AUI pane content areas
+ */
+export async function findAllAuiPaneContents(page: Page): Promise<WxRenderedElement[]> {
+  return findRenderedByType(page, 'auipart', { subType: 'content' });
+}
+
+/**
  * Click on a rendered element by label (searches all types)
  */
 export async function clickRenderedByLabel(
@@ -528,4 +562,1017 @@ export async function getRenderedStats(page: Page): Promise<RegistryStats | null
     if (!registry || !registry.getRenderedStats) return null;
     return registry.getRenderedStats();
   });
+}
+
+// ============================================================================
+// Grid Cell Helpers
+// ============================================================================
+
+/**
+ * Find a grid cell by row and column
+ */
+export async function findGridCell(
+  page: Page,
+  row: number,
+  col: number
+): Promise<WxRenderedElement | null> {
+  const elements = await page.evaluate(
+    ([row, col]: [number, number]) => {
+      const registry = window.wxElementRegistry;
+      if (!registry || !registry.findAllRendered) return [];
+      const allCells = registry.findAllRendered({}).filter(
+        e => e.elementType === 'gridcell' && e.tooltip === `Row ${row}, Col ${col}`
+      );
+      return allCells;
+    },
+    [row, col] as [number, number]
+  );
+  return elements.length > 0 ? elements[0] : null;
+}
+
+/**
+ * Find a grid cell by its label/value
+ */
+export async function findGridCellByLabel(
+  page: Page,
+  label: string
+): Promise<WxRenderedElement | null> {
+  return findRenderedByLabel(page, label, { elementType: 'gridcell' });
+}
+
+/**
+ * Click on a grid cell by row and column
+ */
+export async function clickGridCell(
+  page: Page,
+  row: number,
+  col: number
+): Promise<boolean> {
+  const cell = await findGridCell(page, row, col);
+  if (!cell) {
+    console.warn(`Grid cell at row ${row}, col ${col} not found`);
+    return false;
+  }
+  await page.mouse.click(cell.centerX, cell.centerY);
+  return true;
+}
+
+/**
+ * Click on a grid cell by its label/value
+ */
+export async function clickGridCellByLabel(
+  page: Page,
+  label: string
+): Promise<boolean> {
+  const cell = await findGridCellByLabel(page, label);
+  if (!cell) {
+    console.warn(`Grid cell with label "${label}" not found`);
+    return false;
+  }
+  await page.mouse.click(cell.centerX, cell.centerY);
+  return true;
+}
+
+/**
+ * Get all grid cells
+ */
+export async function findAllGridCells(page: Page): Promise<WxRenderedElement[]> {
+  return findRenderedByType(page, 'gridcell');
+}
+
+// ============================================================================
+// List Item Helpers
+// ============================================================================
+
+/**
+ * Find a list item by its label
+ */
+export async function findListItem(
+  page: Page,
+  label: string
+): Promise<WxRenderedElement | null> {
+  return findRenderedByLabel(page, label, { elementType: 'listitem' });
+}
+
+/**
+ * Find a list item by row index
+ */
+export async function findListItemByIndex(
+  page: Page,
+  index: number
+): Promise<WxRenderedElement | null> {
+  const items = await findRenderedByType(page, 'listitem');
+  return items.find(item => item.index === index) || null;
+}
+
+/**
+ * Click on a list item by label
+ */
+export async function clickListItem(
+  page: Page,
+  label: string
+): Promise<boolean> {
+  const item = await findListItem(page, label);
+  if (!item) {
+    console.warn(`List item "${label}" not found`);
+    return false;
+  }
+  await page.mouse.click(item.centerX, item.centerY);
+  return true;
+}
+
+/**
+ * Click on a list item by row index
+ */
+export async function clickListItemByIndex(
+  page: Page,
+  index: number
+): Promise<boolean> {
+  const item = await findListItemByIndex(page, index);
+  if (!item) {
+    console.warn(`List item at index ${index} not found`);
+    return false;
+  }
+  await page.mouse.click(item.centerX, item.centerY);
+  return true;
+}
+
+/**
+ * Get all list items
+ */
+export async function findAllListItems(page: Page): Promise<WxRenderedElement[]> {
+  return findRenderedByType(page, 'listitem');
+}
+
+// ============================================================================
+// Tab Helpers
+// ============================================================================
+
+/**
+ * Find a tab by its label
+ */
+export async function findTab(
+  page: Page,
+  label: string
+): Promise<WxRenderedElement | null> {
+  return findRenderedByLabel(page, label, { elementType: 'tab' });
+}
+
+/**
+ * Click on a tab by label
+ */
+export async function clickTab(
+  page: Page,
+  label: string
+): Promise<boolean> {
+  const tab = await findTab(page, label);
+  if (!tab) {
+    console.warn(`Tab "${label}" not found`);
+    return false;
+  }
+  await page.mouse.click(tab.centerX, tab.centerY);
+  return true;
+}
+
+/**
+ * Get all tabs
+ */
+export async function findAllTabs(page: Page): Promise<WxRenderedElement[]> {
+  return findRenderedByType(page, 'tab');
+}
+
+/**
+ * Get the currently selected tab
+ */
+export async function findSelectedTab(page: Page): Promise<WxRenderedElement | null> {
+  const tabs = await page.evaluate(() => {
+    const registry = window.wxElementRegistry;
+    if (!registry || !registry.findAllRendered) return [];
+    return registry.findAllRendered({ label: undefined }).filter(
+      e => e.elementType === 'tab' && e.subType === 'selected'
+    );
+  });
+  return tabs.length > 0 ? tabs[0] : null;
+}
+
+// ============================================================================
+// Calendar Date Helpers
+// ============================================================================
+
+/**
+ * Find a calendar date by day number
+ */
+export async function findCalendarDate(
+  page: Page,
+  day: number
+): Promise<WxRenderedElement | null> {
+  return findRenderedByLabel(page, String(day), { elementType: 'datecell' });
+}
+
+/**
+ * Click on a calendar date by day number
+ */
+export async function clickCalendarDate(
+  page: Page,
+  day: number
+): Promise<boolean> {
+  const dateCell = await findCalendarDate(page, day);
+  if (!dateCell) {
+    console.warn(`Calendar date ${day} not found`);
+    return false;
+  }
+  if (!dateCell.enabled) {
+    console.warn(`Calendar date ${day} is out of range`);
+    return false;
+  }
+  await page.mouse.click(dateCell.centerX, dateCell.centerY);
+  return true;
+}
+
+/**
+ * Get all calendar date cells
+ */
+export async function findAllCalendarDates(page: Page): Promise<WxRenderedElement[]> {
+  return findRenderedByType(page, 'datecell');
+}
+
+/**
+ * Get the currently selected calendar date
+ */
+export async function findSelectedCalendarDate(page: Page): Promise<WxRenderedElement | null> {
+  const dates = await page.evaluate(() => {
+    const registry = window.wxElementRegistry;
+    if (!registry || !registry.findAllRendered) return [];
+    return registry.findAllRendered({ label: undefined }).filter(
+      e => e.elementType === 'datecell' && e.subType === 'selected'
+    );
+  });
+  return dates.length > 0 ? dates[0] : null;
+}
+
+// ============================================================================
+// Tree Item Helpers
+// ============================================================================
+
+/**
+ * Find a tree item by its label
+ */
+export async function findTreeItem(
+  page: Page,
+  label: string
+): Promise<WxRenderedElement | null> {
+  return findRenderedByLabel(page, label, { elementType: 'treeitem' });
+}
+
+/**
+ * Click on a tree item by label
+ */
+export async function clickTreeItem(
+  page: Page,
+  label: string
+): Promise<boolean> {
+  const item = await findTreeItem(page, label);
+  if (!item) {
+    console.warn(`Tree item "${label}" not found`);
+    return false;
+  }
+  await page.mouse.click(item.centerX, item.centerY);
+  return true;
+}
+
+/**
+ * Get all tree items
+ */
+export async function findAllTreeItems(page: Page): Promise<WxRenderedElement[]> {
+  return findRenderedByType(page, 'treeitem');
+}
+
+/**
+ * Find tree items by state (expanded, collapsed, leaf)
+ */
+export async function findTreeItemsByState(
+  page: Page,
+  state: 'expanded' | 'collapsed' | 'leaf'
+): Promise<WxRenderedElement[]> {
+  return findRenderedByType(page, 'treeitem', { subType: state });
+}
+
+// ============================================================================
+// DataView Item Helpers
+// ============================================================================
+
+/**
+ * Find a dataview item by its label
+ */
+export async function findDataViewItem(
+  page: Page,
+  label: string
+): Promise<WxRenderedElement | null> {
+  return findRenderedByLabel(page, label, { elementType: 'dataviewitem' });
+}
+
+/**
+ * Find a dataview item by row index
+ */
+export async function findDataViewItemByIndex(
+  page: Page,
+  index: number
+): Promise<WxRenderedElement | null> {
+  const items = await findRenderedByType(page, 'dataviewitem');
+  return items.find(item => item.index === index) || null;
+}
+
+/**
+ * Click on a dataview item by label
+ */
+export async function clickDataViewItem(
+  page: Page,
+  label: string
+): Promise<boolean> {
+  const item = await findDataViewItem(page, label);
+  if (!item) {
+    console.warn(`DataView item "${label}" not found`);
+    return false;
+  }
+  await page.mouse.click(item.centerX, item.centerY);
+  return true;
+}
+
+/**
+ * Click on a dataview item by row index
+ */
+export async function clickDataViewItemByIndex(
+  page: Page,
+  index: number
+): Promise<boolean> {
+  const item = await findDataViewItemByIndex(page, index);
+  if (!item) {
+    console.warn(`DataView item at index ${index} not found`);
+    return false;
+  }
+  await page.mouse.click(item.centerX, item.centerY);
+  return true;
+}
+
+/**
+ * Get all dataview items
+ */
+export async function findAllDataViewItems(page: Page): Promise<WxRenderedElement[]> {
+  return findRenderedByType(page, 'dataviewitem');
+}
+
+// ============================================================================
+// Property Grid Helpers
+// ============================================================================
+
+/**
+ * Find a property row by its label
+ */
+export async function findPropertyRow(
+  page: Page,
+  label: string
+): Promise<WxRenderedElement | null> {
+  return findRenderedByLabel(page, label, { elementType: 'proprow' });
+}
+
+/**
+ * Click on a property row by label
+ */
+export async function clickPropertyRow(
+  page: Page,
+  label: string
+): Promise<boolean> {
+  const row = await findPropertyRow(page, label);
+  if (!row) {
+    console.warn(`Property row "${label}" not found`);
+    return false;
+  }
+  if (!row.enabled) {
+    console.warn(`Property row "${label}" is disabled`);
+    return false;
+  }
+  await page.mouse.click(row.centerX, row.centerY);
+  return true;
+}
+
+/**
+ * Get all property rows
+ */
+export async function findAllPropertyRows(page: Page): Promise<WxRenderedElement[]> {
+  return findRenderedByType(page, 'proprow');
+}
+
+/**
+ * Find property rows by type (category, property, selected, disabled)
+ */
+export async function findPropertyRowsByType(
+  page: Page,
+  type: 'category' | 'property' | 'selected' | 'disabled'
+): Promise<WxRenderedElement[]> {
+  return findRenderedByType(page, 'proprow', { subType: type });
+}
+
+// ============================================================================
+// Listbox/Choice Item Helpers (for dropdown lists)
+// ============================================================================
+
+/**
+ * Find a listbox item by its label
+ */
+export async function findListboxItem(
+  page: Page,
+  label: string
+): Promise<WxRenderedElement | null> {
+  return findRenderedByLabel(page, label, { elementType: 'listboxitem' });
+}
+
+/**
+ * Find a listbox item by index
+ */
+export async function findListboxItemByIndex(
+  page: Page,
+  index: number
+): Promise<WxRenderedElement | null> {
+  const items = await findRenderedByType(page, 'listboxitem');
+  return items.find(item => item.index === index) || null;
+}
+
+/**
+ * Click on a listbox item by label (for wxChoice/wxComboBox dropdowns)
+ */
+export async function clickListboxItem(
+  page: Page,
+  label: string
+): Promise<boolean> {
+  const item = await findListboxItem(page, label);
+  if (!item) {
+    console.warn(`Listbox item "${label}" not found`);
+    return false;
+  }
+  await page.mouse.click(item.centerX, item.centerY);
+  return true;
+}
+
+/**
+ * Click on a listbox item by index
+ */
+export async function clickListboxItemByIndex(
+  page: Page,
+  index: number
+): Promise<boolean> {
+  const item = await findListboxItemByIndex(page, index);
+  if (!item) {
+    console.warn(`Listbox item at index ${index} not found`);
+    return false;
+  }
+  await page.mouse.click(item.centerX, item.centerY);
+  return true;
+}
+
+/**
+ * Get all listbox items
+ */
+export async function findAllListboxItems(page: Page): Promise<WxRenderedElement[]> {
+  return findRenderedByType(page, 'listboxitem');
+}
+
+// ============================================================================
+// Spin Button Helpers
+// ============================================================================
+
+/**
+ * Find a spin button arrow by type
+ */
+export async function findSpinButton(
+  page: Page,
+  arrowType: 'up' | 'down' | 'left' | 'right'
+): Promise<WxRenderedElement | null> {
+  const buttons = await findRenderedByType(page, 'spinbutton', { subType: arrowType });
+  return buttons.length > 0 ? buttons[0] : null;
+}
+
+/**
+ * Click the spin button up arrow (or left for horizontal)
+ */
+export async function clickSpinUp(page: Page): Promise<boolean> {
+  // Try 'up' first (vertical), then 'left' (horizontal)
+  let button = await findSpinButton(page, 'up');
+  if (!button) {
+    button = await findSpinButton(page, 'left');
+  }
+  if (!button) {
+    console.warn('Spin up/left button not found');
+    return false;
+  }
+  if (!button.enabled) {
+    console.warn('Spin up/left button is disabled');
+    return false;
+  }
+  await page.mouse.click(button.centerX, button.centerY);
+  return true;
+}
+
+/**
+ * Click the spin button down arrow (or right for horizontal)
+ */
+export async function clickSpinDown(page: Page): Promise<boolean> {
+  // Try 'down' first (vertical), then 'right' (horizontal)
+  let button = await findSpinButton(page, 'down');
+  if (!button) {
+    button = await findSpinButton(page, 'right');
+  }
+  if (!button) {
+    console.warn('Spin down/right button not found');
+    return false;
+  }
+  if (!button.enabled) {
+    console.warn('Spin down/right button is disabled');
+    return false;
+  }
+  await page.mouse.click(button.centerX, button.centerY);
+  return true;
+}
+
+/**
+ * Get all spin buttons
+ */
+export async function findAllSpinButtons(page: Page): Promise<WxRenderedElement[]> {
+  return findRenderedByType(page, 'spinbutton');
+}
+
+// ============================================================================
+// Slider Helpers
+// ============================================================================
+
+/**
+ * Find a slider thumb by name/label
+ */
+export async function findSlider(
+  page: Page,
+  name?: string
+): Promise<WxRenderedElement | null> {
+  if (name) {
+    return findRenderedByLabel(page, name, { elementType: 'slider' });
+  }
+  const sliders = await findRenderedByType(page, 'slider');
+  return sliders.length > 0 ? sliders[0] : null;
+}
+
+/**
+ * Find a slider track for drag operations
+ */
+export async function findSliderTrack(
+  page: Page,
+  name?: string
+): Promise<WxRenderedElement | null> {
+  if (name) {
+    return findRenderedByLabel(page, name, { elementType: 'slidertrack' });
+  }
+  const tracks = await findRenderedByType(page, 'slidertrack');
+  return tracks.length > 0 ? tracks[0] : null;
+}
+
+/**
+ * Click on a slider thumb
+ */
+export async function clickSlider(
+  page: Page,
+  name?: string
+): Promise<boolean> {
+  const slider = await findSlider(page, name);
+  if (!slider) {
+    console.warn(`Slider${name ? ` "${name}"` : ''} not found`);
+    return false;
+  }
+  if (!slider.enabled) {
+    console.warn(`Slider${name ? ` "${name}"` : ''} is disabled`);
+    return false;
+  }
+  await page.mouse.click(slider.centerX, slider.centerY);
+  return true;
+}
+
+/**
+ * Drag slider to a position within the track
+ * @param position - value between 0 and 1 (0 = min, 1 = max)
+ */
+export async function dragSliderTo(
+  page: Page,
+  position: number,
+  name?: string
+): Promise<boolean> {
+  const slider = await findSlider(page, name);
+  const track = await findSliderTrack(page, name);
+  if (!slider || !track) {
+    console.warn(`Slider or track${name ? ` "${name}"` : ''} not found`);
+    return false;
+  }
+  if (!slider.enabled) {
+    console.warn(`Slider${name ? ` "${name}"` : ''} is disabled`);
+    return false;
+  }
+
+  // Clamp position to [0, 1]
+  position = Math.max(0, Math.min(1, position));
+
+  // Determine if horizontal or vertical based on track dimensions
+  const isHorizontal = track.width > track.height;
+
+  let targetX: number, targetY: number;
+  if (isHorizontal) {
+    targetX = track.screenX + track.width * position;
+    targetY = track.centerY;
+  } else {
+    targetX = track.centerX;
+    // For vertical sliders, 0 is typically at bottom
+    targetY = track.screenY + track.height * (1 - position);
+  }
+
+  // Drag from current slider position to target
+  await page.mouse.move(slider.centerX, slider.centerY);
+  await page.mouse.down();
+  await page.mouse.move(targetX, targetY);
+  await page.mouse.up();
+  return true;
+}
+
+/**
+ * Get all sliders
+ */
+export async function findAllSliders(page: Page): Promise<WxRenderedElement[]> {
+  return findRenderedByType(page, 'slider');
+}
+
+// ============================================================================
+// Text Control Helpers
+// ============================================================================
+
+/**
+ * Find a text control by name
+ */
+export async function findTextCtrl(
+  page: Page,
+  name?: string
+): Promise<WxRenderedElement | null> {
+  if (name) {
+    return findRenderedByLabel(page, name, { elementType: 'textctrl' });
+  }
+  const ctrls = await findRenderedByType(page, 'textctrl');
+  return ctrls.length > 0 ? ctrls[0] : null;
+}
+
+/**
+ * Find a singleline text control
+ */
+export async function findSingleLineTextCtrl(
+  page: Page,
+  name?: string
+): Promise<WxRenderedElement | null> {
+  if (name) {
+    const ctrl = await findRenderedByLabel(page, name, { elementType: 'textctrl', subType: 'singleline' });
+    return ctrl;
+  }
+  const ctrls = await findRenderedByType(page, 'textctrl', { subType: 'singleline' });
+  return ctrls.length > 0 ? ctrls[0] : null;
+}
+
+/**
+ * Find a multiline text control
+ */
+export async function findMultiLineTextCtrl(
+  page: Page,
+  name?: string
+): Promise<WxRenderedElement | null> {
+  if (name) {
+    const ctrl = await findRenderedByLabel(page, name, { elementType: 'textctrl', subType: 'multiline' });
+    return ctrl;
+  }
+  const ctrls = await findRenderedByType(page, 'textctrl', { subType: 'multiline' });
+  return ctrls.length > 0 ? ctrls[0] : null;
+}
+
+/**
+ * Click on a text control to focus it
+ */
+export async function clickTextCtrl(
+  page: Page,
+  name?: string
+): Promise<boolean> {
+  const ctrl = await findTextCtrl(page, name);
+  if (!ctrl) {
+    console.warn(`TextCtrl${name ? ` "${name}"` : ''} not found`);
+    return false;
+  }
+  if (!ctrl.enabled) {
+    console.warn(`TextCtrl${name ? ` "${name}"` : ''} is disabled`);
+    return false;
+  }
+  await page.mouse.click(ctrl.centerX, ctrl.centerY);
+  return true;
+}
+
+/**
+ * Get all text controls
+ */
+export async function findAllTextCtrls(page: Page): Promise<WxRenderedElement[]> {
+  return findRenderedByType(page, 'textctrl');
+}
+
+// ============================================================================
+// Combo/Choice Button Helpers
+// ============================================================================
+
+/**
+ * Find a combo/choice dropdown button
+ */
+export async function findComboButton(
+  page: Page,
+  value?: string
+): Promise<WxRenderedElement | null> {
+  if (value) {
+    return findRenderedByLabel(page, value, { elementType: 'combobutton' });
+  }
+  const buttons = await findRenderedByType(page, 'combobutton');
+  return buttons.length > 0 ? buttons[0] : null;
+}
+
+/**
+ * Click on a combo/choice dropdown button to open/close the dropdown
+ */
+export async function clickComboButton(
+  page: Page,
+  value?: string
+): Promise<boolean> {
+  const button = await findComboButton(page, value);
+  if (!button) {
+    console.warn(`Combo button${value ? ` with value "${value}"` : ''} not found`);
+    return false;
+  }
+  if (!button.enabled) {
+    console.warn(`Combo button${value ? ` with value "${value}"` : ''} is disabled`);
+    return false;
+  }
+  await page.mouse.click(button.centerX, button.centerY);
+  return true;
+}
+
+/**
+ * Open a combo/choice dropdown (clicks button if closed)
+ */
+export async function openComboDropdown(
+  page: Page,
+  value?: string
+): Promise<boolean> {
+  const button = await findComboButton(page, value);
+  if (!button) {
+    console.warn(`Combo button${value ? ` with value "${value}"` : ''} not found`);
+    return false;
+  }
+  // Only click if dropdown is closed
+  if (button.subType === 'closed') {
+    await page.mouse.click(button.centerX, button.centerY);
+  }
+  return true;
+}
+
+/**
+ * Select an item from combo/choice dropdown by label
+ * Opens the dropdown if needed, then clicks the item
+ */
+export async function selectComboItem(
+  page: Page,
+  itemLabel: string,
+  comboValue?: string
+): Promise<boolean> {
+  // Open the dropdown
+  const opened = await openComboDropdown(page, comboValue);
+  if (!opened) return false;
+
+  // Wait a bit for dropdown to appear
+  await page.waitForTimeout(100);
+
+  // Click the listbox item
+  return clickListboxItem(page, itemLabel);
+}
+
+/**
+ * Get all combo buttons
+ */
+export async function findAllComboButtons(page: Page): Promise<WxRenderedElement[]> {
+  return findRenderedByType(page, 'combobutton');
+}
+
+// ============================================================================
+// Search Control Helpers
+// ============================================================================
+
+/**
+ * Find a search control text field
+ */
+export async function findSearchCtrl(
+  page: Page,
+  hint?: string
+): Promise<WxRenderedElement | null> {
+  if (hint) {
+    return findRenderedByLabel(page, hint, { elementType: 'searchctrl' });
+  }
+  const ctrls = await findRenderedByType(page, 'searchctrl');
+  return ctrls.length > 0 ? ctrls[0] : null;
+}
+
+/**
+ * Click on a search control to focus it
+ */
+export async function clickSearchCtrl(
+  page: Page,
+  hint?: string
+): Promise<boolean> {
+  const ctrl = await findSearchCtrl(page, hint);
+  if (!ctrl) {
+    console.warn(`SearchCtrl${hint ? ` "${hint}"` : ''} not found`);
+    return false;
+  }
+  if (!ctrl.enabled) {
+    console.warn(`SearchCtrl${hint ? ` "${hint}"` : ''} is disabled`);
+    return false;
+  }
+  await page.mouse.click(ctrl.centerX, ctrl.centerY);
+  return true;
+}
+
+/**
+ * Find the search button in a search control
+ */
+export async function findSearchButton(
+  page: Page
+): Promise<WxRenderedElement | null> {
+  const buttons = await findRenderedByType(page, 'searchbutton', { subType: 'search' });
+  return buttons.length > 0 ? buttons[0] : null;
+}
+
+/**
+ * Find the cancel button in a search control
+ */
+export async function findSearchCancelButton(
+  page: Page
+): Promise<WxRenderedElement | null> {
+  const buttons = await findRenderedByType(page, 'searchbutton', { subType: 'cancel' });
+  return buttons.length > 0 ? buttons[0] : null;
+}
+
+/**
+ * Click the search button
+ */
+export async function clickSearchButton(page: Page): Promise<boolean> {
+  const button = await findSearchButton(page);
+  if (!button) {
+    console.warn('Search button not found');
+    return false;
+  }
+  await page.mouse.click(button.centerX, button.centerY);
+  return true;
+}
+
+/**
+ * Click the cancel/clear button in a search control
+ */
+export async function clickSearchCancelButton(page: Page): Promise<boolean> {
+  const button = await findSearchCancelButton(page);
+  if (!button) {
+    console.warn('Search cancel button not found');
+    return false;
+  }
+  await page.mouse.click(button.centerX, button.centerY);
+  return true;
+}
+
+/**
+ * Get all search controls
+ */
+export async function findAllSearchCtrls(page: Page): Promise<WxRenderedElement[]> {
+  return findRenderedByType(page, 'searchctrl');
+}
+
+// ============================================================================
+// Column Header Helpers (for wxDataViewCtrl, wxGrid, etc.)
+// ============================================================================
+
+/**
+ * Find a column header by its title
+ */
+export async function findColumnHeader(
+  page: Page,
+  title: string
+): Promise<WxRenderedElement | null> {
+  return findRenderedByLabel(page, title, { elementType: 'columnheader' });
+}
+
+/**
+ * Find a column header by index
+ */
+export async function findColumnHeaderByIndex(
+  page: Page,
+  index: number
+): Promise<WxRenderedElement | null> {
+  const headers = await findRenderedByType(page, 'columnheader');
+  return headers.find(h => h.index === index) || null;
+}
+
+/**
+ * Click on a column header by title (for sorting)
+ */
+export async function clickColumnHeader(
+  page: Page,
+  title: string
+): Promise<boolean> {
+  const header = await findColumnHeader(page, title);
+  if (!header) {
+    console.warn(`Column header "${title}" not found`);
+    return false;
+  }
+  if (!header.enabled) {
+    console.warn(`Column header "${title}" is disabled`);
+    return false;
+  }
+  await page.mouse.click(header.centerX, header.centerY);
+  return true;
+}
+
+/**
+ * Click on a column header by index
+ */
+export async function clickColumnHeaderByIndex(
+  page: Page,
+  index: number
+): Promise<boolean> {
+  const header = await findColumnHeaderByIndex(page, index);
+  if (!header) {
+    console.warn(`Column header at index ${index} not found`);
+    return false;
+  }
+  if (!header.enabled) {
+    console.warn(`Column header at index ${index} is disabled`);
+    return false;
+  }
+  await page.mouse.click(header.centerX, header.centerY);
+  return true;
+}
+
+/**
+ * Get all column headers
+ */
+export async function findAllColumnHeaders(page: Page): Promise<WxRenderedElement[]> {
+  return findRenderedByType(page, 'columnheader');
+}
+
+/**
+ * Find sortable column headers
+ */
+export async function findSortableColumnHeaders(page: Page): Promise<WxRenderedElement[]> {
+  return findRenderedByType(page, 'columnheader', { subType: 'sortable' });
+}
+
+// ============================================================================
+// Styled Text Control (STC) Helpers
+// ============================================================================
+
+/**
+ * Find a styled text control (code editor) by name
+ */
+export async function findStyledTextCtrl(
+  page: Page,
+  name?: string
+): Promise<WxRenderedElement | null> {
+  if (name) {
+    return findRenderedByLabel(page, name, { elementType: 'styledtext' });
+  }
+  const ctrls = await findRenderedByType(page, 'styledtext');
+  return ctrls.length > 0 ? ctrls[0] : null;
+}
+
+/**
+ * Click on a styled text control to focus it
+ */
+export async function clickStyledTextCtrl(
+  page: Page,
+  name?: string
+): Promise<boolean> {
+  const ctrl = await findStyledTextCtrl(page, name);
+  if (!ctrl) {
+    console.warn(`StyledTextCtrl${name ? ` "${name}"` : ''} not found`);
+    return false;
+  }
+  if (!ctrl.enabled) {
+    console.warn(`StyledTextCtrl${name ? ` "${name}"` : ''} is read-only`);
+    return false;
+  }
+  await page.mouse.click(ctrl.centerX, ctrl.centerY);
+  return true;
+}
+
+/**
+ * Get all styled text controls
+ */
+export async function findAllStyledTextCtrls(page: Page): Promise<WxRenderedElement[]> {
+  return findRenderedByType(page, 'styledtext');
 }

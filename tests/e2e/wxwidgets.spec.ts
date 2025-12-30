@@ -1,5 +1,19 @@
 import { test, expect, MAIN_CANVAS, waitForApp } from './utils/fixtures';
 import { Page } from '@playwright/test';
+import {
+  clickTab,
+  clickByLabel,
+  clickSlider,
+  dragSliderTo,
+  findSliderTrack,
+  clickTextCtrl,
+  findSingleLineTextCtrl,
+  findMultiLineTextCtrl,
+  clickComboButton,
+  selectComboItem,
+  clickListboxItem,
+  clickListboxItemByIndex
+} from './utils/element-tracker';
 
 // Capture console events with [EVENT] prefix
 function captureEvents(page: Page): string[] {
@@ -77,37 +91,35 @@ test.describe('wxWidgets WASM - Diagnostics', () => {
     // === TAB 1: Controls ===
     console.log('--- Testing Controls Tab ---');
 
-    // Click Controls tab (first tab, around x=35)
-    await page.mouse.click(box.x + 35, box.y + 35);
+    // Click Controls tab using element registry
+    await clickTab(page, 'Controls');
     await page.waitForTimeout(300);
 
-    // Click "Click Me" button (around x=60, y=85)
-    await page.mouse.click(box.x + 60, box.y + 85);
+    // Click "Click Me" button using element registry
+    await clickByLabel(page, 'Click Me');
     await page.waitForTimeout(300);
 
-    // Click "Toggle" button (around x=140, y=85)
-    await page.mouse.click(box.x + 140, box.y + 85);
+    // Click "Toggle" button using element registry
+    await clickByLabel(page, 'Toggle');
     await page.waitForTimeout(300);
 
-    // Click checkbox "Enable feature" (around x=20, y=130)
-    await page.mouse.click(box.x + 20, box.y + 130);
+    // Click checkbox "Enable feature" using element registry
+    await clickByLabel(page, 'Enable feature');
     await page.waitForTimeout(300);
 
-    // Click radio button "Option B" (around x=270, y=130)
-    await page.mouse.click(box.x + 270, box.y + 130);
+    // Click radio button "Option B" using element registry
+    await clickByLabel(page, 'Option B');
     await page.waitForTimeout(300);
 
-    // Click radio button "Option C" (around x=360, y=130)
-    await page.mouse.click(box.x + 360, box.y + 130);
+    // Click radio button "Option C" using element registry
+    await clickByLabel(page, 'Option C');
     await page.waitForTimeout(300);
 
-    // Interact with slider - click and drag (around y=175)
-    await page.mouse.click(box.x + 200, box.y + 175);
+    // Interact with slider using element tracking
+    await clickSlider(page);
     await page.waitForTimeout(200);
-    await page.mouse.move(box.x + 100, box.y + 175);
-    await page.mouse.down();
-    await page.mouse.move(box.x + 400, box.y + 175, { steps: 10 });
-    await page.mouse.up();
+    // Drag slider to 80% position
+    await dragSliderTo(page, 0.8);
     await page.waitForTimeout(300);
 
     await page.screenshot({ path: 'test-results/04-controls-tab.png', fullPage: true });
@@ -115,20 +127,24 @@ test.describe('wxWidgets WASM - Diagnostics', () => {
     // === TAB 2: Text Input ===
     console.log('--- Testing Text Input Tab ---');
 
-    // Click Text Input tab (second tab, around x=100)
-    await page.mouse.click(box.x + 100, box.y + 35);
+    // Click Text Input tab using element registry
+    await clickTab(page, 'Text Input');
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/05-text-input-tab.png', fullPage: true });
 
-    // Click in text field area and type
-    await page.mouse.click(box.x + 200, box.y + 100);
+    // Click in single-line text field using element tracking
+    const singleLine = await findSingleLineTextCtrl(page);
+    expect(singleLine, 'Single-line text control should be tracked').not.toBeNull();
+    await page.mouse.click(singleLine!.centerX, singleLine!.centerY);
     await page.waitForTimeout(200);
     await page.keyboard.type('Hello World');
     await page.waitForTimeout(300);
 
-    // Click multiline text area
-    await page.mouse.click(box.x + 200, box.y + 200);
+    // Click multiline text area using element tracking
+    const multiLine = await findMultiLineTextCtrl(page);
+    expect(multiLine, 'Multi-line text control should be tracked').not.toBeNull();
+    await page.mouse.click(multiLine!.centerX, multiLine!.centerY);
     await page.waitForTimeout(200);
     await page.keyboard.type('Line 1\nLine 2\nLine 3');
     await page.waitForTimeout(300);
@@ -138,8 +154,8 @@ test.describe('wxWidgets WASM - Diagnostics', () => {
     // === TAB 3: Drawing ===
     console.log('--- Testing Drawing Tab ---');
 
-    // Click Drawing tab (third tab, around x=175)
-    await page.mouse.click(box.x + 175, box.y + 35);
+    // Click Drawing tab using element registry
+    await clickTab(page, 'Drawing');
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/07-drawing-tab.png', fullPage: true });
@@ -160,88 +176,67 @@ test.describe('wxWidgets WASM - Diagnostics', () => {
     // === TAB 4: Lists ===
     console.log('--- Testing Lists Tab ---');
 
-    // Click Lists tab (fourth tab, around x=225)
-    await page.mouse.click(box.x + 225, box.y + 35);
+    // Click Lists tab using element registry
+    await clickTab(page, 'Lists');
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/09-lists-tab.png', fullPage: true });
 
-    // Click on list items
+    // Click on listbox items using element registry (wxListBox uses listboxitem type)
     for (let i = 0; i < 5; i++) {
-      await page.mouse.click(box.x + 100, box.y + 80 + i * 20);
+      await clickListboxItemByIndex(page, i);
       await page.waitForTimeout(200);
     }
 
     await page.screenshot({ path: 'test-results/10-lists-clicked.png', fullPage: true });
 
-    // Test wxChoice dropdown - the Choice control is to the right of the ListBox
+    // Test wxChoice dropdown using element tracking
     console.log('--- Testing wxChoice Dropdown ---');
 
-    // Debug: Check all window divs in the DOM before clicking
-    const windowsBefore = await page.evaluate(() => {
-      const windows = document.querySelectorAll('[id^="window-"]');
-      return Array.from(windows).map(w => ({
-        id: w.id,
-        display: (w as HTMLElement).style.display,
-        rect: w.getBoundingClientRect()
-      }));
-    });
-    console.log('Windows before click:', JSON.stringify(windowsBefore));
+    // Find the Choice dropdown by its current value ("Red") and click to open it
+    const { findAllComboButtons } = await import('./utils/element-tracker');
+    const comboButtons = await findAllComboButtons(page);
+    const choiceCombo = comboButtons.find(c => c.label === 'Red');
+    expect(choiceCombo, 'Should find Choice dropdown with "Red" value').not.toBeNull();
 
-    // Click on the wxChoice dropdown button (approximately right side of the panel)
-    // The Choice section is in a separate box to the right, starts around x=640
-    // The wxChoice dropdown button (arrow) is at approximately x=800
-    await page.mouse.click(box.x + 800, box.y + 100);
-    await page.waitForTimeout(500);
+    // Open the dropdown
+    await page.mouse.click(choiceCombo!.centerX, choiceCombo!.centerY);
+    await page.waitForTimeout(300);
 
-    // Debug: Check all window divs in the DOM after clicking
-    const windowsAfter = await page.evaluate(() => {
-      const windows = document.querySelectorAll('[id^="window-"]');
-      return Array.from(windows).map(w => ({
-        id: w.id,
-        display: (w as HTMLElement).style.display,
-        width: (w as HTMLElement).style.width,
-        height: (w as HTMLElement).style.height,
-        rect: w.getBoundingClientRect()
-      }));
-    });
-    console.log('Windows after click:', JSON.stringify(windowsAfter));
-
-    await page.screenshot({ path: 'test-results/10a-choice-dropdown-open.png', fullPage: true });
-
-    // Click on the second option in the dropdown (should be "Green")
-    // Dropdown appears below the wxChoice, options are around x=700-800
-    await page.mouse.click(box.x + 700, box.y + 140);
+    // Select "Green" from the dropdown
+    const greenClicked = await clickListboxItem(page, 'Green');
+    expect(greenClicked, 'Should be able to click "Green" item').toBe(true);
     await page.waitForTimeout(300);
 
     await page.screenshot({ path: 'test-results/10b-choice-selected.png', fullPage: true });
 
-    // Try opening the dropdown again to verify it works
-    await page.mouse.click(box.x + 800, box.y + 100);
+    // Open the dropdown again to verify it works
+    const reopened = await clickComboButton(page);
+    expect(reopened, 'Should be able to open dropdown').toBe(true);
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/10c-choice-dropdown-reopen.png', fullPage: true });
 
-    // Click on dropdown arrow button to close it
-    await page.mouse.click(box.x + 800, box.y + 100);
+    // Close the dropdown by pressing Escape
+    await page.keyboard.press('Escape');
     await page.waitForTimeout(300);
 
     // === TAB 5: OpenGL ===
     console.log('--- Testing OpenGL Tab ---');
 
-    // Click OpenGL tab (fifth tab, around x=280)
-    await page.mouse.click(box.x + 280, box.y + 35);
+    // Click OpenGL tab using element registry
+    await clickTab(page, 'OpenGL');
     await page.waitForTimeout(1000);  // Give GL time to initialize
 
     await page.screenshot({ path: 'test-results/14-opengl-tab.png', fullPage: true });
 
-    // Click on different GL tests in the dropdown
-    // First, click the dropdown (at approximately x=200, y=90)
-    await page.mouse.click(box.x + 200, box.y + 90);
+    // Click on different GL tests in the dropdown using element tracking
+    const glDropdownOpened = await clickComboButton(page);
+    expect(glDropdownOpened, 'Should be able to open GL test dropdown').toBe(true);
     await page.waitForTimeout(300);
 
-    // Click "Run All Tests" button (approximately x=400, y=90)
-    await page.mouse.click(box.x + 400, box.y + 90);
+    // Click "Run All Tests" button using element registry
+    await clickByLabel(page, 'Run All Tests');
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/15-opengl-tests.png', fullPage: true });
@@ -249,22 +244,22 @@ test.describe('wxWidgets WASM - Diagnostics', () => {
     // === Menu interaction ===
     console.log('--- Testing Menus ---');
 
-    // Click File menu
-    await page.mouse.click(box.x + 20, box.y + 10);
+    // Click File menu using element registry
+    await clickByLabel(page, 'File');
     await page.waitForTimeout(500);
     await page.screenshot({ path: 'test-results/11-file-menu.png', fullPage: true });
 
-    // Click somewhere else to close menu
-    await page.mouse.click(box.x + 300, box.y + 300);
+    // Close menu with Escape
+    await page.keyboard.press('Escape');
     await page.waitForTimeout(300);
 
-    // Click Help menu
-    await page.mouse.click(box.x + 55, box.y + 10);
+    // Click Help menu using element registry
+    await clickByLabel(page, 'Help');
     await page.waitForTimeout(500);
     await page.screenshot({ path: 'test-results/12-help-menu.png', fullPage: true });
 
-    // Close menu
-    await page.mouse.click(box.x + 300, box.y + 300);
+    // Close menu with Escape
+    await page.keyboard.press('Escape');
     await page.waitForTimeout(300);
 
     // === Rapid interactions ===
@@ -400,10 +395,8 @@ test.describe('wxWidgets WASM - Mouse Drawing', () => {
     await waitForApp(page);
 
     // First, switch to the Drawing tab (Tab 3)
-    // The notebook tabs are near the top of the content area
-    // We need to click on the "Drawing" tab
-    // Tab positions vary, so we'll click in the approximate area
-    await clickCanvas(page, 280, 30); // Approximate position for Drawing tab
+    // Use element registry to click the tab reliably
+    await clickTab(page, 'Drawing');
     await page.waitForTimeout(500);
 
     // Check if we're on the Drawing tab
@@ -537,12 +530,8 @@ test.describe('wxWidgets WASM - OpenGL', () => {
     await page.goto('/minimal_test.html');
     await waitForApp(page);
 
-    const canvas = page.locator(MAIN_CANVAS);
-    const box = await canvas.boundingBox();
-    if (!box) throw new Error('Canvas not found');
-
-    // Click OpenGL tab (fifth tab, around x=280)
-    await page.mouse.click(box.x + 280, box.y + 35);
+    // Click OpenGL tab using element registry
+    await clickTab(page, 'OpenGL');
     await page.waitForTimeout(1500);  // Give GL time to initialize
 
     // Check that we switched to the OpenGL tab
@@ -557,16 +546,12 @@ test.describe('wxWidgets WASM - OpenGL', () => {
     await page.goto('/minimal_test.html');
     await waitForApp(page);
 
-    const canvas = page.locator(MAIN_CANVAS);
-    const box = await canvas.boundingBox();
-    if (!box) throw new Error('Canvas not found');
-
-    // Switch to OpenGL tab
-    await page.mouse.click(box.x + 280, box.y + 35);
+    // Switch to OpenGL tab using element registry
+    await clickTab(page, 'OpenGL');
     await page.waitForTimeout(1000);
 
-    // Click "Run All Tests" button (approximately x=360, y=130)
-    await page.mouse.click(box.x + 360, box.y + 130);
+    // Click "Run All Tests" button using element registry
+    await clickByLabel(page, 'Run All Tests');
     await page.waitForTimeout(1000);
 
     // Save screenshot after running tests
@@ -585,16 +570,12 @@ test.describe('wxWidgets WASM - OpenGL', () => {
     await page.goto('/minimal_test.html');
     await waitForApp(page);
 
-    const canvas = page.locator(MAIN_CANVAS);
-    const box = await canvas.boundingBox();
-    if (!box) throw new Error('Canvas not found');
-
-    // Switch to OpenGL tab
-    await page.mouse.click(box.x + 280, box.y + 35);
+    // Switch to OpenGL tab using element registry
+    await clickTab(page, 'OpenGL');
     await page.waitForTimeout(1000);
 
-    // Click "Run All Tests" button (approximately at x=360, y=130 relative to canvas)
-    await page.mouse.click(box.x + 360, box.y + 130);
+    // Click "Run All Tests" button using element registry
+    await clickByLabel(page, 'Run All Tests');
     await page.waitForTimeout(500);
 
     // Take screenshot before checking GL canvas
@@ -643,12 +624,8 @@ test.describe('wxWidgets WASM - Canvas Z-Ordering and Visibility', () => {
     await page.goto('/minimal_test.html');
     await waitForApp(page);
 
-    const canvas = page.locator(MAIN_CANVAS);
-    const box = await canvas.boundingBox();
-    if (!box) throw new Error('Canvas not found');
-
-    // Step 1: Go to OpenGL tab first
-    await page.mouse.click(box.x + 280, box.y + 35);
+    // Step 1: Go to OpenGL tab first using element registry
+    await clickTab(page, 'OpenGL');
     await page.waitForTimeout(1000);
 
     // Verify we're on OpenGL tab
@@ -670,8 +647,8 @@ test.describe('wxWidgets WASM - Canvas Z-Ordering and Visibility', () => {
     });
     console.log('GL Canvas on OpenGL tab:', JSON.stringify(glCanvasBefore));
 
-    // Step 2: Switch to Controls tab
-    await page.mouse.click(box.x + 35, box.y + 35);
+    // Step 2: Switch to Controls tab using element registry
+    await clickTab(page, 'Controls');
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/glcanvas-02-after-switch-to-controls.png', fullPage: true });
@@ -690,14 +667,14 @@ test.describe('wxWidgets WASM - Canvas Z-Ordering and Visibility', () => {
     });
     console.log('GL Canvas after switching to Controls:', JSON.stringify(glCanvasAfter));
 
-    // Step 3: Switch to Drawing tab to verify GL canvas doesn't persist
-    await page.mouse.click(box.x + 175, box.y + 35);
+    // Step 3: Switch to Drawing tab using element registry
+    await clickTab(page, 'Drawing');
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/glcanvas-03-on-drawing-tab.png', fullPage: true });
 
-    // Step 4: Switch to Lists tab
-    await page.mouse.click(box.x + 225, box.y + 35);
+    // Step 4: Switch to Lists tab using element registry
+    await clickTab(page, 'Lists');
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/glcanvas-04-on-lists-tab.png', fullPage: true });
@@ -721,8 +698,8 @@ test.describe('wxWidgets WASM - Canvas Z-Ordering and Visibility', () => {
 
     console.log('Canvas bounding box:', JSON.stringify(box));
 
-    // Step 1: Go to OpenGL tab
-    await page.mouse.click(box.x + 280, box.y + 35);
+    // Step 1: Go to OpenGL tab using element registry
+    await clickTab(page, 'OpenGL');
     await page.waitForTimeout(1000);
 
     await page.screenshot({ path: 'test-results/zorder-01-opengl-tab.png', fullPage: true });
@@ -735,21 +712,7 @@ test.describe('wxWidgets WASM - Canvas Z-Ordering and Visibility', () => {
     });
     console.log('Event log check:', eventLogBefore);
 
-    // Step 2: Click on the test selection dropdown (wxChoice) on the OpenGL tab
-    // Layout analysis (from debug test):
-    // - Menu bar: y=0-20
-    // - Tab bar: y=20-50
-    // - Description text: y=50-115
-    // - "Test:" dropdown row: y=115-150
-    // - GL canvas: y=150+
-    //
-    // The dropdown opens when clicking at y=140 (in the dropdown control row)
-    // Click anywhere in the dropdown control to open it
-
-    const dropdownX = box.x + 150;  // Middle of dropdown text area
-    const dropdownY = box.y + 140;  // In the dropdown control row
-
-    console.log(`Clicking dropdown at: (${dropdownX}, ${dropdownY})`);
+    // Step 2: Click on the test selection dropdown (wxChoice) on the OpenGL tab using element tracking
 
     // First check what windows exist before clicking
     const windowsBefore = await page.evaluate(() => {
@@ -763,7 +726,9 @@ test.describe('wxWidgets WASM - Canvas Z-Ordering and Visibility', () => {
     });
     console.log('Windows BEFORE click:', JSON.stringify(windowsBefore));
 
-    await page.mouse.click(dropdownX, dropdownY);
+    // Open dropdown using element tracking
+    const dropdownClicked = await clickComboButton(page);
+    expect(dropdownClicked, 'Should be able to click dropdown on OpenGL tab').toBe(true);
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/zorder-02-dropdown-clicked.png', fullPage: true });
@@ -827,9 +792,8 @@ test.describe('wxWidgets WASM - Canvas Z-Ordering and Visibility', () => {
 
     console.log('Z-Index info:', JSON.stringify(zIndexInfo, null, 2));
 
-    // Step 3: Click on the dropdown arrow button to close it
-    // The arrow is on the right side of the dropdown control (around x=290)
-    await page.mouse.click(box.x + 290, box.y + 140);
+    // Step 3: Close the dropdown using Escape
+    await page.keyboard.press('Escape');
     await page.waitForTimeout(300);
 
     await page.screenshot({ path: 'test-results/zorder-03-dropdown-closed.png', fullPage: true });
@@ -847,22 +811,15 @@ test.describe('wxWidgets WASM - Canvas Z-Ordering and Visibility', () => {
     if (!box) throw new Error('Canvas not found');
 
     // Tab switch sequence: Controls -> OpenGL -> Lists -> OpenGL -> Drawing -> Controls
-    const tabClicks = [
-      { x: 35, name: 'Controls' },
-      { x: 280, name: 'OpenGL' },
-      { x: 225, name: 'Lists' },
-      { x: 280, name: 'OpenGL' },
-      { x: 175, name: 'Drawing' },
-      { x: 35, name: 'Controls' }
-    ];
+    const tabNames = ['Controls', 'OpenGL', 'Lists', 'OpenGL', 'Drawing', 'Controls'];
 
-    for (let i = 0; i < tabClicks.length; i++) {
-      const tab = tabClicks[i];
-      await page.mouse.click(box.x + tab.x, box.y + 35);
+    for (let i = 0; i < tabNames.length; i++) {
+      const tabName = tabNames[i];
+      await clickTab(page, tabName);
       await page.waitForTimeout(500);
 
       await page.screenshot({
-        path: `test-results/tabswitch-${String(i + 1).padStart(2, '0')}-${tab.name.toLowerCase()}.png`,
+        path: `test-results/tabswitch-${String(i + 1).padStart(2, '0')}-${tabName.toLowerCase()}.png`,
         fullPage: true
       });
 
@@ -873,7 +830,7 @@ test.describe('wxWidgets WASM - Canvas Z-Ordering and Visibility', () => {
         return window.getComputedStyle(glCanvas).display;
       });
 
-      console.log(`Tab: ${tab.name}, GL Canvas display: ${glVisible}`);
+      console.log(`Tab: ${tabName}, GL Canvas display: ${glVisible}`);
     }
   });
 });

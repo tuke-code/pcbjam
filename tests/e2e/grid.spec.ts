@@ -1,8 +1,12 @@
 import { test, expect, MAIN_CANVAS, waitForApp, getCanvasBox } from './utils/fixtures';
+import { clickTab, clickByLabel, clickSpinUp, clickSearchCtrl } from './utils/element-tracker';
 
-async function switchToGridTab(page: any, box: { x: number; y: number }) {
-  // Click Grid tab (sixth tab, after OpenGL which is at x=280)
-  await page.mouse.click(box.x + 315, box.y + 35);
+async function switchToGridTab(page: any) {
+  // Click Grid tab using element registry
+  const clicked = await clickTab(page, 'Grid');
+  if (!clicked) {
+    await clickByLabel(page, 'Grid');
+  }
   await page.waitForTimeout(1000);
 }
 
@@ -95,10 +99,8 @@ test.describe('Grid Tab Tests', () => {
       await page.goto('/minimal_test.html');
       await waitForApp(page);
 
-      const box = await getCanvasBox(page);
-
-      // Switch to Grid tab
-      await switchToGridTab(page, box);
+      // Switch to Grid tab using element registry
+      await switchToGridTab(page);
       await page.screenshot({ path: 'test-results/wxgrid-01-tab.png', fullPage: true });
 
       // Evaluate if grid-like content exists (row/column headers, cells)
@@ -139,7 +141,7 @@ test.describe('Grid Tab Tests', () => {
 
       const box = await getCanvasBox(page);
 
-      await switchToGridTab(page, box);
+      await switchToGridTab(page);
 
       // Click on a cell (would be at ~y=175 if grid existed)
       await page.mouse.click(box.x + 180, box.y + 175);
@@ -158,7 +160,7 @@ test.describe('Grid Tab Tests', () => {
 
       const box = await getCanvasBox(page);
 
-      await switchToGridTab(page, box);
+      await switchToGridTab(page);
 
       // Double-click to edit a cell
       await page.mouse.dblclick(box.x + 180, box.y + 195);
@@ -188,7 +190,7 @@ test.describe('Grid Tab Tests', () => {
 
       const box = await getCanvasBox(page);
 
-      await switchToGridTab(page, box);
+      await switchToGridTab(page);
       await page.screenshot({ path: 'test-results/spinctrl-01-visible.png', fullPage: true });
 
       // SpinCtrl should be visible - check for its box and arrows in the canvas
@@ -225,10 +227,11 @@ test.describe('Grid Tab Tests', () => {
 
       const box = await getCanvasBox(page);
 
-      await switchToGridTab(page, box);
+      await switchToGridTab(page);
 
-      // Click up arrow on SpinCtrl
-      await page.mouse.click(box.x + 220, box.y + 350);
+      // Click up arrow on SpinCtrl using element tracking
+      const spinClicked = await clickSpinUp(page);
+      expect(spinClicked, 'Should be able to click spin up button').toBe(true);
       await page.waitForTimeout(200);
 
       await page.screenshot({ path: 'test-results/spinctrl-02-after-click.png', fullPage: true });
@@ -250,7 +253,7 @@ test.describe('Grid Tab Tests', () => {
 
       const box = await getCanvasBox(page);
 
-      await switchToGridTab(page, box);
+      await switchToGridTab(page);
       await page.screenshot({ path: 'test-results/searchctrl-01-visible.png', fullPage: true });
 
       // SearchCtrl should be visible - check for its text field and buttons
@@ -287,10 +290,11 @@ test.describe('Grid Tab Tests', () => {
 
       const box = await getCanvasBox(page);
 
-      await switchToGridTab(page, box);
+      await switchToGridTab(page);
 
-      // Click on SearchCtrl text field (center of the control)
-      await page.mouse.click(box.x + 420, box.y + 350);
+      // Click on SearchCtrl text field using element tracking
+      const searchClicked = await clickSearchCtrl(page);
+      expect(searchClicked, 'Should be able to click SearchCtrl text field').toBe(true);
       await page.waitForTimeout(200);
 
       // Type search text
@@ -320,7 +324,7 @@ test.describe('Grid Tab Tests', () => {
 
     const box = await getCanvasBox(page);
 
-    await switchToGridTab(page, box);
+    await switchToGridTab(page);
     await page.screenshot({ path: 'test-results/grid-tab-final.png', fullPage: true });
 
     // Verify app is still responsive after switching to Grid tab

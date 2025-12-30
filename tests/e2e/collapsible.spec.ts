@@ -1,5 +1,6 @@
 // wxCollapsiblePane Tests - Collapsible sections for property panels
 import { test, expect, tryLoadApp } from './utils/fixtures';
+import { clickByLabel } from './utils/element-tracker';
 
 test.describe('wxCollapsiblePane Tests', () => {
 
@@ -55,15 +56,9 @@ test.describe('wxCollapsiblePane Tests', () => {
       return;
     }
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (!box) {
-      test.skip();
-      return;
-    }
-
-    // Click Expand All button (approximate position)
-    await page.mouse.click(box.x + 150, box.y + 100);
+    // Click Expand All button using element registry
+    const clicked = await clickByLabel(page, 'Expand All');
+    expect(clicked, 'Expand All button should be found and clicked').toBe(true);
     await page.waitForTimeout(300);
 
     await page.screenshot({ path: 'test-results/collapsible-04-expand-all.png', fullPage: true });
@@ -82,15 +77,9 @@ test.describe('wxCollapsiblePane Tests', () => {
       return;
     }
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (!box) {
-      test.skip();
-      return;
-    }
-
-    // Click Collapse All button (approximate position, second button)
-    await page.mouse.click(box.x + 300, box.y + 100);
+    // Click Collapse All button using element registry
+    const clicked = await clickByLabel(page, 'Collapse All');
+    expect(clicked, 'Collapse All button should be found and clicked').toBe(true);
     await page.waitForTimeout(300);
 
     await page.screenshot({ path: 'test-results/collapsible-05-collapse-all.png', fullPage: true });

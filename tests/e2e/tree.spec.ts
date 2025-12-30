@@ -1,4 +1,5 @@
 import { test, expect } from './utils/fixtures';
+import { clickByLabel, clickTreeItem, findAllTreeItems } from './utils/element-tracker';
 
 test.describe('wxTreeCtrl Tests', () => {
   test.beforeEach(async ({ page }) => {
@@ -38,9 +39,8 @@ test.describe('wxTreeCtrl Tests', () => {
     // If no console logs captured during init, verify tree exists by checking
     // that subsequent tree operations work (expand events prove tree is populated)
     if (!hasPopulatedLog) {
-      // Click expand all to verify tree is actually populated
-      const canvas = page.locator('canvas');
-      await canvas.click({ position: { x: 455, y: 90 } });
+      // Click Expand All button to verify tree is actually populated
+      await clickByLabel(page, 'Expand All');
       await page.waitForTimeout(500);
 
       const hasExpandEvent = testLogger.consoleLogs.some(log =>
@@ -55,10 +55,9 @@ test.describe('wxTreeCtrl Tests', () => {
   test('Tree item can be selected', async ({ page, testLogger }) => {
     await page.waitForTimeout(500);
 
-    const canvas = page.locator('canvas');
-
-    // Click on a tree item (approximate position)
-    await canvas.click({ position: { x: 100, y: 180 } });
+    // Click on a tree item using element registry
+    const clicked = await clickTreeItem(page, 'Schematic');
+    expect(clicked).toBe(true);
     await page.waitForTimeout(300);
 
     await page.screenshot({ path: 'test-results/tree-03-selected.png' });
@@ -71,10 +70,8 @@ test.describe('wxTreeCtrl Tests', () => {
   test('Expand All button works', async ({ page, testLogger }) => {
     await page.waitForTimeout(500);
 
-    const canvas = page.locator('canvas');
-
-    // Click Expand All button (buttons are centered, at approximately y=90)
-    await canvas.click({ position: { x: 455, y: 90 } });
+    // Click Expand All button using element registry
+    await clickByLabel(page, 'Expand All');
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/tree-04-expanded.png' });
@@ -88,10 +85,8 @@ test.describe('wxTreeCtrl Tests', () => {
   test('Collapse All button works', async ({ page, testLogger }) => {
     await page.waitForTimeout(500);
 
-    const canvas = page.locator('canvas');
-
-    // Click Collapse All button (buttons are centered, at approximately y=90)
-    await canvas.click({ position: { x: 545, y: 90 } });
+    // Click Collapse All button using element registry
+    await clickByLabel(page, 'Collapse All');
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/tree-05-collapsed.png' });
@@ -105,14 +100,13 @@ test.describe('wxTreeCtrl Tests', () => {
   test('Add Item button works with selection', async ({ page, testLogger }) => {
     await page.waitForTimeout(500);
 
-    const canvas = page.locator('canvas');
-
-    // First select an item (tree starts around y=120)
-    await canvas.click({ position: { x: 100, y: 140 } });
+    // First select an item using element registry
+    const clicked = await clickTreeItem(page, 'Schematic');
+    expect(clicked).toBe(true);
     await page.waitForTimeout(300);
 
-    // Click Add Item button (buttons are centered, at approximately y=90)
-    await canvas.click({ position: { x: 680, y: 90 } });
+    // Click Add Item button using element registry
+    await clickByLabel(page, 'Add Item');
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/tree-06-added.png' });
@@ -126,14 +120,13 @@ test.describe('wxTreeCtrl Tests', () => {
   test('Delete Item button works with selection', async ({ page, testLogger }) => {
     await page.waitForTimeout(500);
 
-    const canvas = page.locator('canvas');
-
-    // First select an item (not root) - select "Schematic" which is around y=145
-    await canvas.click({ position: { x: 80, y: 145 } });
+    // First select an item (not root) using element registry
+    const clicked = await clickTreeItem(page, 'Libraries');
+    expect(clicked).toBe(true);
     await page.waitForTimeout(300);
 
-    // Click Delete Selected button (buttons are centered, at approximately y=90)
-    await canvas.click({ position: { x: 780, y: 90 } });
+    // Click Delete Selected button using element registry
+    await clickByLabel(page, 'Delete Selected');
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/tree-07-deleted.png' });

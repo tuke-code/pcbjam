@@ -1,5 +1,6 @@
 // wxBitmapButton Tests - Bitmap buttons, toggle buttons, disabled states
 import { test, expect, tryLoadApp } from './utils/fixtures';
+import { clickByLabel } from './utils/element-tracker';
 
 test.describe('wxBitmapButton Tests', () => {
 
@@ -23,16 +24,12 @@ test.describe('wxBitmapButton Tests', () => {
 
     await page.waitForTimeout(300);
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // Click Select tool button
-      await page.mouse.click(box.x + 50, box.y + 100);
-      await page.waitForTimeout(100);
-      // Click Line tool button
-      await page.mouse.click(box.x + 90, box.y + 100);
-      await page.waitForTimeout(100);
-    }
+    // Click Select tool button using element registry
+    await clickByLabel(page, 'Select Tool');
+    await page.waitForTimeout(100);
+    // Click Line tool button
+    await clickByLabel(page, 'Line Tool');
+    await page.waitForTimeout(100);
 
     await page.screenshot({ path: 'test-results/bitmapbuttons-02-toolbar-click.png', fullPage: true });
   });
@@ -47,13 +44,9 @@ test.describe('wxBitmapButton Tests', () => {
 
     await page.waitForTimeout(300);
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // Click F.Cu toggle button to turn it off
-      await page.mouse.click(box.x + 50, box.y + 170);
-      await page.waitForTimeout(200);
-    }
+    // Click F.Cu checkbox to toggle it using element registry
+    await clickByLabel(page, 'F.Cu');
+    await page.waitForTimeout(200);
 
     await page.screenshot({ path: 'test-results/bitmapbuttons-03-toggle.png', fullPage: true });
   });
@@ -68,17 +61,11 @@ test.describe('wxBitmapButton Tests', () => {
 
     await page.waitForTimeout(300);
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // Toggle multiple layer buttons
-      await page.mouse.click(box.x + 50, box.y + 170);
-      await page.waitForTimeout(100);
-      await page.mouse.click(box.x + 120, box.y + 170);
-      await page.waitForTimeout(100);
-      await page.mouse.click(box.x + 190, box.y + 170);
-      await page.waitForTimeout(200);
-    }
+    // Toggle multiple layer checkboxes using element registry
+    await clickByLabel(page, 'F.Cu');
+    await page.waitForTimeout(100);
+    await clickByLabel(page, 'B.Cu');
+    await page.waitForTimeout(200);
 
     await page.screenshot({ path: 'test-results/bitmapbuttons-04-multi-toggle.png', fullPage: true });
   });
@@ -93,13 +80,9 @@ test.describe('wxBitmapButton Tests', () => {
 
     await page.waitForTimeout(300);
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // Click Toggle Enable State button
-      await page.mouse.click(box.x + 400, box.y + 240);
-      await page.waitForTimeout(200);
-    }
+    // Click Toggle Enable State button using element registry
+    await clickByLabel(page, 'Toggle Enable State');
+    await page.waitForTimeout(200);
 
     await page.screenshot({ path: 'test-results/bitmapbuttons-05-enable-toggle.png', fullPage: true });
   });
@@ -114,17 +97,13 @@ test.describe('wxBitmapButton Tests', () => {
 
     await page.waitForTimeout(300);
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // Click different shape buttons
-      await page.mouse.click(box.x + 50, box.y + 310);
-      await page.waitForTimeout(100);
-      await page.mouse.click(box.x + 100, box.y + 310);
-      await page.waitForTimeout(100);
-      await page.mouse.click(box.x + 150, box.y + 310);
-      await page.waitForTimeout(200);
-    }
+    // Click different shape buttons using element registry (by tooltip)
+    await clickByLabel(page, 'Rectangle');
+    await page.waitForTimeout(100);
+    await clickByLabel(page, 'Circle');
+    await page.waitForTimeout(100);
+    await clickByLabel(page, 'Triangle');
+    await page.waitForTimeout(200);
 
     await page.screenshot({ path: 'test-results/bitmapbuttons-06-shapes.png', fullPage: true });
   });
@@ -139,15 +118,11 @@ test.describe('wxBitmapButton Tests', () => {
 
     await page.waitForTimeout(300);
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // Click New, Open, Save buttons
-      await page.mouse.click(box.x + 50, box.y + 380);
-      await page.waitForTimeout(100);
-      await page.mouse.click(box.x + 90, box.y + 380);
-      await page.waitForTimeout(200);
-    }
+    // Click New, Open buttons using element registry (by tooltip)
+    await clickByLabel(page, 'New');
+    await page.waitForTimeout(100);
+    await clickByLabel(page, 'Open');
+    await page.waitForTimeout(200);
 
     await page.screenshot({ path: 'test-results/bitmapbuttons-07-artprovider.png', fullPage: true });
   });

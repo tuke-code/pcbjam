@@ -1,4 +1,5 @@
 import { test, expect } from './utils/fixtures';
+import { clickTab, clickByLabel, clickDataViewItem, clickDataViewItemByIndex, clickColumnHeader, clickColumnHeaderByIndex } from './utils/element-tracker';
 
 /**
  * wxDataViewCtrl Tests
@@ -48,10 +49,9 @@ test.describe('wxDataViewCtrl Tests', () => {
   test('List item can be selected', async ({ page, testLogger }) => {
     await page.waitForTimeout(500);
 
-    const canvas = page.locator('canvas');
-
-    // Click on first list item (data rows start at y≈210)
-    await canvas.click({ position: { x: 200, y: 215 } });
+    // Click on first list item using element registry
+    const clicked = await clickDataViewItem(page, 'Zone_GND_Top');
+    expect(clicked).toBe(true);
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/dataview-03-list-selected.png' });
@@ -65,10 +65,8 @@ test.describe('wxDataViewCtrl Tests', () => {
   test('Add Item button works for list', async ({ page, testLogger }) => {
     await page.waitForTimeout(500);
 
-    const canvas = page.locator('canvas');
-
-    // Click Add Item button (x≈502, y≈135)
-    await canvas.click({ position: { x: 502, y: 135 } });
+    // Click Add Item button using element registry
+    await clickByLabel(page, 'Add Item');
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/dataview-04-list-add.png' });
@@ -82,10 +80,8 @@ test.describe('wxDataViewCtrl Tests', () => {
   test('Switch to Tree View tab', async ({ page, testLogger }) => {
     await page.waitForTimeout(500);
 
-    const canvas = page.locator('canvas');
-
-    // Click on Tree View tab (x≈105, y≈105)
-    await canvas.click({ position: { x: 105, y: 105 } });
+    // Click on Tree View tab using element registry
+    await clickTab(page, 'Tree View');
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/dataview-05-tree-tab.png' });
@@ -99,14 +95,13 @@ test.describe('wxDataViewCtrl Tests', () => {
   test('Tree item can be selected', async ({ page, testLogger }) => {
     await page.waitForTimeout(500);
 
-    const canvas = page.locator('canvas');
-
-    // Switch to tree tab first (x≈105, y≈105)
-    await canvas.click({ position: { x: 105, y: 105 } });
+    // Switch to tree tab first using element registry
+    await clickTab(page, 'Tree View');
     await page.waitForTimeout(500);
 
-    // Click on a tree item (tree content area starts around y≈200)
-    await canvas.click({ position: { x: 150, y: 220 } });
+    // Click on a tree item using element registry
+    const clicked = await clickDataViewItem(page, 'Libraries');
+    expect(clicked, 'Should be able to click Libraries tree item').toBe(true);
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/dataview-06-tree-selected.png' });
@@ -119,14 +114,12 @@ test.describe('wxDataViewCtrl Tests', () => {
   test('Expand All button works for tree', async ({ page, testLogger }) => {
     await page.waitForTimeout(500);
 
-    const canvas = page.locator('canvas');
-
-    // Switch to tree tab (x≈105, y≈105)
-    await canvas.click({ position: { x: 105, y: 105 } });
+    // Switch to tree tab using element registry
+    await clickTab(page, 'Tree View');
     await page.waitForTimeout(500);
 
-    // Click Expand All button (x≈488, y≈136 from button-finder)
-    await canvas.click({ position: { x: 488, y: 136 } });
+    // Click Expand All button using element registry
+    await clickByLabel(page, 'Expand All');
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/dataview-07-tree-expanded.png' });
@@ -140,14 +133,12 @@ test.describe('wxDataViewCtrl Tests', () => {
   test('Collapse All button works for tree', async ({ page, testLogger }) => {
     await page.waitForTimeout(500);
 
-    const canvas = page.locator('canvas');
-
-    // Switch to tree tab (x≈105, y≈105)
-    await canvas.click({ position: { x: 105, y: 105 } });
+    // Switch to tree tab using element registry
+    await clickTab(page, 'Tree View');
     await page.waitForTimeout(500);
 
-    // Click Collapse All button (x≈600, y≈136 from button-finder)
-    await canvas.click({ position: { x: 600, y: 136 } });
+    // Click Collapse All button using element registry
+    await clickByLabel(page, 'Collapse All');
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/dataview-08-tree-collapsed.png' });
@@ -161,10 +152,9 @@ test.describe('wxDataViewCtrl Tests', () => {
   test('Column header click works for list', async ({ page, testLogger }) => {
     await page.waitForTimeout(500);
 
-    const canvas = page.locator('canvas');
-
-    // Click on Zone Name column header (y≈178)
-    await canvas.click({ position: { x: 80, y: 178 } });
+    // Click on Zone Name column header using element registry
+    const clicked = await clickColumnHeader(page, 'Zone Name');
+    expect(clicked, 'Should be able to click Zone Name column header').toBe(true);
     await page.waitForTimeout(500);
 
     await page.screenshot({ path: 'test-results/dataview-09-column-click.png' });

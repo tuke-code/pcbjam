@@ -1,5 +1,6 @@
 // wxDataViewCtrl Virtual Mode Tests - Zone Manager/Net Inspector simulation
 import { test, expect, tryLoadApp } from './utils/fixtures';
+import { clickByLabel, findAllRenderedByLabel, clickDataViewItemByIndex, clickDataViewItem } from './utils/element-tracker';
 
 test.describe('wxDataViewCtrl Virtual Mode Tests', () => {
 
@@ -23,14 +24,10 @@ test.describe('wxDataViewCtrl Virtual Mode Tests', () => {
 
     await page.waitForTimeout(500);
 
-    // Click 10,000 button to test large dataset
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // Click where the 10,000 button should be
-      await page.mouse.click(box.x + 200, box.y + 60);
-      await page.waitForTimeout(200);
-    }
+    // Click 10,000 button to test large dataset using element registry
+    const clicked = await clickByLabel(page, '10,000');
+    expect(clicked, '10,000 button should be found').toBe(true);
+    await page.waitForTimeout(200);
 
     await page.screenshot({ path: 'test-results/dataviewvirtual-02-large-dataset.png', fullPage: true });
 
@@ -50,13 +47,10 @@ test.describe('wxDataViewCtrl Virtual Mode Tests', () => {
 
     await page.waitForTimeout(300);
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // Click Middle button
-      await page.mouse.click(box.x + 340, box.y + 60);
-      await page.waitForTimeout(200);
-    }
+    // Click Middle button using element registry
+    const clicked = await clickByLabel(page, 'Middle');
+    expect(clicked, 'Middle button should be found').toBe(true);
+    await page.waitForTimeout(200);
 
     await page.screenshot({ path: 'test-results/dataviewvirtual-03-scroll.png', fullPage: true });
   });
@@ -71,13 +65,11 @@ test.describe('wxDataViewCtrl Virtual Mode Tests', () => {
 
     await page.waitForTimeout(300);
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // Click on an item in the list
-      await page.mouse.click(box.x + 200, box.y + 200);
-      await page.waitForTimeout(200);
-    }
+    // Click on an item in the list using element registry
+    // Virtual list items have labels like "NET_00000", "NET_00001", etc.
+    const clicked = await clickDataViewItemByIndex(page, 0);
+    expect(clicked).toBe(true);
+    await page.waitForTimeout(200);
 
     await page.screenshot({ path: 'test-results/dataviewvirtual-04-selection.png', fullPage: true });
   });
@@ -92,13 +84,11 @@ test.describe('wxDataViewCtrl Virtual Mode Tests', () => {
 
     await page.waitForTimeout(300);
 
-    const canvas = page.locator('#canvas');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // Click in zone manager panel (right side)
-      await page.mouse.click(box.x + 700, box.y + 200);
-      await page.waitForTimeout(200);
-    }
+    // Click in zone manager panel using element registry
+    // Zone items have labels like "Zone_000", "Zone_001", etc.
+    const clicked = await clickDataViewItem(page, 'Zone_000');
+    expect(clicked).toBe(true);
+    await page.waitForTimeout(200);
 
     await page.screenshot({ path: 'test-results/dataviewvirtual-05-zone-manager.png', fullPage: true });
   });

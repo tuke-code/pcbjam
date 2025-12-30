@@ -1,20 +1,32 @@
 import { test, expect, MAIN_CANVAS, waitForApp, getCanvasBox } from './utils/fixtures';
+import { clickTab, clickByLabel, findByLabel, clickListItem } from './utils/element-tracker';
 
-async function switchToOpenGLTab(page: any, box: { x: number; y: number }) {
-  // Click OpenGL tab (fifth tab, around x=280)
-  await page.mouse.click(box.x + 280, box.y + 35);
+async function switchToOpenGLTab(page: any) {
+  // Click OpenGL tab using element registry
+  const clicked = await clickTab(page, 'OpenGL');
+  if (!clicked) {
+    // Fallback: try clicking by label
+    await clickByLabel(page, 'OpenGL');
+  }
   await page.waitForTimeout(1000);
 }
 
-// Open the test dropdown and select by index (0-based)
-async function selectGLTest(page: any, box: { x: number; y: number }, index: number) {
-  // Click the dropdown arrow to open it
-  await page.mouse.click(box.x + 290, box.y + 155);
+// Open the test dropdown and select by name
+async function selectGLTest(page: any, testName: string) {
+  // Click the dropdown (it's a choice control with label "Select Test:")
+  const dropdownClicked = await clickByLabel(page, 'Select Test:');
+  if (!dropdownClicked) {
+    // Fallback: try finding by partial label
+    await clickByLabel(page, 'Immediate Mode'); // Click currently selected value
+  }
   await page.waitForTimeout(300);
 
-  // Each dropdown item is approximately 20px tall, starting below the dropdown
-  const itemY = 175 + (index * 20);
-  await page.mouse.click(box.x + 170, box.y + itemY);
+  // Click the test item in the dropdown list
+  const itemClicked = await clickListItem(page, testName);
+  if (!itemClicked) {
+    // Fallback: try by label
+    await clickByLabel(page, testName);
+  }
   await page.waitForTimeout(500);
 }
 
@@ -23,14 +35,12 @@ test.describe('OpenGL Tests', () => {
     await page.goto('/minimal_test.html');
     await waitForApp(page);
 
-    const box = await getCanvasBox(page);
-
-    // Switch to OpenGL tab
-    await switchToOpenGLTab(page, box);
+    // Switch to OpenGL tab using element registry
+    await switchToOpenGLTab(page);
     await page.screenshot({ path: 'test-results/gl-01-opengl-tab.png', fullPage: true });
 
-    // Select "Vertex Arrays" test (index 2)
-    await selectGLTest(page, box, 2);
+    // Select "Vertex Arrays" test by name
+    await selectGLTest(page, 'Vertex Arrays');
 
     await page.screenshot({ path: 'test-results/gl-02-vertex-arrays-selected.png', fullPage: true });
 
@@ -50,9 +60,7 @@ test.describe('OpenGL Tests', () => {
     await page.goto('/minimal_test.html');
     await waitForApp(page);
 
-    const box = await getCanvasBox(page);
-
-    await switchToOpenGLTab(page, box);
+    await switchToOpenGLTab(page);
 
     const testNames = [
       'Immediate Mode',
@@ -64,7 +72,7 @@ test.describe('OpenGL Tests', () => {
 
     for (let i = 0; i < testNames.length; i++) {
       try {
-        await selectGLTest(page, box, i);
+        await selectGLTest(page, testNames[i]);
         await page.screenshot({
           path: `test-results/gl-test-${i}-${testNames[i].replace(/\s+/g, '-').toLowerCase()}.png`,
           fullPage: true
@@ -84,12 +92,11 @@ test.describe('OpenGL Tests', () => {
     await page.goto('/minimal_test.html');
     await waitForApp(page);
 
-    const box = await getCanvasBox(page);
+    await switchToOpenGLTab(page);
 
-    await switchToOpenGLTab(page, box);
-
-    // Click "Run All Tests" button (approximately x=360, y=90)
-    await page.mouse.click(box.x + 360, box.y + 90);
+    // Click "Run All Tests" button using element registry
+    const clicked = await clickByLabel(page, 'Run All Tests');
+    expect(clicked, 'Run All Tests button should be found and clicked').toBe(true);
     await page.waitForTimeout(2000);
 
     await page.screenshot({ path: 'test-results/gl-run-all-tests.png', fullPage: true });
