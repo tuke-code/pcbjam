@@ -1,5 +1,8 @@
 #!/bin/bash
 # Build KiCad WASM inside Docker container, then apply asyncify on host
+
+# Redirect all output to a log file (re-execs script with redirection)
+source "$(dirname "$0")/../scripts/common/logging.sh"
 #
 # The build is split into two phases:
 # 1. Docker: Compile KiCad to WASM (without asyncify)

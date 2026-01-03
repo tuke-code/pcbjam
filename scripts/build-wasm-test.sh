@@ -1,5 +1,8 @@
 #!/bin/bash
 # Build the wxWidgets WASM test applications
+
+# Redirect all output to a log file (re-execs script with redirection)
+source "$(dirname "$0")/common/logging.sh"
 # This script creates library symlinks and builds the test apps
 #
 # Usage:

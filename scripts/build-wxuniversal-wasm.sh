@@ -1,5 +1,8 @@
 #!/bin/bash
 # Build wxWidgets with wxUniversal for WebAssembly
+
+# Redirect all output to a log file (re-execs script with redirection)
+source "$(dirname "$0")/common/logging.sh"
 # This builds the GUI-enabled wxWidgets needed for KiCad
 #
 # Prerequisites:
