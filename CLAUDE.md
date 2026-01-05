@@ -14,6 +14,8 @@ Always check screenshots for validating tests
 Build wxwidgets with scripts/build-wxuniversal-wasm.sh
 Build kicad with docker/build.sh
 Build CPP wxwidgets tests with scripts/builds-wasm-test.sh
+The build scripts pipe their outputs into log files so that they won't clog the LLM context. 
+Don't pipe outputs, just run the scripts. Maybe with flex if you need that.
 
 Don't change the wxwidgets core unless absolutely necessary, try to fix things in the wasm layer.
 Don't change kicad unless absolutely necessary - keep our fork as close to upstream as possible.

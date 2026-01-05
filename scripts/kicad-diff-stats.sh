@@ -1,8 +1,10 @@
 #!/bin/bash
-# Show diff statistics between current KiCad HEAD and last upstream commit
+# Show diff statistics between current KiCad working tree and last upstream commit
 #
 # This helps track how far our KiCad fork has diverged from upstream.
 # We want to keep changes minimal to ease future porting.
+#
+# Note: Compares working tree (including uncommitted changes) vs upstream
 
 set -e
 
@@ -81,19 +83,19 @@ OUR_COMMIT_COUNT=$(git rev-list --count "$UPSTREAM_COMMIT"..HEAD)
 echo "Our commits on top of upstream: $OUR_COMMIT_COUNT" | tee -a "$LOG_FILE"
 echo "" | tee -a "$LOG_FILE"
 
-# Get diff statistics
+# Get diff statistics (comparing working tree to upstream)
 echo "=== Diff Statistics ===" | tee -a "$LOG_FILE"
 echo "" | tee -a "$LOG_FILE"
 
-# Overall stats
-DIFF_STAT=$(git diff --stat "$UPSTREAM_COMMIT"..HEAD)
-DIFF_SHORTSTAT=$(git diff --shortstat "$UPSTREAM_COMMIT"..HEAD)
+# Overall stats - compare working tree to upstream (not HEAD)
+DIFF_STAT=$(git diff --stat "$UPSTREAM_COMMIT")
+DIFF_SHORTSTAT=$(git diff --shortstat "$UPSTREAM_COMMIT")
 
 echo "Summary: $DIFF_SHORTSTAT" | tee -a "$LOG_FILE"
 echo "" | tee -a "$LOG_FILE"
 
 # Detailed breakdown
-DIFF_NUMSTAT=$(git diff --numstat "$UPSTREAM_COMMIT"..HEAD)
+DIFF_NUMSTAT=$(git diff --numstat "$UPSTREAM_COMMIT")
 
 # Count files by type
 TOTAL_FILES=0
@@ -155,8 +157,8 @@ echo "" | tee -a "$LOG_FILE"
 echo "=== Changed Files ===" | tee -a "$LOG_FILE"
 echo "" | tee -a "$LOG_FILE"
 
-# Get list with change type
-git diff --name-status "$UPSTREAM_COMMIT"..HEAD | while IFS=$'\t' read -r status filename; do
+# Get list with change type (working tree vs upstream)
+git diff --name-status "$UPSTREAM_COMMIT" | while IFS=$'\t' read -r status filename; do
     case "$status" in
         A) status_text="[ADDED]    " ;;
         M) status_text="[MODIFIED] " ;;

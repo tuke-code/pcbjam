@@ -254,6 +254,7 @@ emcmake cmake "${KICAD_DIR}" \
     -DZSTD_INCLUDE_DIR="${SYSROOT}/include" \
     -DZSTD_LIBRARY="${SYSROOT}/lib/libzstd.a" \
     -DGLM_INCLUDE_DIR="${SYSROOT}/include" \
+    -DGLM_VERSION="0.9.9.8" \
     -DBOOST_ROOT="${SYSROOT}" \
     -DBoost_INCLUDE_DIR="${SYSROOT}/include" \
     -DBoost_LIBRARY_DIR="${SYSROOT}/lib" \
