@@ -1,4 +1,5 @@
 The goal is to build kicad with wasm and run it in a browser
+README.md details how to run the project
 
 A lot of native module have to be compiled to wasm, the most complex is wxwidgets
 /kicad and /wxwidgets are git submodules from our own forks
