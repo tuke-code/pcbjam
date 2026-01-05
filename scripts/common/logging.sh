@@ -27,7 +27,7 @@ _SCRIPT_NAME="$(basename "${_CALLER_SCRIPT}" .sh)"
 
 # Find project root (walk up looking for .git)
 _PROJECT_ROOT="${_CALLER_DIR}"
-while [[ ! -d "${_PROJECT_ROOT}/.git" ]] && [[ "${_PROJECT_ROOT}" != "/" ]]; do
+while [[ ! -e "${_PROJECT_ROOT}/.git" ]] && [[ "${_PROJECT_ROOT}" != "/" ]]; do
     _PROJECT_ROOT="$(dirname "${_PROJECT_ROOT}")"
 done
 
