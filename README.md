@@ -62,6 +62,16 @@ kicad-wasm/
 └── output/                 # Build output (pcbnew.js, pcbnew.wasm)
 ```
 
+## Feature Branches
+
+Each feature branch has a folder in `features/<branch-name>/` containing:
+- Documentation and research notes
+- `root.patch` - changes to main repo
+- `kicad.patch` - changes to KiCad fork
+- `wxwidgets.patch` - changes to wxWidgets fork
+
+Generate patches: `./scripts/create-feature-patches.sh [branch-name]`
+
 ## Two Build Workflows
 
 ### 1. KiCad Build (Docker)

@@ -23,3 +23,5 @@ Run scripts/kicad-diff-stats.sh to see how far our KiCad fork has diverged from 
 It's okay to add temporary logging that will be removed for debugging.
 
 Don't try to guess what's broken , use debug tools / symbols, supported by the build scripts
+
+Feature docs/patches are in features/<branch-name>/. Run scripts/create-feature-patches.sh to save patches for root, kicad, wxwidgets submodules.
