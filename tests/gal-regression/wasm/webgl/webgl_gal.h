@@ -386,6 +386,10 @@ private:
     GLint                   ufm_minLinePixelWidth;
     GLint                   ufm_fontTexture;
     GLint                   ufm_fontTextureWidth;
+    GLint                   ufm_modelViewProjectionMatrix;  ///< MVP matrix uniform location
+
+    /// Current model-view-projection matrix (column-major for OpenGL)
+    float                   m_mvpMatrix[16];
 
     /// wx cursor showing the current native cursor.
     WX_CURSOR_TYPE          m_currentwxCursor;

@@ -68,12 +68,11 @@ BASE_LDFLAGS = -sALLOW_MEMORY_GROWTH=1 \
                -sEXPORT_NAME='createGALTest' \
                -sENVIRONMENT=web
 
-# GL-specific flags - LEGACY_GL_EMULATION handles legacy GL calls (glBegin/glEnd)
-# WebGL 2.0 for modern shader support
-EM_GL_FLAGS = -sLEGACY_GL_EMULATION=1 -sMAX_WEBGL_VERSION=2
-GL_SHIM = $(PROJECT_ROOT)/wasm/shims/gl_immediate_shim.js
+# GL-specific flags - WebGL 2.0 with full ES3 support
+# No LEGACY_GL_EMULATION - WEBGL_GAL uses VBOs and custom shaders
+EM_GL_FLAGS = -sFULL_ES3=1 -sMAX_WEBGL_VERSION=2
 
-LDFLAGS = $(DEBUG_LDFLAGS) $(BASE_LDFLAGS) $(EM_GL_FLAGS) --js-library=$(GL_SHIM) $(WX_LDFLAGS)
+LDFLAGS = $(DEBUG_LDFLAGS) $(BASE_LDFLAGS) $(EM_GL_FLAGS) $(WX_LDFLAGS)
 
 # Templates
 JS = $(TOOLS_ROOT)/wx.js
@@ -117,6 +116,7 @@ WEBGL_SRCS = webgl/webgl_gal.cpp \
              webgl/cached_container_ram.cpp \
              webgl/shader.cpp \
              webgl/webgl_compositor.cpp \
+             webgl/fullscreen_quad.cpp \
              webgl/utils.cpp \
              webgl/gl_context_mgr.cpp \
              webgl/gl_resources.cpp \

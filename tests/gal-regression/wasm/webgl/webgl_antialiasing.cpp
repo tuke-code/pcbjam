@@ -23,6 +23,7 @@
 
 #include "webgl_antialiasing.h"
 #include "webgl_compositor.h"
+#include "fullscreen_quad.h"
 #include "utils.h"
 #include <gal/color4d.h>
 
@@ -99,33 +100,8 @@ namespace
 {
 void draw_fullscreen_primitive()
 {
-    glMatrixMode( GL_MODELVIEW );
-    glPushMatrix();
-    glLoadIdentity();
-    glMatrixMode( GL_PROJECTION );
-    glPushMatrix();
-    glLoadIdentity();
-
-
-    glBegin( GL_TRIANGLES );
-    glTexCoord2f( 0.0f, 1.0f );
-    glVertex2f( -1.0f, 1.0f );
-    glTexCoord2f( 0.0f, 0.0f );
-    glVertex2f( -1.0f, -1.0f );
-    glTexCoord2f( 1.0f, 1.0f );
-    glVertex2f( 1.0f, 1.0f );
-
-    glTexCoord2f( 1.0f, 1.0f );
-    glVertex2f( 1.0f, 1.0f );
-    glTexCoord2f( 0.0f, 0.0f );
-    glVertex2f( -1.0f, -1.0f );
-    glTexCoord2f( 1.0f, 0.0f );
-    glVertex2f( 1.0f, -1.0f );
-    glEnd();
-
-    glPopMatrix();
-    glMatrixMode( GL_MODELVIEW );
-    glPopMatrix();
+    // Use VBO-based fullscreen quad (replaces legacy immediate mode)
+    KIGFX::GetFullscreenQuad().Draw();
 }
 
 } // namespace
@@ -234,7 +210,7 @@ VECTOR2I ANTIALIASING_SMAA::GetInternalBufferSize()
 void ANTIALIASING_SMAA::loadShaders()
 {
     // Load constant textures
-    glEnable( GL_TEXTURE_2D );
+    // Note: GL_TEXTURE_2D enable not needed in WebGL 2.0
     glActiveTexture( GL_TEXTURE0 );
 
     glGenTextures( 1, &smaaAreaTex );
@@ -281,18 +257,25 @@ void ANTIALIASING_SMAA::loadShaders()
                      "#define SMAA_CORNER_ROUNDING 0\n";
     edge_detect_shader = BUILTIN_SHADERS::glsl_smaa_pass_1_frag_luma;
 
-    // set up shaders
+    // set up shaders - Use GLSL ES 3.00 for WebGL 2.0
     std::string vert_preamble( R"SHADER(
-#version 120
-#define SMAA_GLSL_2_1
+#version 300 es
+precision highp float;
+precision highp int;
+#define SMAA_GLSL_3
 #define SMAA_INCLUDE_VS 1
 #define SMAA_INCLUDE_PS 0
 uniform vec4 SMAA_RT_METRICS;
+in vec4 a_vertex;
+in vec4 a_texCoord0;
 )SHADER" );
 
     std::string frag_preamble( R"SHADER(
-#version 120
-#define SMAA_GLSL_2_1
+#version 300 es
+precision highp float;
+precision highp int;
+out vec4 fragColor;
+#define SMAA_GLSL_3
 #define SMAA_INCLUDE_VS 0
 #define SMAA_INCLUDE_PS 1
 uniform vec4 SMAA_RT_METRICS;
@@ -476,25 +459,8 @@ namespace
 {
 void draw_fullscreen_triangle()
 {
-    glMatrixMode( GL_MODELVIEW );
-    glPushMatrix();
-    glLoadIdentity();
-    glMatrixMode( GL_PROJECTION );
-    glPushMatrix();
-    glLoadIdentity();
-
-    glBegin( GL_TRIANGLES );
-    glTexCoord2f( 0.0f, 1.0f );
-    glVertex2f( -1.0f, 1.0f );
-    glTexCoord2f( 0.0f, -1.0f );
-    glVertex2f( -1.0f, -3.0f );
-    glTexCoord2f( 2.0f, 1.0f );
-    glVertex2f( 3.0f, 1.0f );
-    glEnd();
-
-    glPopMatrix();
-    glMatrixMode( GL_MODELVIEW );
-    glPopMatrix();
+    // Use VBO-based fullscreen triangle (replaces legacy immediate mode)
+    KIGFX::GetFullscreenQuad().DrawTriangle();
 }
 } // namespace
 
@@ -505,7 +471,7 @@ void ANTIALIASING_SMAA::Present()
 
     glDisable( GL_BLEND );
     glDisable( GL_DEPTH_TEST );
-    glEnable( GL_TEXTURE_2D );
+    // Note: GL_TEXTURE_2D enable not needed in WebGL 2.0
 
     //
     // pass 1: main-buffer -> smaaEdgesBuffer

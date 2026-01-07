@@ -232,6 +232,18 @@ public:
     }
 
     /**
+     * Multiply the current transformation matrix by the given matrix.
+     *
+     * It is the equivalent of the glMultMatrixf() function.
+     *
+     * @param aMatrix is a 4x4 transformation matrix to multiply.
+     */
+    inline void MultiplyMatrix( const glm::mat4& aMatrix )
+    {
+        m_transform = m_transform * aMatrix;
+    }
+
+    /**
      * Push the current transformation matrix stack.
      *
      * It is the equivalent of the glPushMatrix() function.

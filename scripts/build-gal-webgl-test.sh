@@ -61,6 +61,11 @@ fi
 # (Makefile only tracks object file dependencies, not linker flag changes)
 rm -f "$OUTPUT_DIR"/*.js "$OUTPUT_DIR"/*.wasm 2>/dev/null || true
 
+# Generate shaders (converts GLSL 1.20 to GLSL ES 3.00)
+echo ""
+echo "Generating WebGL shaders..."
+python3 generate_shaders.py
+
 echo ""
 echo "Building..."
 if [ "$DEBUG_BUILD" = "1" ]; then

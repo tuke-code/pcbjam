@@ -388,3 +388,7 @@ KICAD_SINGLETON::~KICAD_SINGLETON() {
     delete m_GLContextManager;
     m_GLContextManager = nullptr;
 }
+
+// Legacy GL stubs removed - all rendering now uses modern OpenGL ES 3.0
+// If you get linker errors about missing GL functions, the calling code needs
+// to be rewritten to use VBOs/shaders instead of immediate mode.

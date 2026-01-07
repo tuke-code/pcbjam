@@ -31,6 +31,7 @@
  */
 
 #include "webgl_compositor.h"
+#include "fullscreen_quad.h"
 #include "utils.h"
 
 #include <gal/color4d.h>
@@ -49,9 +50,59 @@ WEBGL_COMPOSITOR::WEBGL_COMPOSITOR() :
         m_mainFbo( 0 ),
         m_depthBuffer( 0 ),
         m_curFbo( DIRECT_RENDERING ),
-        m_currentAntialiasingMode( GAL_ANTIALIASING_MODE::AA_NONE )
+        m_currentAntialiasingMode( GAL_ANTIALIASING_MODE::AA_NONE ),
+        m_blitTexUniform( -1 )
 {
     m_antialiasing = std::make_unique<ANTIALIASING_NONE>( this );
+}
+
+
+void WEBGL_COMPOSITOR::initBlitShader()
+{
+    // Simple blit shader for texture compositing
+    // Replaces legacy fixed-function GL_MODULATE texturing
+
+    static const char* blitVertexShader =
+        "#version 300 es\n"
+        "precision highp float;\n"
+        "\n"
+        "in vec4 a_vertex;\n"
+        "in vec4 a_texCoord0;\n"
+        "\n"
+        "out vec2 v_texCoord;\n"
+        "\n"
+        "void main()\n"
+        "{\n"
+        "    gl_Position = a_vertex;\n"
+        "    v_texCoord = a_texCoord0.xy;\n"
+        "}\n";
+
+    static const char* blitFragmentShader =
+        "#version 300 es\n"
+        "precision highp float;\n"
+        "\n"
+        "uniform sampler2D u_texture;\n"
+        "\n"
+        "in vec2 v_texCoord;\n"
+        "out vec4 fragColor;\n"
+        "\n"
+        "void main()\n"
+        "{\n"
+        "    fragColor = texture( u_texture, v_texCoord );\n"
+        "}\n";
+
+    m_blitShader = std::make_unique<SHADER>();
+    m_blitShader->LoadShaderFromStrings( KIGFX::SHADER_TYPE_VERTEX, blitVertexShader );
+    m_blitShader->LoadShaderFromStrings( KIGFX::SHADER_TYPE_FRAGMENT, blitFragmentShader );
+    m_blitShader->Link();
+    checkGlError( "linking blit shader", __FILE__, __LINE__ );
+
+    m_blitTexUniform = m_blitShader->AddParameter( "u_texture" );
+    checkGlError( "getting blit texture uniform", __FILE__, __LINE__ );
+
+    m_blitShader->Use();
+    m_blitShader->SetParameter( m_blitTexUniform, 0 );  // Texture unit 0
+    m_blitShader->Deactivate();
 }
 
 
@@ -138,6 +189,12 @@ void WEBGL_COMPOSITOR::Initialize()
 
     m_initialized = true;
 
+    // Initialize blit shader for texture compositing
+    initBlitShader();
+
+    // Initialize fullscreen quad VBO
+    GetFullscreenQuad().Initialize();
+
     m_antialiasing->Init();
 }
 
@@ -194,7 +251,7 @@ unsigned int WEBGL_COMPOSITOR::CreateBuffer( VECTOR2I aDimensions )
     checkGlError( "binding framebuffer texture target", __FILE__, __LINE__ );
 
     // Set texture parameters
-    glTexEnvf( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE );
+    // Note: glTexEnvf is not available in WebGL 2.0, texturing mode is handled by shaders
     glTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA8, aDimensions.x, aDimensions.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr );
     checkGlError( "creating framebuffer texture", __FILE__, __LINE__ );
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST );
@@ -272,7 +329,9 @@ void WEBGL_COMPOSITOR::SetBuffer( unsigned int aBufferHandle )
     if( m_curFbo != DIRECT_RENDERING )
     {
         m_curBuffer = aBufferHandle - 1;
-        glDrawBuffer( m_buffers[m_curBuffer].attachmentPoint );
+        // WebGL 2.0/OpenGL ES 3.0: use glDrawBuffers instead of glDrawBuffer
+        GLenum drawBuffers[] = { m_buffers[m_curBuffer].attachmentPoint };
+        glDrawBuffers( 1, drawBuffers );
         checkGlError( "setting draw buffer", __FILE__, __LINE__ );
 
         glViewport( 0, 0, m_buffers[m_curBuffer].dimensions.x, m_buffers[m_curBuffer].dimensions.y );
@@ -327,37 +386,14 @@ void WEBGL_COMPOSITOR::DrawBuffer( unsigned int aSourceHandle, unsigned int aDes
     glDisable( GL_DEPTH_TEST );
     glBlendFunc( GL_ONE, GL_ONE_MINUS_SRC_ALPHA );
 
-    // Enable texturing and bind the main texture
-    glEnable( GL_TEXTURE_2D );
+    // Bind the source texture
+    glActiveTexture( GL_TEXTURE0 );
     glBindTexture( GL_TEXTURE_2D, m_buffers[aSourceHandle - 1].textureTarget );
 
-    // Draw a full screen quad with the texture
-    glMatrixMode( GL_MODELVIEW );
-    glPushMatrix();
-    glLoadIdentity();
-    glMatrixMode( GL_PROJECTION );
-    glPushMatrix();
-    glLoadIdentity();
-
-    glBegin( GL_TRIANGLES );
-    glTexCoord2f( 0.0f, 1.0f );
-    glVertex2f( -1.0f, 1.0f );
-    glTexCoord2f( 0.0f, 0.0f );
-    glVertex2f( -1.0f, -1.0f );
-    glTexCoord2f( 1.0f, 1.0f );
-    glVertex2f( 1.0f, 1.0f );
-
-    glTexCoord2f( 1.0f, 1.0f );
-    glVertex2f( 1.0f, 1.0f );
-    glTexCoord2f( 0.0f, 0.0f );
-    glVertex2f( -1.0f, -1.0f );
-    glTexCoord2f( 1.0f, 0.0f );
-    glVertex2f( 1.0f, -1.0f );
-    glEnd();
-
-    glPopMatrix();
-    glMatrixMode( GL_MODELVIEW );
-    glPopMatrix();
+    // Use blit shader and draw fullscreen quad
+    m_blitShader->Use();
+    GetFullscreenQuad().Draw();
+    m_blitShader->Deactivate();
 }
 
 

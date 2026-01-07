@@ -37,8 +37,11 @@
 
 #include <gal/compositor.h>
 #include "webgl_antialiasing.h"
+#include "fullscreen_quad.h"
+#include "shader.h"
 #include <gal/gal_display_options.h>
 #include <deque>
+#include <memory>
 
 namespace KIGFX
 {
@@ -133,6 +136,15 @@ protected:
 
     GAL_ANTIALIASING_MODE m_currentAntialiasingMode;
     std::unique_ptr<OPENGL_PRESENTOR> m_antialiasing;
+
+    // Blit shader for compositing (replacing legacy fixed-function pipeline)
+    std::unique_ptr<SHADER> m_blitShader;
+    int                     m_blitTexUniform;       ///< Location of texture uniform
+
+    /**
+     * Initialize the blit shader for texture compositing.
+     */
+    void initBlitShader();
 };
 } // namespace KIGFX
 

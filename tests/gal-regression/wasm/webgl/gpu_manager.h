@@ -93,6 +93,8 @@ protected:
 
     ///< Location of shader attributes (for glVertexAttribPointer)
     int m_shaderAttrib;
+    int m_vertexAttrib;   ///< Location of a_vertex attribute
+    int m_colorAttrib;    ///< Location of a_color attribute
 
     ///< true: enable Z test when drawing
     bool m_enableDepthTest;

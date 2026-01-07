@@ -172,6 +172,13 @@ void SHADER::SetParameter( int aParameterNumber, const VECTOR2D& aValue ) const
 }
 
 
+void SHADER::SetParameter( int aParameterNumber, const float* aMatrix4x4 ) const
+{
+    assert( (unsigned) aParameterNumber < parameterLocation.size() );
+    glUniformMatrix4fv( parameterLocation[aParameterNumber], 1, GL_FALSE, aMatrix4x4 );
+}
+
+
 int SHADER::GetAttribute( const std::string& aAttributeName ) const
 {
     return glGetAttribLocation( programNumber, aAttributeName.c_str() );

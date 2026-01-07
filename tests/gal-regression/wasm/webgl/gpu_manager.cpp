@@ -59,6 +59,8 @@ GPU_MANAGER::GPU_MANAGER( VERTEX_CONTAINER* aContainer ) :
         m_container( aContainer ),
         m_shader( nullptr ),
         m_shaderAttrib( 0 ),
+        m_vertexAttrib( 0 ),
+        m_colorAttrib( 0 ),
         m_enableDepthTest( true )
 {
 }
@@ -73,6 +75,8 @@ void GPU_MANAGER::SetShader( SHADER& aShader )
 {
     m_shader = &aShader;
     m_shaderAttrib = m_shader->GetAttribute( "a_shaderParams" );
+    m_vertexAttrib = m_shader->GetAttribute( "a_vertex" );
+    m_colorAttrib = m_shader->GetAttribute( "a_color" );
 
     if( m_shaderAttrib == -1 )
     {
@@ -159,14 +163,19 @@ void GPU_CACHED_MANAGER::EndDrawing()
     else
         glDisable( GL_DEPTH_TEST );
 
-    // Prepare buffers
-    glEnableClientState( GL_VERTEX_ARRAY );
-    glEnableClientState( GL_COLOR_ARRAY );
-
     // Bind vertices data buffers
     glBindBuffer( GL_ARRAY_BUFFER, cached->GetBufferHandle() );
-    glVertexPointer( COORD_STRIDE, GL_FLOAT, VERTEX_SIZE, (GLvoid*) COORD_OFFSET );
-    glColorPointer( COLOR_STRIDE, GL_UNSIGNED_BYTE, VERTEX_SIZE, (GLvoid*) COLOR_OFFSET );
+
+    // Modern vertex attributes (replacing legacy glEnableClientState/glVertexPointer/glColorPointer)
+    // Vertex position (a_vertex)
+    glEnableVertexAttribArray( m_vertexAttrib );
+    glVertexAttribPointer( m_vertexAttrib, COORD_STRIDE, GL_FLOAT, GL_FALSE, VERTEX_SIZE,
+                           (GLvoid*) COORD_OFFSET );
+
+    // Vertex color (a_color) - note: normalize=GL_TRUE for unsigned bytes to [0,1]
+    glEnableVertexAttribArray( m_colorAttrib );
+    glVertexAttribPointer( m_colorAttrib, COLOR_STRIDE, GL_UNSIGNED_BYTE, GL_TRUE, VERTEX_SIZE,
+                           (GLvoid*) COLOR_OFFSET );
 
     if( m_shader != nullptr ) // Use shader if applicable
     {
@@ -231,9 +240,9 @@ void GPU_CACHED_MANAGER::EndDrawing()
     glBindBuffer( GL_ARRAY_BUFFER, 0 );
     cached->ClearDirty();
 
-    // Deactivate vertex array
-    glDisableClientState( GL_COLOR_ARRAY );
-    glDisableClientState( GL_VERTEX_ARRAY );
+    // Deactivate vertex arrays (modern vertex attributes)
+    glDisableVertexAttribArray( m_colorAttrib );
+    glDisableVertexAttribArray( m_vertexAttrib );
 
     if( m_shader != nullptr )
     {
@@ -292,12 +301,16 @@ void GPU_NONCACHED_MANAGER::EndDrawing()
     else
         glDisable( GL_DEPTH_TEST );
 
-    // Prepare buffers
-    glEnableClientState( GL_VERTEX_ARRAY );
-    glEnableClientState( GL_COLOR_ARRAY );
+    // Modern vertex attributes (replacing legacy glEnableClientState/glVertexPointer/glColorPointer)
+    // Vertex position (a_vertex)
+    glEnableVertexAttribArray( m_vertexAttrib );
+    glVertexAttribPointer( m_vertexAttrib, COORD_STRIDE, GL_FLOAT, GL_FALSE, VERTEX_SIZE,
+                           coordinates );
 
-    glVertexPointer( COORD_STRIDE, GL_FLOAT, VERTEX_SIZE, coordinates );
-    glColorPointer( COLOR_STRIDE, GL_UNSIGNED_BYTE, VERTEX_SIZE, colors );
+    // Vertex color (a_color) - note: normalize=GL_TRUE for unsigned bytes to [0,1]
+    glEnableVertexAttribArray( m_colorAttrib );
+    glVertexAttribPointer( m_colorAttrib, COLOR_STRIDE, GL_UNSIGNED_BYTE, GL_TRUE, VERTEX_SIZE,
+                           colors );
 
     if( m_shader != nullptr ) // Use shader if applicable
     {
@@ -315,9 +328,9 @@ void GPU_NONCACHED_MANAGER::EndDrawing()
     wxLogTrace( traceGalProfile, wxT( "Noncached manager size: %d" ), m_container->GetSize() );
 #endif /* KICAD_GAL_PROFILE */
 
-    // Deactivate vertex array
-    glDisableClientState( GL_COLOR_ARRAY );
-    glDisableClientState( GL_VERTEX_ARRAY );
+    // Deactivate vertex arrays
+    glDisableVertexAttribArray( m_colorAttrib );
+    glDisableVertexAttribArray( m_vertexAttrib );
 
     if( m_shader != nullptr )
     {

@@ -69,6 +69,97 @@ using namespace KIGFX::BUILTIN_FONT;
 
 static void InitTesselatorCallbacks( GLUtesselator* aTesselator );
 
+//-----------------------------------------------------------------------------
+// Matrix math helpers for WebGL (replacing legacy glMatrixMode/glOrtho/etc.)
+//-----------------------------------------------------------------------------
+
+/**
+ * Compute orthographic projection matrix (column-major for OpenGL).
+ * Equivalent to glOrtho().
+ */
+static void computeOrthoMatrix( float* m, float left, float right,
+                                 float bottom, float top, float nearVal, float farVal )
+{
+    memset( m, 0, 16 * sizeof( float ) );
+    m[0]  = 2.0f / ( right - left );
+    m[5]  = 2.0f / ( top - bottom );
+    m[10] = -2.0f / ( farVal - nearVal );
+    m[12] = -( right + left ) / ( right - left );
+    m[13] = -( top + bottom ) / ( top - bottom );
+    m[14] = -( farVal + nearVal ) / ( farVal - nearVal );
+    m[15] = 1.0f;
+}
+
+/**
+ * Set matrix to identity (column-major).
+ */
+static void setIdentityMatrix( float* m )
+{
+    memset( m, 0, 16 * sizeof( float ) );
+    m[0] = m[5] = m[10] = m[15] = 1.0f;
+}
+
+/**
+ * Multiply two 4x4 matrices: result = a * b (column-major).
+ * result must not alias a or b.
+ */
+static void multiplyMatrix4x4( float* result, const float* a, const float* b )
+{
+    for( int col = 0; col < 4; col++ )
+    {
+        for( int row = 0; row < 4; row++ )
+        {
+            result[col * 4 + row] = 0.0f;
+            for( int k = 0; k < 4; k++ )
+            {
+                result[col * 4 + row] += a[k * 4 + row] * b[col * 4 + k];
+            }
+        }
+    }
+}
+
+/**
+ * Convert MATRIX3x3D (row-major 3x3) to float[16] (column-major 4x4).
+ * The 3x3 matrix is embedded in the upper-left of the 4x4 matrix,
+ * with the translation in column 3 (elements 12, 13).
+ */
+static void convertMatrix3x3ToFloat4x4( float* m, const MATRIX3x3D& src )
+{
+    // Column-major 4x4 from row-major 3x3:
+    // [ src[0][0]  src[0][1]  0  src[0][2] ]
+    // [ src[1][0]  src[1][1]  0  src[1][2] ]
+    // [ src[2][0]  src[2][1]  1  src[2][2] ]
+    // [ 0          0          0  1         ]
+    //
+    // In column-major storage:
+    // Column 0: m[0], m[1], m[2], m[3]
+    // Column 1: m[4], m[5], m[6], m[7]
+    // Column 2: m[8], m[9], m[10], m[11]
+    // Column 3: m[12], m[13], m[14], m[15]
+
+    m[0]  = static_cast<float>( src.m_data[0][0] );  // col 0, row 0
+    m[1]  = static_cast<float>( src.m_data[1][0] );  // col 0, row 1
+    m[2]  = static_cast<float>( src.m_data[2][0] );  // col 0, row 2
+    m[3]  = 0.0f;                                     // col 0, row 3
+
+    m[4]  = static_cast<float>( src.m_data[0][1] );  // col 1, row 0
+    m[5]  = static_cast<float>( src.m_data[1][1] );  // col 1, row 1
+    m[6]  = static_cast<float>( src.m_data[2][1] );  // col 1, row 2
+    m[7]  = 0.0f;                                     // col 1, row 3
+
+    m[8]  = 0.0f;                                     // col 2, row 0
+    m[9]  = 0.0f;                                     // col 2, row 1
+    m[10] = 1.0f;                                     // col 2, row 2
+    m[11] = 0.0f;                                     // col 2, row 3
+
+    m[12] = static_cast<float>( src.m_data[0][2] );  // col 3, row 0 (translation x)
+    m[13] = static_cast<float>( src.m_data[1][2] );  // col 3, row 1 (translation y)
+    m[14] = static_cast<float>( src.m_data[2][2] );  // col 3, row 2
+    m[15] = 1.0f;                                     // col 3, row 3
+}
+
+//-----------------------------------------------------------------------------
+
 static wxGLAttributes getGLAttribs()
 {
     wxGLAttributes attribs;
@@ -562,13 +653,12 @@ void WEBGL_GAL::BeginDrawing()
     if( !m_isInitialized )
         init();
 
-    // Set up the view port
-    glMatrixMode( GL_PROJECTION );
-    glLoadIdentity();
-
-    // Create the screen transformation (Do the RH-LH conversion here)
-    glOrtho( 0, (GLint) m_screenSize.x, (GLsizei) m_screenSize.y, 0,
-             -m_depthRange.x, -m_depthRange.y );
+    // Set up the projection matrix (replacing legacy glMatrixMode/glOrtho)
+    float projMatrix[16];
+    computeOrthoMatrix( projMatrix, 0.0f, static_cast<float>( m_screenSize.x ),
+                        static_cast<float>( m_screenSize.y ), 0.0f,
+                        static_cast<float>( -m_depthRange.x ),
+                        static_cast<float>( -m_depthRange.y ) );
 
     if( !m_isFramebufferInitialized )
     {
@@ -599,10 +689,7 @@ void WEBGL_GAL::BeginDrawing()
 
     m_compositor->Begin();
 
-    // Disable 2D Textures
-    glDisable( GL_TEXTURE_2D );
-
-    glShadeModel( GL_FLAT );
+    // Note: GL_TEXTURE_2D not used in WebGL 2.0, texturing controlled by shaders
 
     // Enable the depth buffer
     glEnable( GL_DEPTH_TEST );
@@ -612,21 +699,13 @@ void WEBGL_GAL::BeginDrawing()
     glEnable( GL_BLEND );
     glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
 
-    glMatrixMode( GL_MODELVIEW );
-
-    // Set up the world <-> screen transformation
+    // Set up the world <-> screen transformation (replacing legacy glMatrixMode/glLoadMatrixd)
     ComputeWorldScreenMatrix();
-    GLdouble matrixData[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
-    matrixData[0] = m_worldScreenMatrix.m_data[0][0];
-    matrixData[1] = m_worldScreenMatrix.m_data[1][0];
-    matrixData[2] = m_worldScreenMatrix.m_data[2][0];
-    matrixData[4] = m_worldScreenMatrix.m_data[0][1];
-    matrixData[5] = m_worldScreenMatrix.m_data[1][1];
-    matrixData[6] = m_worldScreenMatrix.m_data[2][1];
-    matrixData[12] = m_worldScreenMatrix.m_data[0][2];
-    matrixData[13] = m_worldScreenMatrix.m_data[1][2];
-    matrixData[14] = m_worldScreenMatrix.m_data[2][2];
-    glLoadMatrixd( matrixData );
+    float modelViewMatrix[16];
+    convertMatrix3x3ToFloat4x4( modelViewMatrix, m_worldScreenMatrix );
+
+    // Compute MVP matrix = projection * modelview
+    multiplyMatrix4x4( m_mvpMatrix, projMatrix, modelViewMatrix );
 
     // Set defaults
     SetFillColor( m_fillColor );
@@ -691,6 +770,7 @@ void WEBGL_GAL::BeginDrawing()
     renderingOffset.y *= screenPixelSize.y;
     m_shader->SetParameter( ufm_antialiasingOffset, renderingOffset );
     m_shader->SetParameter( ufm_minLinePixelWidth, GetMinLineWidth() );
+    m_shader->SetParameter( ufm_modelViewProjectionMatrix, m_mvpMatrix );
     m_shader->Deactivate();
 
     // Something between BeginDrawing and EndDrawing seems to depend on
@@ -754,8 +834,8 @@ void WEBGL_GAL::EndDrawing()
 
     cntComposite.Start();
 
-    // Be sure that the framebuffer is not colorized (happens on specific GPU&drivers combinations)
-    glColor4d( 1.0, 1.0, 1.0, 1.0 );
+    // Note: In legacy GL, we'd set glColor4d(1,1,1,1) here to avoid tinting.
+    // In modern GL with shaders, this is not needed.
 
     // Draw the remaining contents, blit the rendering targets to the screen, swap the buffers
     m_compositor->DrawBuffer( m_mainBuffer );
@@ -1539,71 +1619,89 @@ void WEBGL_GAL::DrawBitmap( const BITMAP_BASE& aBitmap, double alphaBlend )
     double w = (double) aBitmap.GetSizePixels().x * scale;
     double h = (double) aBitmap.GetSizePixels().y * scale;
 
-    auto xform = m_currentManager->GetTransformation();
-
-    glm::vec4 v0 = xform * glm::vec4( -w / 2, -h / 2, 0.0, 0.0 );
-    glm::vec4 v1 = xform * glm::vec4( w / 2, h / 2, 0.0, 0.0 );
-    glm::vec4 trans = xform[3];
-
     auto texture_id = m_bitmapCache->RequestBitmap( &aBitmap );
 
     if( !glIsTexture( texture_id ) ) // ensure the bitmap texture is still valid
         return;
 
-    glDepthFunc( GL_ALWAYS );
+    // Compute texture coordinates with mirroring
+    float texStartX = aBitmap.IsMirroredX() ? 1.0f : 0.0f;
+    float texEndX   = aBitmap.IsMirroredX() ? 0.0f : 1.0f;
+    float texStartY = aBitmap.IsMirroredY() ? 1.0f : 0.0f;
+    float texEndY   = aBitmap.IsMirroredY() ? 0.0f : 1.0f;
 
-    glAlphaFunc( GL_GREATER, 0.01f );
-    glEnable( GL_ALPHA_TEST );
+    // Handle rotation by rotating texture coordinates around center (0.5, 0.5)
+    double rotRad = aBitmap.Rotation().AsRadians();
+    if( std::abs( rotRad ) > 0.001 )
+    {
+        auto rotateTexCoord = [rotRad]( float& u, float& v )
+        {
+            float cu = u - 0.5f;
+            float cv = v - 0.5f;
+            float cosR = static_cast<float>( cos( rotRad ) );
+            float sinR = static_cast<float>( sin( rotRad ) );
+            u = cu * cosR - cv * sinR + 0.5f;
+            v = cu * sinR + cv * cosR + 0.5f;
+        };
+        rotateTexCoord( texStartX, texStartY );
+        rotateTexCoord( texEndX, texStartY );
+        rotateTexCoord( texEndX, texEndY );
+        rotateTexCoord( texStartX, texEndY );
+    }
 
-    glMatrixMode( GL_TEXTURE );
-    glPushMatrix();
-    glTranslated( 0.5, 0.5, 0.5 );
-    glRotated( aBitmap.Rotation().AsDegrees(), 0, 0, 1 );
-    glTranslated( -0.5, -0.5, -0.5 );
-
-    glMatrixMode( GL_MODELVIEW );
-    glPushMatrix();
-    glTranslated( trans.x, trans.y, trans.z );
-
-    glEnable( GL_TEXTURE_2D );
+    // Bind the bitmap texture
     glActiveTexture( GL_TEXTURE0 );
     glBindTexture( GL_TEXTURE_2D, texture_id );
 
-    float texStartX = aBitmap.IsMirroredX() ? 1.0 : 0.0;
-    float texEndX   = aBitmap.IsMirroredX() ? 0.0 : 1.0;
-    float texStartY = aBitmap.IsMirroredY() ? 1.0 : 0.0;
-    float texEndY   = aBitmap.IsMirroredY() ? 0.0 : 1.0;
+    // Setup for drawing
+    glDepthFunc( GL_ALWAYS );
+    glEnable( GL_BLEND );
+    glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
 
-    glBegin( GL_QUADS );
-    glColor4f( 1.0, 1.0, 1.0, alpha );
-    glTexCoord2f( texStartX, texStartY );
-    glVertex3f( v0.x, v0.y, m_layerDepth );
-    glColor4f( 1.0, 1.0, 1.0, alpha );
-    glTexCoord2f( texEndX,  texStartY);
-    glVertex3f( v1.x, v0.y, m_layerDepth );
-    glColor4f( 1.0, 1.0, 1.0, alpha );
-    glTexCoord2f( texEndX, texEndY);
-    glVertex3f( v1.x, v1.y, m_layerDepth );
-    glColor4f( 1.0, 1.0, 1.0, alpha );
-    glTexCoord2f( texStartX, texEndY);
-    glVertex3f( v0.x, v1.y, m_layerDepth );
-    glEnd();
+    // Use the vertex manager to draw a textured quad (same pattern as DrawGlyph)
+    // The shader uses texture coordinates from SHADER_FONT parameters
+    m_currentManager->Reserve( 6 );
+    m_currentManager->Color( 1.0f, 1.0f, 1.0f, alpha );
 
-    glBindTexture( GL_TEXTURE_2D, 0 );
+    // Quad vertices: centered at origin, width w, height h
+    /* Quad layout:
+     * v0 (-w/2, -h/2)    v1 (w/2, -h/2)
+     *       +---------------+
+     *       |   /           |
+     *       |  /            |
+     *       | /             |
+     *       |/              |
+     *       +---------------+
+     * v2 (-w/2, h/2)     v3 (w/2, h/2)
+     */
+
+    // Triangle 1: v0, v1, v2
+    m_currentManager->Shader( SHADER_FONT, texStartX, texStartY );
+    m_currentManager->Vertex( -w / 2, -h / 2, m_layerDepth );  // v0
+
+    m_currentManager->Shader( SHADER_FONT, texEndX, texStartY );
+    m_currentManager->Vertex( w / 2, -h / 2, m_layerDepth );   // v1
+
+    m_currentManager->Shader( SHADER_FONT, texStartX, texEndY );
+    m_currentManager->Vertex( -w / 2, h / 2, m_layerDepth );   // v2
+
+    // Triangle 2: v1, v3, v2
+    m_currentManager->Shader( SHADER_FONT, texEndX, texStartY );
+    m_currentManager->Vertex( w / 2, -h / 2, m_layerDepth );   // v1
+
+    m_currentManager->Shader( SHADER_FONT, texEndX, texEndY );
+    m_currentManager->Vertex( w / 2, h / 2, m_layerDepth );    // v3
+
+    m_currentManager->Shader( SHADER_FONT, texStartX, texEndY );
+    m_currentManager->Vertex( -w / 2, h / 2, m_layerDepth );   // v2
+
+    // Note: texture unbinding and state restoration happens in EndDrawing
+
+    glDepthFunc( GL_LESS );
 
 #ifdef DISABLE_BITMAP_CACHE
     glDeleteTextures( 1, &texture_id );
 #endif
-
-    glPopMatrix();
-
-    glMatrixMode( GL_TEXTURE );
-    glPopMatrix();
-    glMatrixMode( GL_MODELVIEW );
-
-    glDisable( GL_ALPHA_TEST );
-
-    glDepthFunc( GL_LESS );
 }
 
 
@@ -1831,19 +1929,17 @@ void WEBGL_GAL::DrawGrid()
     ++gridEndY;
 
     glDisable( GL_DEPTH_TEST );
-    glDisable( GL_TEXTURE_2D );
+    // Note: GL_TEXTURE_2D not used in WebGL 2.0
 
     if( m_gridStyle == GRID_STYLE::DOTS )
     {
         glEnable( GL_STENCIL_TEST );
         glStencilFunc( GL_ALWAYS, 1, 1 );
         glStencilOp( GL_KEEP, GL_KEEP, GL_INCR );
-        glColor4d( 0.0, 0.0, 0.0, 0.0 );
         SetStrokeColor( COLOR4D( 0.0, 0.0, 0.0, 0.0 ) );
     }
     else
     {
-        glColor4d( m_gridColor.r, m_gridColor.g, m_gridColor.b, m_gridColor.a );
         SetStrokeColor( m_gridColor );
     }
 
@@ -1893,7 +1989,6 @@ void WEBGL_GAL::DrawGrid()
         if( m_gridStyle == GRID_STYLE::DOTS )
         {
             glStencilFunc( GL_NOTEQUAL, 0, 1 );
-            glColor4d( m_gridColor.r, m_gridColor.g, m_gridColor.b, m_gridColor.a );
             SetStrokeColor( m_gridColor );
         }
 
@@ -1919,7 +2014,7 @@ void WEBGL_GAL::DrawGrid()
     }
 
     glEnable( GL_DEPTH_TEST );
-    glEnable( GL_TEXTURE_2D );
+    // Note: GL_TEXTURE_2D not used in WebGL 2.0
 }
 
 
@@ -1966,19 +2061,23 @@ void WEBGL_GAL::ClearScreen()
 
 void WEBGL_GAL::Transform( const MATRIX3x3D& aTransformation )
 {
-    GLdouble matrixData[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+    // Convert 3x3 matrix to 4x4 matrix (column-major order for GLM)
+    // The 3x3 matrix represents a 2D affine transformation
+    glm::mat4 matrix( 1.0f );
 
-    matrixData[0] = aTransformation.m_data[0][0];
-    matrixData[1] = aTransformation.m_data[1][0];
-    matrixData[2] = aTransformation.m_data[2][0];
-    matrixData[4] = aTransformation.m_data[0][1];
-    matrixData[5] = aTransformation.m_data[1][1];
-    matrixData[6] = aTransformation.m_data[2][1];
-    matrixData[12] = aTransformation.m_data[0][2];
-    matrixData[13] = aTransformation.m_data[1][2];
-    matrixData[14] = aTransformation.m_data[2][2];
+    matrix[0][0] = static_cast<float>( aTransformation.m_data[0][0] );
+    matrix[0][1] = static_cast<float>( aTransformation.m_data[1][0] );
+    matrix[0][2] = static_cast<float>( aTransformation.m_data[2][0] );
 
-    glMultMatrixd( matrixData );
+    matrix[1][0] = static_cast<float>( aTransformation.m_data[0][1] );
+    matrix[1][1] = static_cast<float>( aTransformation.m_data[1][1] );
+    matrix[1][2] = static_cast<float>( aTransformation.m_data[2][1] );
+
+    matrix[3][0] = static_cast<float>( aTransformation.m_data[0][2] );
+    matrix[3][1] = static_cast<float>( aTransformation.m_data[1][2] );
+    matrix[3][2] = static_cast<float>( aTransformation.m_data[2][2] );
+
+    m_currentManager->MultiplyMatrix( matrix );
 }
 
 
@@ -2690,22 +2789,14 @@ void WEBGL_GAL::blitCursor()
 
     const COLOR4D color = getCursorColor();
 
-    GLboolean depthTestEnabled = glIsEnabled( GL_DEPTH_TEST );
-    glDisable( GL_DEPTH_TEST );
+    // Use non-cached manager to draw cursor lines (same pattern as DrawGrid)
+    RENDER_TARGET savedTarget = m_currentTarget;
+    SetTarget( TARGET_NONCACHED );
+    m_nonCachedManager->EnableDepthTest( false );
 
-    glActiveTexture( GL_TEXTURE0 );
-    glDisable( GL_TEXTURE_2D );
-    glEnable( GL_BLEND );
-    glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
-
-    glLineWidth( 1.0 );
-    glColor4d( color.r, color.g, color.b, color.a );
-
-    glMatrixMode( GL_PROJECTION );
-    glPushMatrix();
-    glTranslated( 0, 0, -0.5 );
-
-    glBegin( GL_LINES );
+    // Set cursor appearance
+    SetStrokeColor( color );
+    SetLineWidth( 1.0f * getWorldPixelSize() / GetScaleFactor() );
 
     if( m_crossHairMode == CROSS_HAIR_MODE::FULLSCREEN_DIAGONAL )
     {
@@ -2714,8 +2805,6 @@ void WEBGL_GAL::blitCursor()
         VECTOR2D screenBottomRight = m_screenWorldMatrix * VECTOR2D( m_screenSize );
 
         // For 45-degree lines passing through cursor position
-        // Line equation: y = x + (cy - cx) for positive slope
-        // Line equation: y = -x + (cy + cx) for negative slope
         double cx = m_cursorPosition.x;
         double cy = m_cursorPosition.y;
 
@@ -2725,8 +2814,7 @@ void WEBGL_GAL::blitCursor()
         VECTOR2D pos_end( screenBottomRight.x, screenBottomRight.x + offset1 );
 
         // Draw positive slope diagonal
-        glVertex2d( pos_start.x, pos_start.y );
-        glVertex2d( pos_end.x, pos_end.y );
+        DrawLine( pos_start, pos_end );
 
         // Calculate intersections for negative slope diagonal (y = -x + offset)
         double offset2 = cy + cx;
@@ -2734,24 +2822,22 @@ void WEBGL_GAL::blitCursor()
         VECTOR2D neg_end( screenBottomRight.x, offset2 - screenBottomRight.x );
 
         // Draw negative slope diagonal
-        glVertex2d( neg_start.x, neg_start.y );
-        glVertex2d( neg_end.x, neg_end.y );
+        DrawLine( neg_start, neg_end );
     }
     else
     {
-        glVertex2d( cursorCenter.x, cursorBegin.y );
-        glVertex2d( cursorCenter.x, cursorEnd.y );
-
-        glVertex2d( cursorBegin.x, cursorCenter.y );
-        glVertex2d( cursorEnd.x, cursorCenter.y );
+        // Standard crosshair
+        DrawLine( VECTOR2D( cursorCenter.x, cursorBegin.y ),
+                  VECTOR2D( cursorCenter.x, cursorEnd.y ) );
+        DrawLine( VECTOR2D( cursorBegin.x, cursorCenter.y ),
+                  VECTOR2D( cursorEnd.x, cursorCenter.y ) );
     }
 
-    glEnd();
+    // Flush cursor geometry
+    m_nonCachedManager->EndDrawing();
 
-    glPopMatrix();
-
-    if( depthTestEnabled )
-        glEnable( GL_DEPTH_TEST );
+    // Restore target
+    SetTarget( savedTarget );
 }
 
 
@@ -2877,6 +2963,10 @@ void WEBGL_GAL::setupShaderParameters()
     ufm_pixelSizeMultiplier = m_shader->AddParameter( "u_pixelSizeMultiplier" );
     ufm_antialiasingOffset = m_shader->AddParameter( "u_antialiasingOffset" );
     ufm_minLinePixelWidth = m_shader->AddParameter( "u_minLinePixelWidth" );
+    ufm_modelViewProjectionMatrix = m_shader->AddParameter( "u_modelViewProjectionMatrix" );
+
+    // Initialize MVP matrix to identity
+    setIdentityMatrix( m_mvpMatrix );
 }
 
 

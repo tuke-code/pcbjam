@@ -33,15 +33,13 @@
 
 #if defined( __EMSCRIPTEN__ )
     // Prevent real GLEW header from being included (Emscripten has one too)
-    // We provide our own compatibility stubs below
     #ifndef __glew_h__
     #define __glew_h__
     #endif
 
-    // WebGL2/GLES3: Modern shader functions (glUseProgram, etc.)
+    // WebGL2/GLES3: Modern shader functions
+    // Note: NO legacy GL includes - all rendering uses VBOs/shaders
     #include <GLES3/gl3.h>
-    // Legacy GL emulation: glMatrixMode, glColor4d, glBegin/glEnd, etc.
-    #include <GL/gl.h>
     // GLU tesselator - provided by wasm/stubs/glu_wasm_impl.cpp
     #include <GL/glu.h>
 
@@ -154,53 +152,10 @@
         (void)callback; (void)userParam;
     }
 
-    // GLdouble type for double-precision functions
+    // GLdouble type (needed for some API signatures)
     #ifndef GLdouble
     typedef double GLdouble;
     #endif
-
-    // Double-precision GL function wrappers - LEGACY_GL_EMULATION only provides float versions
-    // These convert double arguments to float and call the float variants
-    inline void glVertex2d(GLdouble x, GLdouble y) {
-        glVertex2f((GLfloat)x, (GLfloat)y);
-    }
-    inline void glVertex3d(GLdouble x, GLdouble y, GLdouble z) {
-        glVertex3f((GLfloat)x, (GLfloat)y, (GLfloat)z);
-    }
-    inline void glColor4d(GLdouble r, GLdouble g, GLdouble b, GLdouble a) {
-        glColor4f((GLfloat)r, (GLfloat)g, (GLfloat)b, (GLfloat)a);
-    }
-    inline void glColor3d(GLdouble r, GLdouble g, GLdouble b) {
-        glColor3f((GLfloat)r, (GLfloat)g, (GLfloat)b);
-    }
-    inline void glTranslated(GLdouble x, GLdouble y, GLdouble z) {
-        glTranslatef((GLfloat)x, (GLfloat)y, (GLfloat)z);
-    }
-    inline void glScaled(GLdouble x, GLdouble y, GLdouble z) {
-        glScalef((GLfloat)x, (GLfloat)y, (GLfloat)z);
-    }
-    inline void glRotated(GLdouble angle, GLdouble x, GLdouble y, GLdouble z) {
-        glRotatef((GLfloat)angle, (GLfloat)x, (GLfloat)y, (GLfloat)z);
-    }
-    inline void glNormal3d(GLdouble x, GLdouble y, GLdouble z) {
-        glNormal3f((GLfloat)x, (GLfloat)y, (GLfloat)z);
-    }
-    inline void glTexCoord2d(GLdouble s, GLdouble t) {
-        glTexCoord2f((GLfloat)s, (GLfloat)t);
-    }
-    inline void glRectd(GLdouble x1, GLdouble y1, GLdouble x2, GLdouble y2) {
-        glRectf((GLfloat)x1, (GLfloat)y1, (GLfloat)x2, (GLfloat)y2);
-    }
-    inline void glLoadMatrixd(const GLdouble* m) {
-        GLfloat fm[16];
-        for(int i = 0; i < 16; i++) fm[i] = (GLfloat)m[i];
-        glLoadMatrixf(fm);
-    }
-    inline void glMultMatrixd(const GLdouble* m) {
-        GLfloat fm[16];
-        for(int i = 0; i < 16; i++) fm[i] = (GLfloat)m[i];
-        glMultMatrixf(fm);
-    }
 
     // Display lists - not supported in WebGL, stub implementations
     inline GLuint glGenLists(GLsizei range) { (void)range; return 0; }
@@ -209,22 +164,6 @@
     inline void glEndList(void) {}
     inline void glCallList(GLuint list) { (void)list; }
     inline void glDeleteLists(GLuint list, GLsizei range) { (void)list; (void)range; }
-
-    // Lighting and material functions - stubs (lighting not fully supported in WebGL)
-    inline void glLightModeli(GLenum pname, GLint param) { (void)pname; (void)param; }
-    inline void glColorMaterial(GLenum face, GLenum mode) { (void)face; (void)mode; }
-    inline void glMaterialf(GLenum face, GLenum pname, GLfloat param) {
-        (void)face; (void)pname; (void)param;
-    }
-    inline void glMaterialfv(GLenum face, GLenum pname, const GLfloat* params) {
-        (void)face; (void)pname; (void)params;
-    }
-    inline void glLightfv(GLenum light, GLenum pname, const GLfloat* params) {
-        (void)light; (void)pname; (void)params;
-    }
-    inline void glLightf(GLenum light, GLenum pname, GLfloat param) {
-        (void)light; (void)pname; (void)param;
-    }
 
 #elif defined( __unix__ ) and not defined( __APPLE__ )
 
