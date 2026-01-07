@@ -57,6 +57,10 @@ if [ "$CLEAN_BUILD" = "1" ]; then
     make clean 2>/dev/null || true
 fi
 
+# Always remove output files to ensure linker flags changes take effect
+# (Makefile only tracks object file dependencies, not linker flag changes)
+rm -f "$OUTPUT_DIR"/*.js "$OUTPUT_DIR"/*.wasm 2>/dev/null || true
+
 echo ""
 echo "Building..."
 if [ "$DEBUG_BUILD" = "1" ]; then

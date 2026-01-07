@@ -31,6 +31,54 @@ const COLOR4D COLOR4D::WHITE( 1, 1, 1, 1 );
 const COLOR4D COLOR4D::UNSPECIFIED( 0, 0, 0, 0 );
 const COLOR4D COLOR4D::CLEAR( 0, 0, 0, 0 );
 
+// COLOR4D constructor from EDA_COLOR_T - simplified color lookup
+// Matches the actual EDA_COLOR_T enum values in color4d.h
+COLOR4D::COLOR4D( EDA_COLOR_T aColor )
+{
+    switch( aColor )
+    {
+    case ::BLACK:        r = 0;    g = 0;    b = 0;    a = 1; break;
+    case ::DARKDARKGRAY: r = 0.2;  g = 0.2;  b = 0.2;  a = 1; break;
+    case ::DARKGRAY:     r = 0.33; g = 0.33; b = 0.33; a = 1; break;
+    case ::LIGHTGRAY:    r = 0.67; g = 0.67; b = 0.67; a = 1; break;
+    case ::WHITE:        r = 1;    g = 1;    b = 1;    a = 1; break;
+    case ::LIGHTYELLOW:  r = 1;    g = 1;    b = 0.33; a = 1; break;
+    case ::DARKBLUE:     r = 0;    g = 0;    b = 0.33; a = 1; break;
+    case ::DARKGREEN:    r = 0;    g = 0.33; b = 0;    a = 1; break;
+    case ::DARKCYAN:     r = 0;    g = 0.33; b = 0.33; a = 1; break;
+    case ::DARKRED:      r = 0.33; g = 0;    b = 0;    a = 1; break;
+    case ::DARKMAGENTA:  r = 0.33; g = 0;    b = 0.33; a = 1; break;
+    case ::DARKBROWN:    r = 0.17; g = 0.08; b = 0;    a = 1; break;
+    case ::BLUE:         r = 0;    g = 0;    b = 0.67; a = 1; break;
+    case ::GREEN:        r = 0;    g = 0.67; b = 0;    a = 1; break;
+    case ::CYAN:         r = 0;    g = 0.67; b = 0.67; a = 1; break;
+    case ::RED:          r = 0.67; g = 0;    b = 0;    a = 1; break;
+    case ::MAGENTA:      r = 0.67; g = 0;    b = 0.67; a = 1; break;
+    case ::BROWN:        r = 0.33; g = 0.17; b = 0;    a = 1; break;
+    case ::LIGHTBLUE:    r = 0.33; g = 0.33; b = 1;    a = 1; break;
+    case ::LIGHTGREEN:   r = 0.33; g = 1;    b = 0.33; a = 1; break;
+    case ::LIGHTCYAN:    r = 0.33; g = 1;    b = 1;    a = 1; break;
+    case ::LIGHTRED:     r = 1;    g = 0.33; b = 0.33; a = 1; break;
+    case ::LIGHTMAGENTA: r = 1;    g = 0.33; b = 1;    a = 1; break;
+    case ::YELLOW:       r = 0.67; g = 0.67; b = 0;    a = 1; break;
+    case ::PUREBLUE:     r = 0;    g = 0;    b = 1;    a = 1; break;
+    case ::PUREGREEN:    r = 0;    g = 1;    b = 0;    a = 1; break;
+    case ::PURECYAN:     r = 0;    g = 1;    b = 1;    a = 1; break;
+    case ::PURERED:      r = 1;    g = 0;    b = 0;    a = 1; break;
+    case ::PUREMAGENTA:  r = 1;    g = 0;    b = 1;    a = 1; break;
+    case ::PUREYELLOW:   r = 1;    g = 1;    b = 0;    a = 1; break;
+    case ::LIGHTERORANGE:r = 1;    g = 0.8;  b = 0.6;  a = 1; break;
+    case ::DARKORANGE:   r = 0.6;  g = 0.3;  b = 0;    a = 1; break;
+    case ::ORANGE:       r = 0.8;  g = 0.5;  b = 0;    a = 1; break;
+    case ::LIGHTORANGE:  r = 1;    g = 0.7;  b = 0.4;  a = 1; break;
+    case ::PUREORANGE:   r = 1;    g = 0.5;  b = 0;    a = 1; break;
+    case UNSPECIFIED_COLOR:
+    default:
+        r = 0; g = 0; b = 0; a = 0; // Unspecified = transparent
+        break;
+    }
+}
+
 } // namespace KIGFX
 
 //=============================================================================

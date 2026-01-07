@@ -61,13 +61,15 @@ CXXFLAGS = $(OPT_FLAGS) $(WX_CXXFLAGS) $(KICAD_INCLUDES) -std=c++20
 # Emscripten flags
 BASE_LDFLAGS = -sALLOW_MEMORY_GROWTH=1 \
                -sERROR_ON_UNDEFINED_SYMBOLS=0 \
+               -sNO_DISABLE_EXCEPTION_CATCHING \
                -sEXPORTED_FUNCTIONS=['_main','_runScenario','_getTotalScenarios','_getCurrentScenario','_getCanvasWidth','_getCanvasHeight'] \
                -sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','HEAPU8'] \
                -sMODULARIZE=1 \
                -sEXPORT_NAME='createGALTest' \
                -sENVIRONMENT=web
 
-# GL-specific flags - LEGACY_GL_EMULATION handles legacy GL calls
+# GL-specific flags - LEGACY_GL_EMULATION handles legacy GL calls (glBegin/glEnd)
+# WebGL 2.0 for modern shader support
 EM_GL_FLAGS = -sLEGACY_GL_EMULATION=1 -sMAX_WEBGL_VERSION=2
 GL_SHIM = $(PROJECT_ROOT)/wasm/shims/gl_immediate_shim.js
 

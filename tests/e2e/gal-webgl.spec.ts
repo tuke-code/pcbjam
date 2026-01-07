@@ -81,6 +81,15 @@ test.describe('GAL WebGL Regression Tests', () => {
     const scenarioIndex = i;
 
     test(`Scenario ${scenarioIndex}: ${scenarioName}`, async ({ page, testLogger }) => {
+      // Capture console output for debugging
+      const consoleLogs: string[] = [];
+      page.on('console', msg => {
+        consoleLogs.push(`[${msg.type()}] ${msg.text()}`);
+      });
+      page.on('pageerror', err => {
+        consoleLogs.push(`[ERROR] ${err.message}`);
+      });
+
       await page.goto('/gal-webgl/gal_webgl_test.html');
 
       // Wait for module to be ready
@@ -132,6 +141,13 @@ test.describe('GAL WebGL Regression Tests', () => {
       // Screenshot the canvas (matching native 800x600 output)
       const screenshotPath = path.join(OUTPUT_DIR, `gal-${scenarioName}.png`);
       await canvas.screenshot({ path: screenshotPath });
+
+      // Print console logs for first scenario (debugging)
+      if (scenarioIndex === 0) {
+        console.log('\n=== Console logs ===');
+        consoleLogs.forEach(log => console.log(log));
+        console.log('===================\n');
+      }
 
       console.log(`Saved: ${screenshotPath}`);
     });

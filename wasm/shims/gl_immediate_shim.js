@@ -14,7 +14,7 @@ addToLibrary({
   // GLImmediateShim - State tracking and function wrapping
   // ==================================================================
 
-  $GLImmediateShim__deps: ['$GLImmediate'],
+  $GLImmediateShim__deps: ['$GLImmediate', 'glBegin', 'glEnd', 'glVertex2f', 'glVertex3f', 'glColor3f', 'glColor4f'],
   $GLImmediateShim__postset: 'GLImmediateShim.init();',
   $GLImmediateShim: {
     // Current color state (persistent across vertices)

@@ -48,8 +48,14 @@ void renderCurrentScenario() {
     printf("Rendering scenario %d: %s\n", g_currentScenario,
            GALTest::GetScenarioName(g_currentScenario));
 
+    // Lock context before drawing (required by GAL)
+    g_gal->LockContext(g_currentScenario);
+
     // Begin drawing
     g_gal->BeginDrawing();
+
+    // Set target to non-cached for immediate rendering
+    g_gal->SetTarget(KIGFX::TARGET_NONCACHED);
 
     // Clear the screen
     g_gal->ClearScreen();
@@ -59,6 +65,9 @@ void renderCurrentScenario() {
 
     // End drawing and present
     g_gal->EndDrawing();
+
+    // Unlock context (pass same cookie as LockContext)
+    g_gal->UnlockContext(g_currentScenario);
 
     printf("Scenario %d rendered\n", g_currentScenario);
 }
@@ -117,7 +126,7 @@ wxIMPLEMENT_APP_NO_MAIN(GALTestApp);
 bool GALTestApp::OnInit() {
     printf("GAL WebGL Test - Initializing wxWidgets\n");
 
-    // Create a frame (invisible, just hosts the GL canvas)
+    // Create a frame to host the GL canvas
     g_frame = new wxFrame(nullptr, wxID_ANY, "GAL WebGL Test",
                           wxDefaultPosition, wxSize(CANVAS_WIDTH, CANVAS_HEIGHT));
 
@@ -143,6 +152,14 @@ bool GALTestApp::OnInit() {
 
     printf("WEBGL_GAL created successfully\n");
 
+    // Add GAL to frame's sizer (like native test)
+    wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
+    sizer->Add(g_gal, 1, wxEXPAND);
+    g_frame->SetSizer(sizer);
+
+    // Show the frame (required for GAL visibility)
+    g_frame->Show(true);
+
     // Set up the GAL
     g_gal->SetScreenSize(VECTOR2I(CANVAS_WIDTH, CANVAS_HEIGHT));
     g_gal->ResizeScreen(CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -157,10 +174,13 @@ bool GALTestApp::OnInit() {
     BOX2D worldBounds(VECTOR2D(0, 0), worldSize);
     g_gal->SetWorldScreenMatrix(g_gal->GetWorldScreenMatrix());
 
-    // Initialize the compositor
+    // Initialize the compositor with proper context locking
+    g_gal->LockContext(-1);  // Lock with init ID
     g_gal->BeginDrawing();
+    g_gal->SetTarget(KIGFX::TARGET_NONCACHED);
     g_gal->ClearScreen();
     g_gal->EndDrawing();
+    g_gal->UnlockContext(-1);  // Pass same cookie
 
     printf("\nReady for scenarios. Total: %d\n", g_totalScenarios);
     printf("Call runScenario(index) from JavaScript to render.\n");
