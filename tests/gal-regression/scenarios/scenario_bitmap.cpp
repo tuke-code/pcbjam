@@ -7,6 +7,10 @@
  * In OPENGL_GAL, it uses GL_BITMAP_CACHE to create GPU textures from wxImage data.
  * Position is controlled via Save/Translate/Restore, not by arguments to DrawBitmap.
  *
+ * IMPORTANT: DrawBitmap uses legacy OpenGL immediate mode (glBegin/glVertex3f/glEnd)
+ * which is incompatible with active shaders. We must deactivate the shader before
+ * calling DrawBitmap and reactivate it afterward.
+ *
  * This scenario demonstrates:
  * 1. Basic bitmap rendering with checkerboard pattern
  * 2. Gradient patterns (horizontal, vertical, radial)
@@ -15,8 +19,11 @@
  * 5. Multiple bitmaps in a scene
  */
 
+#include <GL/glew.h>
 #include <gal/graphics_abstraction_layer.h>
+#include <gal/opengl/opengl_gal.h>
 #include "../native/bitmap_base_stub.h"
+#include "../native/gal_test_accessor.h"
 #include <cmath>
 
 #ifndef M_PI
@@ -27,8 +34,61 @@ namespace GALTest {
 
 using KIGFX::COLOR4D;
 using KIGFX::GAL;
+using KIGFX::OPENGL_GAL;
+
+// Setup state needed for DrawBitmap (width/height cached per scenario)
+static int s_viewportWidth = 0;
+static int s_viewportHeight = 0;
+
+static void SetupFixedFunctionMatrices() {
+    // Save current matrix state
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    // Note: GAL uses Y-down coordinate system with origin at top-left
+    glOrtho(0, s_viewportWidth, s_viewportHeight, 0, -1, 1);
+
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
+}
+
+static void RestoreFixedFunctionMatrices() {
+    glMatrixMode(GL_MODELVIEW);
+    glPopMatrix();
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+}
+
+// Helper to draw bitmap with shader deactivation
+// DrawBitmap uses glBegin/glEnd which requires fixed-function pipeline
+//
+// NOTE: This workaround attempts to make DrawBitmap work by deactivating the shader
+// and setting up fixed-function projection matrices. However, it doesn't fully work
+// because the legacy OpenGL immediate mode (glBegin/glEnd) used by OPENGL_GAL::DrawBitmap
+// is incompatible with the compositor FBO rendering used by this test harness.
+// See README.md for details.
+static void DrawBitmapWithShaderFix(GAL* gal, const BITMAP_BASE& bitmap, double alpha = 1.0) {
+    auto* oglGal = static_cast<OPENGL_GAL*>(gal);
+
+    DeactivateGALShader(oglGal);
+
+    // Set up fixed-function matrices for the orthographic projection
+    SetupFixedFunctionMatrices();
+
+    gal->DrawBitmap(bitmap, alpha);
+
+    // Restore matrices before reactivating shader
+    RestoreFixedFunctionMatrices();
+
+    ActivateGALShader(oglGal);
+}
 
 void RenderBitmap(GAL* gal, int width, int height) {
+    // Cache viewport size for fixed-function matrix setup
+    s_viewportWidth = width;
+    s_viewportHeight = height;
+
     gal->SetLayerDepth(100);
     gal->SetIsFill(true);
     gal->SetIsStroke(false);
@@ -48,7 +108,7 @@ void RenderBitmap(GAL* gal, int width, int height) {
     // Position bitmap at (80, 80) - use transform
     gal->Save();
     gal->Translate(VECTOR2D(100, 100));  // Center position
-    gal->DrawBitmap(*checkerboard, 1.0);
+    DrawBitmapWithShaderFix(gal, *checkerboard, 1.0);
     gal->Restore();
 
     // Section label frame
@@ -67,7 +127,7 @@ void RenderBitmap(GAL* gal, int width, int height) {
 
     gal->Save();
     gal->Translate(VECTOR2D(300, 100));
-    gal->DrawBitmap(*gradient, 1.0);
+    DrawBitmapWithShaderFix(gal, *gradient, 1.0);
     gal->Restore();
 
     // Section frame
@@ -85,7 +145,7 @@ void RenderBitmap(GAL* gal, int width, int height) {
 
     gal->Save();
     gal->Translate(VECTOR2D(520, 100));
-    gal->DrawBitmap(*logo, 1.0);
+    DrawBitmapWithShaderFix(gal, *logo, 1.0);
     gal->Restore();
 
     // Section frame
@@ -103,7 +163,7 @@ void RenderBitmap(GAL* gal, int width, int height) {
 
     gal->Save();
     gal->Translate(VECTOR2D(720, 100));
-    gal->DrawBitmap(*radial, 1.0);
+    DrawBitmapWithShaderFix(gal, *radial, 1.0);
     gal->Restore();
 
     // Section frame
@@ -127,21 +187,21 @@ void RenderBitmap(GAL* gal, int width, int height) {
     auto small = CreateCheckerboardBitmap(32, 32, 4);
     gal->Save();
     gal->Translate(VECTOR2D(80, 280));
-    gal->DrawBitmap(*small, 1.0);
+    DrawBitmapWithShaderFix(gal, *small, 1.0);
     gal->Restore();
 
     // Medium bitmap (64x64)
     auto medium = CreateCheckerboardBitmap(64, 64, 8);
     gal->Save();
     gal->Translate(VECTOR2D(180, 290));
-    gal->DrawBitmap(*medium, 1.0);
+    DrawBitmapWithShaderFix(gal, *medium, 1.0);
     gal->Restore();
 
     // Large bitmap (96x96)
     auto large = CreateCheckerboardBitmap(96, 96, 12);
     gal->Save();
     gal->Translate(VECTOR2D(300, 290));
-    gal->DrawBitmap(*large, 1.0);
+    DrawBitmapWithShaderFix(gal, *large, 1.0);
     gal->Restore();
 
     // Section frame
@@ -166,14 +226,14 @@ void RenderBitmap(GAL* gal, int width, int height) {
     auto hStripes = CreateStripedBitmap(64, 64, true);
     gal->Save();
     gal->Translate(VECTOR2D(460, 290));
-    gal->DrawBitmap(*hStripes, 1.0);
+    DrawBitmapWithShaderFix(gal, *hStripes, 1.0);
     gal->Restore();
 
     // Vertical stripes
     auto vStripes = CreateStripedBitmap(64, 64, false);
     gal->Save();
     gal->Translate(VECTOR2D(550, 290));
-    gal->DrawBitmap(*vStripes, 1.0);
+    DrawBitmapWithShaderFix(gal, *vStripes, 1.0);
     gal->Restore();
 
     // Section frame
@@ -206,22 +266,22 @@ void RenderBitmap(GAL* gal, int width, int height) {
 
     gal->Save();
     gal->Translate(VECTOR2D(670, 260));
-    gal->DrawBitmap(*bmp1, 1.0);
+    DrawBitmapWithShaderFix(gal, *bmp1, 1.0);
     gal->Restore();
 
     gal->Save();
     gal->Translate(VECTOR2D(750, 260));
-    gal->DrawBitmap(*bmp2, 1.0);
+    DrawBitmapWithShaderFix(gal, *bmp2, 1.0);
     gal->Restore();
 
     gal->Save();
     gal->Translate(VECTOR2D(670, 330));
-    gal->DrawBitmap(*bmp3, 1.0);
+    DrawBitmapWithShaderFix(gal, *bmp3, 1.0);
     gal->Restore();
 
     gal->Save();
     gal->Translate(VECTOR2D(750, 330));
-    gal->DrawBitmap(*bmp4, 1.0);
+    DrawBitmapWithShaderFix(gal, *bmp4, 1.0);
     gal->Restore();
 
     // Section frame
@@ -245,7 +305,7 @@ void RenderBitmap(GAL* gal, int width, int height) {
     auto central = CreateKiCadLogoBitmap(100, 100);
     gal->Save();
     gal->Translate(VECTOR2D(210, 490));
-    gal->DrawBitmap(*central, 1.0);
+    DrawBitmapWithShaderFix(gal, *central, 1.0);
     gal->Restore();
 
     // Decorative circles around bitmap
@@ -301,7 +361,7 @@ void RenderBitmap(GAL* gal, int width, int height) {
     hGradBitmap->SetImage(hGradImg);
     gal->Save();
     gal->Translate(VECTOR2D(520, 450));
-    gal->DrawBitmap(*hGradBitmap, 1.0);
+    DrawBitmapWithShaderFix(gal, *hGradBitmap, 1.0);
     gal->Restore();
 
     // Vertical gradient
@@ -310,7 +370,7 @@ void RenderBitmap(GAL* gal, int width, int height) {
     vGradBitmap->SetImage(vGradImg);
     gal->Save();
     gal->Translate(VECTOR2D(520, 510));
-    gal->DrawBitmap(*vGradBitmap, 1.0);
+    DrawBitmapWithShaderFix(gal, *vGradBitmap, 1.0);
     gal->Restore();
 
     // Radial gradient (larger)
@@ -319,7 +379,7 @@ void RenderBitmap(GAL* gal, int width, int height) {
     radialBitmap->SetImage(radialImg);
     gal->Save();
     gal->Translate(VECTOR2D(700, 490));
-    gal->DrawBitmap(*radialBitmap, 1.0);
+    DrawBitmapWithShaderFix(gal, *radialBitmap, 1.0);
     gal->Restore();
 
     // Section frame

@@ -10,6 +10,7 @@
 
 #include <gal/opengl/opengl_gal.h>
 #include <gal/opengl/opengl_compositor.h>
+#include <gal/opengl/shader.h>
 
 // Template-based private member accessor trick
 // See: https://bloglitb.blogspot.com/2010/07/access-to-private-members-thats-easy.html
@@ -37,11 +38,13 @@ typename rob<Tag, p>::filler rob<Tag, p>::filler_obj;
 // Tags for the private members we need to access
 struct OPENGL_GAL_compositor { typedef KIGFX::OPENGL_COMPOSITOR* KIGFX::OPENGL_GAL::*type; };
 struct OPENGL_GAL_mainBuffer { typedef unsigned int KIGFX::OPENGL_GAL::*type; };
+struct OPENGL_GAL_shader { typedef KIGFX::SHADER* KIGFX::OPENGL_GAL::*type; };
 struct OPENGL_COMPOSITOR_mainFbo { typedef GLuint KIGFX::OPENGL_COMPOSITOR::*type; };
 
 // Instantiate the accessors
 template struct rob<OPENGL_GAL_compositor, &KIGFX::OPENGL_GAL::m_compositor>;
 template struct rob<OPENGL_GAL_mainBuffer, &KIGFX::OPENGL_GAL::m_mainBuffer>;
+template struct rob<OPENGL_GAL_shader, &KIGFX::OPENGL_GAL::m_shader>;
 template struct rob<OPENGL_COMPOSITOR_mainFbo, &KIGFX::OPENGL_COMPOSITOR::m_mainFbo>;
 
 GLuint GetCompositorMainBufferTexture(KIGFX::OPENGL_GAL* gal) {
@@ -110,4 +113,22 @@ bool ReadCompositorFBOPixels(KIGFX::OPENGL_GAL* gal, std::vector<uint8_t>& pixel
     glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0);
 
     return true;
+}
+
+KIGFX::SHADER* GetGALShader(KIGFX::OPENGL_GAL* gal) {
+    return gal->*result<OPENGL_GAL_shader>::ptr;
+}
+
+void DeactivateGALShader(KIGFX::OPENGL_GAL* gal) {
+    KIGFX::SHADER* shader = gal->*result<OPENGL_GAL_shader>::ptr;
+    if (shader) {
+        shader->Deactivate();
+    }
+}
+
+void ActivateGALShader(KIGFX::OPENGL_GAL* gal) {
+    KIGFX::SHADER* shader = gal->*result<OPENGL_GAL_shader>::ptr;
+    if (shader) {
+        shader->Use();
+    }
 }

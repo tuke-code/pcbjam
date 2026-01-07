@@ -15,6 +15,7 @@
 namespace KIGFX {
     class OPENGL_GAL;
     class OPENGL_COMPOSITOR;
+    class SHADER;
 }
 
 // Test accessor functions - implemented in gal_test_accessor.cpp
@@ -25,5 +26,14 @@ unsigned int GetMainBufferHandle(KIGFX::OPENGL_GAL* gal);
 
 // Read pixels directly from the compositor's FBO
 bool ReadCompositorFBOPixels(KIGFX::OPENGL_GAL* gal, std::vector<uint8_t>& pixels, int* width, int* height);
+
+// Get the shader pointer for deactivating before fixed-function rendering (DrawBitmap)
+KIGFX::SHADER* GetGALShader(KIGFX::OPENGL_GAL* gal);
+
+// Deactivate shader to allow fixed-function pipeline (glBegin/glEnd) rendering
+void DeactivateGALShader(KIGFX::OPENGL_GAL* gal);
+
+// Reactivate shader after fixed-function rendering
+void ActivateGALShader(KIGFX::OPENGL_GAL* gal);
 
 #endif // GAL_TEST_ACCESSOR_H
