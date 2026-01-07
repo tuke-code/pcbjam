@@ -3,6 +3,13 @@
  *
  * Uses KiCad's GAL API to render test patterns.
  * These serve as baselines for WEBGL_GAL visual regression testing.
+ *
+ * This file contains the original 11 scenarios (0-10).
+ * Additional scenarios are in separate files:
+ * - scenario_bezier_curves.cpp (11)
+ * - scenario_arc_segments.cpp (12)
+ * - scenario_segment_chain.cpp (13)
+ * - scenario_group_caching.cpp (14)
  */
 
 #include "gal_test_scenarios.h"
@@ -25,8 +32,15 @@ namespace GALTest {
 using KIGFX::COLOR4D;
 using KIGFX::GAL;
 
-// Scenario names
+// Forward declarations for scenarios in separate files
+void RenderBezierCurves(GAL* gal, int width, int height);
+void RenderArcSegments(GAL* gal, int width, int height);
+void RenderSegmentChain(GAL* gal, int width, int height);
+void RenderGroupCaching(GAL* gal, int width, int height);
+
+// Scenario names - original 11 + 4 new scenarios
 static const char* SCENARIO_NAMES[] = {
+    // Original scenarios (0-10)
     "basic-lines",
     "line-widths",
     "circles",
@@ -37,7 +51,12 @@ static const char* SCENARIO_NAMES[] = {
     "transforms",
     "grid-cursor",
     "segments",
-    "complex-scene"
+    "complex-scene",
+    // New scenarios (11-14) - defined in separate files
+    "bezier-curves",
+    "arc-segments",
+    "segment-chain",
+    "group-caching"
 };
 
 static const int SCENARIO_COUNT = sizeof(SCENARIO_NAMES) / sizeof(SCENARIO_NAMES[0]);
@@ -549,6 +568,7 @@ static void RenderComplexScene(KIGFX::GAL* gal, int width, int height) {
 
 void RenderScenario(KIGFX::GAL* gal, int index, int width, int height) {
     switch (index) {
+        // Original scenarios (0-10) - defined in this file
         case 0: RenderBasicLines(gal, width, height); break;
         case 1: RenderLineWidths(gal, width, height); break;
         case 2: RenderCircles(gal, width, height); break;
@@ -560,6 +580,11 @@ void RenderScenario(KIGFX::GAL* gal, int index, int width, int height) {
         case 8: RenderGridCursor(gal, width, height); break;
         case 9: RenderSegments(gal, width, height); break;
         case 10: RenderComplexScene(gal, width, height); break;
+        // New scenarios (11-14) - defined in separate files
+        case 11: RenderBezierCurves(gal, width, height); break;
+        case 12: RenderArcSegments(gal, width, height); break;
+        case 13: RenderSegmentChain(gal, width, height); break;
+        case 14: RenderGroupCaching(gal, width, height); break;
         default: break;
     }
 }

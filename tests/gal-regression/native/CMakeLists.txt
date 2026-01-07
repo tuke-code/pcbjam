@@ -62,13 +62,23 @@ set(KICAD_GAL_SOURCES
 set(STUB_SOURCES
     ${CMAKE_SOURCE_DIR}/kicad_stubs.cpp
     ${CMAKE_SOURCE_DIR}/gal_test_accessor.cpp
+)
+
+# Test scenario files
+set(SCENARIO_SOURCES
     ${CMAKE_SOURCE_DIR}/../scenarios/gal_test_scenarios.cpp
+    # New modular scenarios
+    ${CMAKE_SOURCE_DIR}/../scenarios/scenario_bezier_curves.cpp
+    ${CMAKE_SOURCE_DIR}/../scenarios/scenario_arc_segments.cpp
+    ${CMAKE_SOURCE_DIR}/../scenarios/scenario_segment_chain.cpp
+    ${CMAKE_SOURCE_DIR}/../scenarios/scenario_group_caching.cpp
 )
 
 # Main executable
 add_executable(gal_native_test
     gal_native_test.cpp
     ${STUB_SOURCES}
+    ${SCENARIO_SOURCES}
     ${KICAD_GAL_SOURCES}
     ${SHADER_SOURCES}
 )
