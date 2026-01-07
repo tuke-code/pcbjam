@@ -32,6 +32,12 @@
 #include <wx/platform.h>
 
 #if defined( __EMSCRIPTEN__ )
+    // Prevent real GLEW header from being included (Emscripten has one too)
+    // We provide our own compatibility stubs below
+    #ifndef __glew_h__
+    #define __glew_h__
+    #endif
+
     // WebGL2/GLES3: Modern shader functions (glUseProgram, etc.)
     #include <GLES3/gl3.h>
     // Legacy GL emulation: glMatrixMode, glColor4d, glBegin/glEnd, etc.

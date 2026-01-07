@@ -1,87 +1,70 @@
 /**
  * GAL WebGL Test - WASM Entry Point
  *
- * This is a test harness that renders GAL test scenarios using WEBGL_GAL
+ * This test harness renders GAL test scenarios using WEBGL_GAL
  * and allows Playwright to capture screenshots for comparison against native.
- *
- * Phase 1: Stub that initializes WebGL and renders a test pattern
- * Phase 2: Full WEBGL_GAL implementation with all scenarios
  */
+
+// Include kiglew.h first to set GLEW guard before anything includes <GL/glew.h>
+#include "webgl/kiglew.h"
+
+#include <wx/wx.h>
+#include <wx/glcanvas.h>
 
 #include <emscripten.h>
 #include <emscripten/html5.h>
-#include <GLES3/gl3.h>
+
+// KiCad GAL headers
+#include <gal/graphics_abstraction_layer.h>
+#include <math/vector2d.h>
+#include "webgl/webgl_gal.h"
+
+// Test scenarios (shared with native test)
+#include "gal_test_scenarios.h"
+
+// Stubs
+#include "kicad_stubs.h"
+
 #include <cstdio>
-#include <cstring>
 
 // Canvas dimensions (matching native test)
 static const int CANVAS_WIDTH = 800;
 static const int CANVAS_HEIGHT = 600;
 
-// Current scenario index
+// Global state
 static int g_currentScenario = -1;
 static int g_totalScenarios = 28;
-
-// WebGL context
-static EMSCRIPTEN_WEBGL_CONTEXT_HANDLE g_glContext = 0;
+static KIGFX::WEBGL_GAL* g_gal = nullptr;
+static wxFrame* g_frame = nullptr;
 
 /**
- * Initialize WebGL context
+ * Render the current scenario
  */
-bool initWebGL() {
-    EmscriptenWebGLContextAttributes attrs;
-    emscripten_webgl_init_context_attributes(&attrs);
-
-    attrs.majorVersion = 2;  // WebGL 2.0
-    attrs.minorVersion = 0;
-    attrs.alpha = true;
-    attrs.depth = true;
-    attrs.stencil = true;
-    attrs.antialias = false;  // We handle AA ourselves
-    attrs.premultipliedAlpha = false;
-    attrs.preserveDrawingBuffer = true;  // Needed for screenshots
-
-    g_glContext = emscripten_webgl_create_context("#canvas", &attrs);
-    if (g_glContext <= 0) {
-        printf("ERROR: Failed to create WebGL 2.0 context: %d\n", g_glContext);
-        return false;
+void renderCurrentScenario() {
+    if (!g_gal || g_currentScenario < 0) {
+        return;
     }
 
-    emscripten_webgl_make_context_current(g_glContext);
+    printf("Rendering scenario %d: %s\n", g_currentScenario,
+           GALTest::GetScenarioName(g_currentScenario));
 
-    printf("WebGL 2.0 context created successfully\n");
-    printf("  GL_VENDOR: %s\n", glGetString(GL_VENDOR));
-    printf("  GL_RENDERER: %s\n", glGetString(GL_RENDERER));
-    printf("  GL_VERSION: %s\n", glGetString(GL_VERSION));
+    // Begin drawing
+    g_gal->BeginDrawing();
 
-    return true;
+    // Clear the screen
+    g_gal->ClearScreen();
+
+    // Render the scenario
+    GALTest::RenderScenario(g_gal, g_currentScenario, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+    // End drawing and present
+    g_gal->EndDrawing();
+
+    printf("Scenario %d rendered\n", g_currentScenario);
 }
 
 /**
- * Render a test pattern (stub for Phase 1)
- * In Phase 2, this will be replaced with actual WEBGL_GAL rendering
- */
-void renderTestPattern(int scenarioIndex) {
-    // Set viewport
-    glViewport(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-    // Clear with KiCad-like dark background
-    glClearColor(0.102f, 0.102f, 0.149f, 1.0f);  // RGB(26, 26, 38)
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-    // TODO Phase 2: Replace with actual WEBGL_GAL rendering
-    // For now, just render a different colored rectangle for each scenario
-    // to verify the pipeline works
-
-    // This is a placeholder - in Phase 2 we'll call:
-    // GALTest::RenderScenario(webglGal, scenarioIndex, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-    printf("Rendered scenario %d (stub)\n", scenarioIndex);
-}
-
-/**
- * Run a specific scenario
- * Called from JavaScript: Module.ccall('runScenario', 'number', ['number'], [index])
+ * C API for JavaScript calls
  */
 extern "C" {
 
@@ -94,7 +77,7 @@ int runScenario(int scenarioIndex) {
     }
 
     g_currentScenario = scenarioIndex;
-    renderTestPattern(scenarioIndex);
+    renderCurrentScenario();
 
     return 0;
 }
@@ -122,23 +105,83 @@ int getCanvasHeight() {
 }  // extern "C"
 
 /**
- * Main entry point
+ * wxWidgets Application
  */
-int main() {
-    printf("GAL WebGL Test - Phase 1 Stub\n");
-    printf("============================\n\n");
+class GALTestApp : public wxApp {
+public:
+    virtual bool OnInit() override;
+};
 
-    // Set canvas size
-    emscripten_set_canvas_element_size("#canvas", CANVAS_WIDTH, CANVAS_HEIGHT);
+wxIMPLEMENT_APP_NO_MAIN(GALTestApp);
 
-    // Initialize WebGL
-    if (!initWebGL()) {
-        printf("Failed to initialize WebGL\n");
-        return 1;
+bool GALTestApp::OnInit() {
+    printf("GAL WebGL Test - Initializing wxWidgets\n");
+
+    // Create a frame (invisible, just hosts the GL canvas)
+    g_frame = new wxFrame(nullptr, wxID_ANY, "GAL WebGL Test",
+                          wxDefaultPosition, wxSize(CANVAS_WIDTH, CANVAS_HEIGHT));
+
+    // Create display options
+    KIGFX::GAL_DISPLAY_OPTIONS displayOptions;
+    KIGFX::VC_SETTINGS vcSettings;
+
+    printf("Creating WEBGL_GAL instance...\n");
+
+    try {
+        g_gal = new KIGFX::WEBGL_GAL(
+            vcSettings,
+            displayOptions,
+            g_frame,            // parent window
+            nullptr,            // mouse listener
+            nullptr,            // paint listener
+            "GAL WebGL Test"    // name
+        );
+    } catch (const std::exception& e) {
+        printf("ERROR: Failed to create WEBGL_GAL: %s\n", e.what());
+        return false;
     }
+
+    printf("WEBGL_GAL created successfully\n");
+
+    // Set up the GAL
+    g_gal->SetScreenSize(VECTOR2I(CANVAS_WIDTH, CANVAS_HEIGHT));
+    g_gal->ResizeScreen(CANVAS_WIDTH, CANVAS_HEIGHT);
+
+    // Set default world coordinates (matching native test)
+    double worldScale = 1.0 / 10000.0;  // Convert nm to screen units
+    g_gal->SetWorldUnitLength(worldScale);
+    g_gal->SetScreenDPI(96);
+
+    // Set world boundaries
+    VECTOR2D worldSize(CANVAS_WIDTH / worldScale, CANVAS_HEIGHT / worldScale);
+    BOX2D worldBounds(VECTOR2D(0, 0), worldSize);
+    g_gal->SetWorldScreenMatrix(g_gal->GetWorldScreenMatrix());
+
+    // Initialize the compositor
+    g_gal->BeginDrawing();
+    g_gal->ClearScreen();
+    g_gal->EndDrawing();
 
     printf("\nReady for scenarios. Total: %d\n", g_totalScenarios);
     printf("Call runScenario(index) from JavaScript to render.\n");
+
+    return true;
+}
+
+/**
+ * Main entry point
+ */
+int main(int argc, char* argv[]) {
+    printf("GAL WebGL Test\n");
+    printf("==============\n\n");
+
+    // Initialize wxWidgets
+    wxEntryStart(argc, argv);
+
+    if (!wxTheApp->OnInit()) {
+        printf("ERROR: wxApp initialization failed\n");
+        return 1;
+    }
 
     // Don't exit - keep runtime alive for JavaScript calls
     emscripten_exit_with_live_runtime();

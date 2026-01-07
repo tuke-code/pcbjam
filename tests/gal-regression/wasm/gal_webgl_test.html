@@ -1,60 +1,84 @@
 <!DOCTYPE html>
-<html>
+<html lang="en-us">
 <head>
     <meta charset="utf-8">
     <title>GAL WebGL Test</title>
     <style>
         body {
             margin: 0;
-            padding: 20px;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
             background: #1a1a26;
             color: #fff;
             font-family: monospace;
         }
-        #canvas-container {
-            display: inline-block;
-            border: 2px solid #444;
+
+        /* wxWidgets window styling */
+        .window {
+            position: absolute;
+            pointer-events: none;
+            z-index: 10;
+            background-color: black;
+            overflow: hidden;
+            width: 0;
+            height: 0;
         }
-        #canvas {
-            display: block;
+
+        .window-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
         }
-        #controls {
-            margin-top: 20px;
+
+        /* GL canvas styling */
+        .gl-canvas {
+            position: absolute;
+            z-index: 100;
+            pointer-events: none;
         }
+
+        /* Controls overlay */
+        #controls-overlay {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            background: rgba(0,0,0,0.8);
+            padding: 10px;
+            border-radius: 4px;
+        }
+
         #status {
             margin-top: 10px;
-            padding: 10px;
+            padding: 5px;
             background: #2a2a3a;
             border-radius: 4px;
         }
-        button {
-            padding: 8px 16px;
-            margin-right: 10px;
-            cursor: pointer;
-        }
-        select {
-            padding: 8px;
-            margin-right: 10px;
+
+        button, select {
+            padding: 5px 10px;
+            margin-right: 5px;
         }
     </style>
 </head>
 <body>
-    <h1>GAL WebGL Test</h1>
+    <!-- wxWidgets main window container -->
+    <div id="main-window"></div>
 
-    <div id="canvas-container">
-        <canvas id="canvas" width="800" height="600"></canvas>
-    </div>
+    <!-- wxWidgets window container (for popups and GL canvases) -->
+    <div id="window-container"></div>
 
-    <div id="controls">
+    <!-- Controls overlay -->
+    <div id="controls-overlay">
         <select id="scenario-select">
             <option value="-1">Select scenario...</option>
         </select>
-        <button id="run-btn" disabled>Run Scenario</button>
-        <button id="run-all-btn" disabled>Run All</button>
-    </div>
-
-    <div id="status">
-        <div id="status-text">Loading WASM module...</div>
+        <button id="run-btn" disabled>Run</button>
+        <button id="run-all-btn" disabled>All</button>
+        <div id="status">Loading WASM...</div>
     </div>
 
     <script>
@@ -90,7 +114,7 @@
             'transform-api'     // 27
         ];
 
-        let Module = null;
+        var wasmModule = null;
 
         // Populate scenario dropdown
         function populateScenarios() {
@@ -105,36 +129,51 @@
 
         // Run a single scenario
         function runScenario(index) {
-            if (!Module) return;
+            if (!wasmModule) return;
 
-            const result = Module.ccall('runScenario', 'number', ['number'], [index]);
+            const result = wasmModule.ccall('runScenario', 'number', ['number'], [index]);
             if (result === 0) {
-                setStatus(`Rendered scenario ${index}: ${SCENARIO_NAMES[index]}`);
+                setStatus(`Rendered: ${SCENARIO_NAMES[index]}`);
             } else {
-                setStatus(`ERROR: Failed to render scenario ${index}`);
+                setStatus(`ERROR: Failed scenario ${index}`);
             }
         }
 
-        // Run all scenarios (for automated testing)
+        // Run all scenarios
         async function runAllScenarios() {
-            if (!Module) return;
+            if (!wasmModule) return;
 
-            const total = Module.ccall('getTotalScenarios', 'number', [], []);
+            const total = wasmModule.ccall('getTotalScenarios', 'number', [], []);
             setStatus(`Running all ${total} scenarios...`);
 
             for (let i = 0; i < total; i++) {
                 runScenario(i);
-                // Small delay to allow rendering
                 await new Promise(r => setTimeout(r, 100));
             }
 
             setStatus(`Completed all ${total} scenarios`);
         }
 
-        // Update status display
+        // Update status
         function setStatus(text) {
-            document.getElementById('status-text').textContent = text;
+            document.getElementById('status').textContent = text;
             console.log('[GAL Test]', text);
+        }
+
+        // Get the GL canvas for screenshots
+        function getGLCanvas() {
+            // wxGLCanvas creates canvases with class 'gl-canvas' or id 'glcanvas-N'
+            const glCanvases = document.querySelectorAll('.gl-canvas');
+            if (glCanvases.length > 0) {
+                return glCanvases[0];
+            }
+            // Fallback to any canvas in window-container
+            const containerCanvases = document.querySelectorAll('#window-container canvas');
+            if (containerCanvases.length > 0) {
+                return containerCanvases[0];
+            }
+            // Fallback to main canvas
+            return document.getElementById('canvas');
         }
 
         // Export for Playwright
@@ -142,12 +181,49 @@
             runScenario,
             runAllScenarios,
             getScenarioName: (index) => SCENARIO_NAMES[index],
-            getTotalScenarios: () => SCENARIO_NAMES.length
+            getTotalScenarios: () => SCENARIO_NAMES.length,
+            getGLCanvas: getGLCanvas
+        };
+
+        // Create canvas immediately (before module loads)
+        var canvas = document.createElement('canvas');
+        canvas.id = 'canvas';
+        canvas.style.display = 'block';
+        canvas.style.position = 'absolute';
+        canvas.style.left = '0';
+        canvas.style.top = '0';
+        canvas.width = 800;
+        canvas.height = 600;
+        canvas.style.width = '800px';
+        canvas.style.height = '600px';
+        canvas.oncontextmenu = function(e) { e.preventDefault(); };
+        canvas.addEventListener("webglcontextlost", function(e) {
+            setStatus('WebGL context lost!');
+            e.preventDefault();
+        }, false);
+        document.getElementById('main-window').appendChild(canvas);
+
+        // Module configuration for MODULARIZE
+        var Module = {
+            canvas: canvas,  // Pass the canvas we created
+            print: function(text) {
+                console.log(text);
+            },
+            printErr: function(text) {
+                console.error(text);
+            },
+            setStatus: function(text) {
+                setStatus(text || 'Ready');
+            },
+            onRuntimeInitialized: function() {
+                setStatus('WASM initialized');
+            }
         };
 
         // Setup UI after module loads
-        function onModuleReady() {
-            setStatus('WASM module loaded. Ready for testing.');
+        function onModuleReady(module) {
+            wasmModule = module;
+            setStatus('Ready. Select a scenario.');
 
             document.getElementById('run-btn').disabled = false;
             document.getElementById('run-all-btn').disabled = false;
@@ -169,22 +245,13 @@
                 }
             };
 
-            // Dispatch custom event for Playwright
+            // Dispatch ready event for Playwright
             window.dispatchEvent(new CustomEvent('gal-test-ready'));
         }
 
         // Initialize
         populateScenarios();
-
-        // Load WASM module
-        createGALTest().then(module => {
-            Module = module;
-            onModuleReady();
-        }).catch(err => {
-            setStatus('ERROR: Failed to load WASM module: ' + err.message);
-            console.error(err);
-        });
     </script>
-    <script src="gal_webgl_test.js"></script>
+    <script src="gal_webgl_test.js" onload="createGALTest(Module).then(onModuleReady).catch(e => setStatus('Load error: ' + e.message))"></script>
 </body>
 </html>

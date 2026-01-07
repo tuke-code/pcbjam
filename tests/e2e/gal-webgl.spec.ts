@@ -96,9 +96,38 @@ test.describe('GAL WebGL Regression Tests', () => {
       // Wait for rendering to complete
       await page.waitForTimeout(100);
 
-      // Get the canvas element and take a screenshot of just the canvas
-      const canvas = await page.locator('#canvas');
-      await expect(canvas).toBeVisible();
+      // Debug: list all canvases on the page
+      const canvasInfo = await page.evaluate(() => {
+        const canvases = document.querySelectorAll('canvas');
+        const windowContainer = document.getElementById('window-container');
+        return {
+          canvases: Array.from(canvases).map(c => ({
+            id: c.id,
+            className: c.className,
+            width: c.width,
+            height: c.height,
+            display: window.getComputedStyle(c).display,
+            parentId: c.parentElement?.id
+          })),
+          windowContainerChildren: windowContainer?.children.length || 0,
+          allElements: document.querySelectorAll('#window-container *').length
+        };
+      });
+      console.log('Canvas debug:', JSON.stringify(canvasInfo, null, 2));
+
+      // Get the canvas element
+      // First try GL canvas, fall back to main canvas
+      let canvas = page.locator('.gl-canvas').first();
+      if (!(await canvas.count())) {
+        canvas = page.locator('#canvas');
+      }
+
+      // If still no canvas, use first available
+      if (!(await canvas.count())) {
+        canvas = page.locator('canvas').first();
+      }
+
+      await expect(canvas).toBeVisible({ timeout: 5000 });
 
       // Screenshot the canvas (matching native 800x600 output)
       const screenshotPath = path.join(OUTPUT_DIR, `gal-${scenarioName}.png`);

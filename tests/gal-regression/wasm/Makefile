@@ -29,7 +29,9 @@ SYSROOT = $(PROJECT_ROOT)/build-wasm/sysroot
 
 # KiCad include paths
 # Note: -I../native provides stub files (config.h, kicad_stubs.h, etc.)
+# Note: -I../scenarios provides shared test scenarios (gal_test_scenarios.h)
 KICAD_INCLUDES = -I../native \
+                 -I../scenarios \
                  -Igenerated \
                  -I$(KICAD_ROOT)/include \
                  -I$(KICAD_ROOT)/include/gal \
@@ -76,7 +78,18 @@ JS = $(TOOLS_ROOT)/wx.js
 HTML_TEMPLATE = $(TOOLS_ROOT)/template.html
 
 # Source files
-MAIN_SRCS = gal_webgl_test.cpp
+MAIN_SRCS = gal_webgl_test.cpp wasm_stubs.cpp
+
+# KiCad sources needed for linking (not in WEBGL_SRCS)
+KICAD_SRCS = $(KICAD_ROOT)/common/gal/hidpi_gl_canvas.cpp \
+             $(KICAD_ROOT)/common/gal/graphics_abstraction_layer.cpp \
+             $(KICAD_ROOT)/common/gal/gal_display_options.cpp
+
+# Test scenario sources (shared with native test)
+SCENARIO_SRCS = ../scenarios/gal_test_scenarios.cpp
+
+# GLU tesselator - stub (no actual implementation needed for basic shapes)
+GLU_SRCS =
 
 # Generated shader sources (from generate_shaders.py)
 SHADER_SRCS = generated/glsl_kicad_frag.cpp \
@@ -107,7 +120,7 @@ WEBGL_SRCS = webgl/webgl_gal.cpp \
              webgl/gl_resources.cpp \
              webgl/webgl_antialiasing.cpp
 
-SRCS = $(MAIN_SRCS) $(SHADER_SRCS) $(WEBGL_SRCS)
+SRCS = $(MAIN_SRCS) $(KICAD_SRCS) $(SCENARIO_SRCS) $(GLU_SRCS) $(SHADER_SRCS) $(WEBGL_SRCS)
 OBJS = $(SRCS:.cpp=.o)
 
 # Target
