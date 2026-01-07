@@ -225,6 +225,9 @@ public:
             // Render the scenario using GAL API
             GALTest::RenderScenario(m_gal, i, g_width, g_height);
 
+            // Test Flush() API - flushes vertex buffer to GPU
+            m_gal->Flush();
+
             // EndDrawing renders vertices to FBO, composites to screen, swaps buffers
             m_gal->EndDrawing();
             m_gal->UnlockContext(i);

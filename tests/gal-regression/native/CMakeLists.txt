@@ -72,6 +72,20 @@ set(SCENARIO_SOURCES
     ${CMAKE_SOURCE_DIR}/../scenarios/scenario_arc_segments.cpp
     ${CMAKE_SOURCE_DIR}/../scenarios/scenario_segment_chain.cpp
     ${CMAKE_SOURCE_DIR}/../scenarios/scenario_group_caching.cpp
+    ${CMAKE_SOURCE_DIR}/../scenarios/scenario_polylines_multi.cpp
+    ${CMAKE_SOURCE_DIR}/../scenarios/scenario_hole_walls.cpp
+    ${CMAKE_SOURCE_DIR}/../scenarios/scenario_grid_native.cpp
+    ${CMAKE_SOURCE_DIR}/../scenarios/scenario_cursor_native.cpp
+    ${CMAKE_SOURCE_DIR}/../scenarios/scenario_render_targets.cpp
+    ${CMAKE_SOURCE_DIR}/../scenarios/scenario_screen_transform.cpp
+    ${CMAKE_SOURCE_DIR}/../scenarios/scenario_clear_colors.cpp
+    ${CMAKE_SOURCE_DIR}/../scenarios/scenario_depth_testing.cpp
+    ${CMAKE_SOURCE_DIR}/../scenarios/scenario_negative_mode.cpp
+    # Additional scenarios (24-27)
+    ${CMAKE_SOURCE_DIR}/../scenarios/scenario_text_attrs.cpp
+    ${CMAKE_SOURCE_DIR}/../scenarios/scenario_glyphs.cpp
+    ${CMAKE_SOURCE_DIR}/../scenarios/scenario_bitmap.cpp
+    ${CMAKE_SOURCE_DIR}/../scenarios/scenario_transform.cpp
 )
 
 # Main executable

@@ -267,3 +267,86 @@ namespace KIFONT {
 void FONT::Draw(KIGFX::GAL*, const wxString&, const VECTOR2I&, const VECTOR2I&,
                 const TEXT_ATTRIBUTES&, const METRICS&) const {}
 } // namespace KIFONT
+
+//=============================================================================
+// BITMAP_BASE stubs for DrawBitmap testing
+// Only define symbols NOT already inline in bitmap_base.h
+//=============================================================================
+
+#include <bitmap_base.h>
+
+// Constructor - not inline in header
+BITMAP_BASE::BITMAP_BASE( const VECTOR2I& pos )
+{
+    m_scale  = 1.0;
+    m_imageType = wxBITMAP_TYPE_PNG;
+    m_bitmap = nullptr;
+    m_image  = nullptr;
+    m_originalImage = nullptr;
+    // Use 91 PPI to match screen DPI - makes 1 bitmap pixel = 1 screen pixel
+    // (worldUnitLength = 1/91, so scale = 1/(91 * 1/91) = 1)
+    m_ppi    = 91;
+    m_pixelSizeIu = 254000.0 / m_ppi;
+    m_isMirroredX = false;
+    m_isMirroredY = false;
+    m_rotation = ANGLE_0;
+}
+
+// SetImage - not inline in header (declared, not defined)
+bool BITMAP_BASE::SetImage( const wxImage& aImage )
+{
+    delete m_image;
+    delete m_originalImage;
+    delete m_bitmap;
+
+    m_image = new wxImage( aImage );
+    m_originalImage = new wxImage( aImage );
+    m_bitmap = new wxBitmap( *m_image );
+    m_imageType = wxBITMAP_TYPE_PNG;
+    return true;
+}
+
+//=============================================================================
+// KIFONT::STROKE_GLYPH stubs for DrawGlyph testing
+// Only define symbols NOT already inline in glyph.h
+//=============================================================================
+
+#include <font/glyph.h>
+
+namespace KIFONT {
+
+// Copy constructor - not inline
+STROKE_GLYPH::STROKE_GLYPH( const STROKE_GLYPH& aGlyph )
+{
+    reserve( aGlyph.size() );
+    for( const std::vector<VECTOR2D>& pointList : aGlyph )
+        push_back( pointList );
+    m_boundingBox = aGlyph.m_boundingBox;
+    m_penIsDown = false;
+}
+
+// AddPoint - not inline
+void STROKE_GLYPH::AddPoint( const VECTOR2D& aPoint )
+{
+    if( !m_penIsDown )
+    {
+        emplace_back();
+        back().reserve( 16 );
+        m_penIsDown = true;
+    }
+    back().push_back( aPoint );
+}
+
+// RaisePen - not inline
+void STROKE_GLYPH::RaisePen()
+{
+    m_penIsDown = false;
+}
+
+// Finalize - not inline
+void STROKE_GLYPH::Finalize()
+{
+    // No-op for test stub
+}
+
+} // namespace KIFONT

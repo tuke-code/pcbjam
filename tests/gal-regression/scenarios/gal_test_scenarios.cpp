@@ -10,6 +10,19 @@
  * - scenario_arc_segments.cpp (12)
  * - scenario_segment_chain.cpp (13)
  * - scenario_group_caching.cpp (14)
+ * - scenario_polylines_multi.cpp (15)
+ * - scenario_hole_walls.cpp (16)
+ * - scenario_grid_native.cpp (17)
+ * - scenario_cursor_native.cpp (18)
+ * - scenario_render_targets.cpp (19)
+ * - scenario_screen_transform.cpp (20)
+ * - scenario_clear_colors.cpp (21)
+ * - scenario_depth_testing.cpp (22)
+ * - scenario_negative_mode.cpp (23)
+ * - scenario_text_attrs.cpp (24)
+ * - scenario_glyphs.cpp (25)
+ * - scenario_bitmap.cpp (26)
+ * - scenario_transform.cpp (27)
  */
 
 #include "gal_test_scenarios.h"
@@ -37,8 +50,21 @@ void RenderBezierCurves(GAL* gal, int width, int height);
 void RenderArcSegments(GAL* gal, int width, int height);
 void RenderSegmentChain(GAL* gal, int width, int height);
 void RenderGroupCaching(GAL* gal, int width, int height);
+void RenderPolylinesMulti(GAL* gal, int width, int height);
+void RenderHoleWalls(GAL* gal, int width, int height);
+void RenderGridNative(GAL* gal, int width, int height);
+void RenderCursorNative(GAL* gal, int width, int height);
+void RenderRenderTargets(GAL* gal, int width, int height);
+void RenderScreenTransform(GAL* gal, int width, int height);
+void RenderClearColors(GAL* gal, int width, int height);
+void RenderDepthTesting(GAL* gal, int width, int height);
+void RenderNegativeMode(GAL* gal, int width, int height);
+void RenderTextAttrs(GAL* gal, int width, int height);
+void RenderGlyphs(GAL* gal, int width, int height);
+void RenderBitmap(GAL* gal, int width, int height);
+void RenderTransformAPI(GAL* gal, int width, int height);
 
-// Scenario names - original 11 + 4 new scenarios
+// Scenario names - original 11 + 17 new scenarios
 static const char* SCENARIO_NAMES[] = {
     // Original scenarios (0-10)
     "basic-lines",
@@ -52,11 +78,25 @@ static const char* SCENARIO_NAMES[] = {
     "grid-cursor",
     "segments",
     "complex-scene",
-    // New scenarios (11-14) - defined in separate files
+    // New scenarios (11-23) - defined in separate files
     "bezier-curves",
     "arc-segments",
     "segment-chain",
-    "group-caching"
+    "group-caching",
+    "polylines-multi",
+    "hole-walls",
+    "grid-native",
+    "cursor-native",
+    "render-targets",
+    "screen-transform",
+    "clear-colors",
+    "depth-testing",
+    "negative-mode",
+    // Additional scenarios (24-27) - defined in separate files
+    "text-attrs",
+    "glyphs",
+    "bitmap",
+    "transform-api"
 };
 
 static const int SCENARIO_COUNT = sizeof(SCENARIO_NAMES) / sizeof(SCENARIO_NAMES[0]);
@@ -111,17 +151,18 @@ static void RenderBasicLines(KIGFX::GAL* gal, int width, int height) {
     }
 }
 
-// Scenario 1: Line widths
+// Scenario 1: Line widths (tests SetLineWidth and SetMinLineWidth)
 static void RenderLineWidths(KIGFX::GAL* gal, int width, int height) {
     double widths[] = {0.5, 1.0, 2.0, 3.0, 5.0, 8.0, 12.0};
     int count = sizeof(widths) / sizeof(widths[0]);
 
     double margin = 50.0;
-    double spacing = (height - 2 * margin) / (count + 1);
+    double spacing = (height - 2 * margin) / (count + 3);  // +3 for min width demos
 
     gal->SetIsFill(false);
     gal->SetIsStroke(true);
 
+    // First section: Normal line widths
     for (int i = 0; i < count; i++) {
         double y = margin + (i + 1) * spacing;
 
@@ -129,8 +170,35 @@ static void RenderLineWidths(KIGFX::GAL* gal, int width, int height) {
         double t = (double)i / (count - 1);
         gal->SetStrokeColor(COLOR4D(1.0 - t * 0.5, 0.3 + t * 0.4, 0.2 + t * 0.6, 1.0));
         gal->SetLineWidth(widths[i]);
-        gal->DrawLine(VECTOR2D(margin, y), VECTOR2D(width - margin, y));
+        gal->DrawLine(VECTOR2D(margin, y), VECTOR2D(width * 0.45, y));
     }
+
+    // Second section: Test SetMinLineWidth
+    // Lines with width 0.5 but different min line widths
+    double baseY = margin + (count + 1) * spacing;
+
+    // Very thin line (0.1) without min width - may be invisible
+    gal->SetMinLineWidth(0.0);  // No minimum
+    gal->SetLineWidth(0.1);
+    gal->SetStrokeColor(COLOR4D(1.0, 0.3, 0.3, 1.0));
+    gal->DrawLine(VECTOR2D(width * 0.55, baseY), VECTOR2D(width - margin, baseY));
+
+    // Very thin line (0.1) with min width 1.0 - should be visible
+    baseY += spacing;
+    gal->SetMinLineWidth(1.0);  // Minimum 1 pixel
+    gal->SetLineWidth(0.1);
+    gal->SetStrokeColor(COLOR4D(0.3, 1.0, 0.3, 1.0));
+    gal->DrawLine(VECTOR2D(width * 0.55, baseY), VECTOR2D(width - margin, baseY));
+
+    // Very thin line (0.1) with min width 3.0 - should be thicker
+    baseY += spacing;
+    gal->SetMinLineWidth(3.0);  // Minimum 3 pixels
+    gal->SetLineWidth(0.1);
+    gal->SetStrokeColor(COLOR4D(0.3, 0.3, 1.0, 1.0));
+    gal->DrawLine(VECTOR2D(width * 0.55, baseY), VECTOR2D(width - margin, baseY));
+
+    // Reset min line width
+    gal->SetMinLineWidth(0.0);
 }
 
 // Scenario 2: Circles
@@ -360,7 +428,8 @@ static void RenderAlphaBlending(KIGFX::GAL* gal, int width, int height) {
     }
 }
 
-// Scenario 7: Transforms
+// Scenario 7: Transforms (tests Translate, Rotate, Scale, Save/Restore)
+// NOTE: Transform() with MATRIX3x3D doesn't work with OPENGL_GAL's shader pipeline
 static void RenderTransforms(KIGFX::GAL* gal, int width, int height) {
     double cx = width / 2.0;
     double cy = height / 2.0;
@@ -491,7 +560,7 @@ static void RenderSegments(KIGFX::GAL* gal, int width, int height) {
                      VECTOR2D(width / 2.0, height - margin - 150), 15.0);
 }
 
-// Scenario 10: Complex scene (PCB-like)
+// Scenario 10: Complex scene (PCB-like, tests SetLayerDepth and AdvanceDepth)
 static void RenderComplexScene(KIGFX::GAL* gal, int width, int height) {
     // Use layer depths to ensure proper z-ordering
     // Lower depth = closer to camera (drawn on top with GL_LESS)
@@ -560,6 +629,35 @@ static void RenderComplexScene(KIGFX::GAL* gal, int width, int height) {
     gal->SetStrokeColor(COLOR4D(1.0, 1.0, 1.0, 1.0));
     gal->DrawRectangle(VECTOR2D(width / 2 - 20, height / 2 - 15),
                        VECTOR2D(width / 2 + 20, height / 2 + 15));
+
+    // Demonstrate AdvanceDepth() - auto-incrementing depth
+    // Draw a stack of overlapping circles using AdvanceDepth
+    gal->SetLayerDepth(80);  // Start at depth 80
+    gal->SetIsFill(true);
+    gal->SetIsStroke(false);
+
+    // Each call to AdvanceDepth moves closer to camera (decrements depth)
+    double stackX = width - 120;
+    double stackY = height - 120;
+
+    // First circle (deepest in stack)
+    gal->SetFillColor(COLOR4D(0.8, 0.2, 0.2, 0.9));
+    gal->DrawCircle(VECTOR2D(stackX, stackY), 35);
+    gal->AdvanceDepth();  // Move closer to camera
+
+    // Second circle
+    gal->SetFillColor(COLOR4D(0.2, 0.8, 0.2, 0.9));
+    gal->DrawCircle(VECTOR2D(stackX + 15, stackY - 10), 30);
+    gal->AdvanceDepth();
+
+    // Third circle
+    gal->SetFillColor(COLOR4D(0.2, 0.2, 0.8, 0.9));
+    gal->DrawCircle(VECTOR2D(stackX + 30, stackY - 20), 25);
+    gal->AdvanceDepth();
+
+    // Fourth circle (closest to camera)
+    gal->SetFillColor(COLOR4D(0.8, 0.8, 0.2, 0.9));
+    gal->DrawCircle(VECTOR2D(stackX + 45, stackY - 30), 20);
 }
 
 //=============================================================================
@@ -580,11 +678,25 @@ void RenderScenario(KIGFX::GAL* gal, int index, int width, int height) {
         case 8: RenderGridCursor(gal, width, height); break;
         case 9: RenderSegments(gal, width, height); break;
         case 10: RenderComplexScene(gal, width, height); break;
-        // New scenarios (11-14) - defined in separate files
+        // New scenarios (11-20) - defined in separate files
         case 11: RenderBezierCurves(gal, width, height); break;
         case 12: RenderArcSegments(gal, width, height); break;
         case 13: RenderSegmentChain(gal, width, height); break;
         case 14: RenderGroupCaching(gal, width, height); break;
+        case 15: RenderPolylinesMulti(gal, width, height); break;
+        case 16: RenderHoleWalls(gal, width, height); break;
+        case 17: RenderGridNative(gal, width, height); break;
+        case 18: RenderCursorNative(gal, width, height); break;
+        case 19: RenderRenderTargets(gal, width, height); break;
+        case 20: RenderScreenTransform(gal, width, height); break;
+        case 21: RenderClearColors(gal, width, height); break;
+        case 22: RenderDepthTesting(gal, width, height); break;
+        case 23: RenderNegativeMode(gal, width, height); break;
+        // Additional scenarios (24-27) - defined in separate files
+        case 24: RenderTextAttrs(gal, width, height); break;
+        case 25: RenderGlyphs(gal, width, height); break;
+        case 26: RenderBitmap(gal, width, height); break;
+        case 27: RenderTransformAPI(gal, width, height); break;
         default: break;
     }
 }

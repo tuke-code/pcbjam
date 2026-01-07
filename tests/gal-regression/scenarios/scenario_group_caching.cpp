@@ -186,6 +186,59 @@ void RenderGroupCaching(GAL* gal, int width, int height) {
     for (int y = 0; y < height; y += 50) {
         gal->DrawLine(VECTOR2D(0, y), VECTOR2D(width, y));
     }
+
+    // Test DeleteGroup - create a group, draw it, delete it, create another
+    gal->SetIsFill(true);
+    gal->SetIsStroke(false);
+    gal->SetFillColor(COLOR4D(0.9, 0.2, 0.9, 1.0));
+
+    int tempGroup = gal->BeginGroup();
+    {
+        gal->DrawCircle(VECTOR2D(0, 0), 20);
+    }
+    gal->EndGroup();
+
+    // Draw the temporary group
+    gal->Save();
+    gal->Translate(VECTOR2D(600, 400));
+    gal->DrawGroup(tempGroup);
+    gal->Restore();
+
+    // Delete the temporary group
+    gal->DeleteGroup(tempGroup);
+
+    // Create a new group after deletion (reuses ID potentially)
+    gal->SetFillColor(COLOR4D(0.2, 0.9, 0.9, 1.0));
+    int newGroup = gal->BeginGroup();
+    {
+        // Draw a diamond shape
+        std::deque<VECTOR2D> diamond = {
+            VECTOR2D(0, -20),
+            VECTOR2D(15, 0),
+            VECTOR2D(0, 20),
+            VECTOR2D(-15, 0)
+        };
+        gal->DrawPolygon(diamond);
+    }
+    gal->EndGroup();
+
+    // Draw the new group
+    gal->Save();
+    gal->Translate(VECTOR2D(680, 400));
+    gal->DrawGroup(newGroup);
+    gal->Restore();
+
+    // Test ClearCache - clears all cached groups
+    // We'll draw markers showing the groups existed before clear
+    gal->SetIsFill(false);
+    gal->SetIsStroke(true);
+    gal->SetLineWidth(1.0);
+    gal->SetStrokeColor(COLOR4D(1.0, 1.0, 1.0, 0.5));
+    gal->DrawRectangle(VECTOR2D(580, 380), VECTOR2D(720, 420));
+
+    // Note: ClearCache() invalidates all groups, so we call it at the end
+    // In production code, you'd recreate groups after ClearCache
+    gal->ClearCache();
 }
 
 }  // namespace GALTest
