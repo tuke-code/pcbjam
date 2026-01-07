@@ -49,6 +49,8 @@ wxwidgets-clean/
 /tests/apps/kicad/*.wasm
 /tests/apps/kicad/*.tar.gz
 !tests/apps/kicad/pcbnew.html
+/tests/apps/gal-webgl/*.js
+/tests/apps/gal-webgl/*.wasm
 /temp/
 *.log
 *.tmp

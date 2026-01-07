@@ -36,6 +36,49 @@ export WX_BUILD="$BUILD_ROOT/wxwidgets-universal"
 # Emscripten settings
 export EMSDK_QUIET=1
 
+# Homebrew Emscripten configuration
+# The em++ script uses EMSDK_PYTHON (not PYTHON env var) for the Python interpreter
+# and finds clang via PATH - Emscripten bundles its own LLVM with WebAssembly support
+if [[ -d "/opt/homebrew/Cellar/emscripten" ]]; then
+    _EM_VERSION=$(ls /opt/homebrew/Cellar/emscripten/ | sort -V | tail -1)
+    _EM_LLVM_BIN="/opt/homebrew/Cellar/emscripten/$_EM_VERSION/libexec/llvm/bin"
+    if [[ -d "$_EM_LLVM_BIN" ]]; then
+        # Add bundled LLVM to PATH so Emscripten finds its clang (not /usr/bin/clang)
+        export PATH="$_EM_LLVM_BIN:$PATH"
+    fi
+elif [[ -d "/usr/local/Cellar/emscripten" ]]; then
+    _EM_VERSION=$(ls /usr/local/Cellar/emscripten/ | sort -V | tail -1)
+    _EM_LLVM_BIN="/usr/local/Cellar/emscripten/$_EM_VERSION/libexec/llvm/bin"
+    if [[ -d "$_EM_LLVM_BIN" ]]; then
+        export PATH="$_EM_LLVM_BIN:$PATH"
+    fi
+fi
+
+# Emscripten 4.0.22+ requires Python 3.10+ (uses match statement and type union syntax)
+# The em++ shell script checks EMSDK_PYTHON first, then falls back to `which python3`
+# Set EMSDK_PYTHON to Homebrew's Python to ensure correct version is used
+if [[ -d "/opt/homebrew/opt/python@3.14/bin" ]]; then
+    export EMSDK_PYTHON="/opt/homebrew/opt/python@3.14/bin/python3.14"
+elif [[ -d "/opt/homebrew/opt/python@3.13/bin" ]]; then
+    export EMSDK_PYTHON="/opt/homebrew/opt/python@3.13/bin/python3.13"
+elif [[ -d "/opt/homebrew/opt/python@3.12/bin" ]]; then
+    export EMSDK_PYTHON="/opt/homebrew/opt/python@3.12/bin/python3.12"
+elif [[ -d "/opt/homebrew/opt/python@3.11/bin" ]]; then
+    export EMSDK_PYTHON="/opt/homebrew/opt/python@3.11/bin/python3.11"
+elif [[ -d "/opt/homebrew/opt/python@3.10/bin" ]]; then
+    export EMSDK_PYTHON="/opt/homebrew/opt/python@3.10/bin/python3.10"
+elif [[ -d "/usr/local/opt/python@3.14/bin" ]]; then
+    export EMSDK_PYTHON="/usr/local/opt/python@3.14/bin/python3.14"
+elif [[ -d "/usr/local/opt/python@3.13/bin" ]]; then
+    export EMSDK_PYTHON="/usr/local/opt/python@3.13/bin/python3.13"
+elif [[ -d "/usr/local/opt/python@3.12/bin" ]]; then
+    export EMSDK_PYTHON="/usr/local/opt/python@3.12/bin/python3.12"
+elif [[ -d "/usr/local/opt/python@3.11/bin" ]]; then
+    export EMSDK_PYTHON="/usr/local/opt/python@3.11/bin/python3.11"
+elif [[ -d "/usr/local/opt/python@3.10/bin" ]]; then
+    export EMSDK_PYTHON="/usr/local/opt/python@3.10/bin/python3.10"
+fi
+
 # Common compiler flags
 export EMCC_CFLAGS="-fPIC -DEMSCRIPTEN"
 export EMCC_CXXFLAGS="-fPIC -DEMSCRIPTEN -std=c++17"

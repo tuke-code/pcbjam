@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>GAL WebGL Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #1a1a26;
+            color: #fff;
+            font-family: monospace;
+        }
+        #canvas-container {
+            display: inline-block;
+            border: 2px solid #444;
+        }
+        #canvas {
+            display: block;
+        }
+        #controls {
+            margin-top: 20px;
+        }
+        #status {
+            margin-top: 10px;
+            padding: 10px;
+            background: #2a2a3a;
+            border-radius: 4px;
+        }
+        button {
+            padding: 8px 16px;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+        select {
+            padding: 8px;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>GAL WebGL Test</h1>
+
+    <div id="canvas-container">
+        <canvas id="canvas" width="800" height="600"></canvas>
+    </div>
+
+    <div id="controls">
+        <select id="scenario-select">
+            <option value="-1">Select scenario...</option>
+        </select>
+        <button id="run-btn" disabled>Run Scenario</button>
+        <button id="run-all-btn" disabled>Run All</button>
+    </div>
+
+    <div id="status">
+        <div id="status-text">Loading WASM module...</div>
+    </div>
+
+    <script>
+        // Scenario names (matching native test)
+        const SCENARIO_NAMES = [
+            'basic-lines',      // 0
+            'line-widths',      // 1
+            'circles',          // 2
+            'arcs',             // 3
+            'rectangles',       // 4
+            'polygons',         // 5
+            'alpha-blending',   // 6
+            'transforms',       // 7
+            'grid-cursor',      // 8
+            'segments',         // 9
+            'complex-scene',    // 10
+            'bezier-curves',    // 11
+            'arc-segments',     // 12
+            'segment-chain',    // 13
+            'group-caching',    // 14
+            'polylines-multi',  // 15
+            'hole-walls',       // 16
+            'grid-native',      // 17
+            'cursor-native',    // 18
+            'render-targets',   // 19
+            'screen-transform', // 20
+            'clear-colors',     // 21
+            'depth-testing',    // 22
+            'negative-mode',    // 23
+            'text-attrs',       // 24
+            'glyphs',           // 25
+            'bitmap',           // 26
+            'transform-api'     // 27
+        ];
+
+        let Module = null;
+
+        // Populate scenario dropdown
+        function populateScenarios() {
+            const select = document.getElementById('scenario-select');
+            SCENARIO_NAMES.forEach((name, index) => {
+                const option = document.createElement('option');
+                option.value = index;
+                option.textContent = `${index}: ${name}`;
+                select.appendChild(option);
+            });
+        }
+
+        // Run a single scenario
+        function runScenario(index) {
+            if (!Module) return;
+
+            const result = Module.ccall('runScenario', 'number', ['number'], [index]);
+            if (result === 0) {
+                setStatus(`Rendered scenario ${index}: ${SCENARIO_NAMES[index]}`);
+            } else {
+                setStatus(`ERROR: Failed to render scenario ${index}`);
+            }
+        }
+
+        // Run all scenarios (for automated testing)
+        async function runAllScenarios() {
+            if (!Module) return;
+
+            const total = Module.ccall('getTotalScenarios', 'number', [], []);
+            setStatus(`Running all ${total} scenarios...`);
+
+            for (let i = 0; i < total; i++) {
+                runScenario(i);
+                // Small delay to allow rendering
+                await new Promise(r => setTimeout(r, 100));
+            }
+
+            setStatus(`Completed all ${total} scenarios`);
+        }
+
+        // Update status display
+        function setStatus(text) {
+            document.getElementById('status-text').textContent = text;
+            console.log('[GAL Test]', text);
+        }
+
+        // Export for Playwright
+        window.galTest = {
+            runScenario,
+            runAllScenarios,
+            getScenarioName: (index) => SCENARIO_NAMES[index],
+            getTotalScenarios: () => SCENARIO_NAMES.length
+        };
+
+        // Setup UI after module loads
+        function onModuleReady() {
+            setStatus('WASM module loaded. Ready for testing.');
+
+            document.getElementById('run-btn').disabled = false;
+            document.getElementById('run-all-btn').disabled = false;
+
+            document.getElementById('run-btn').onclick = () => {
+                const select = document.getElementById('scenario-select');
+                const index = parseInt(select.value);
+                if (index >= 0) {
+                    runScenario(index);
+                }
+            };
+
+            document.getElementById('run-all-btn').onclick = runAllScenarios;
+
+            document.getElementById('scenario-select').onchange = (e) => {
+                const index = parseInt(e.target.value);
+                if (index >= 0) {
+                    runScenario(index);
+                }
+            };
+
+            // Dispatch custom event for Playwright
+            window.dispatchEvent(new CustomEvent('gal-test-ready'));
+        }
+
+        // Initialize
+        populateScenarios();
+
+        // Load WASM module
+        createGALTest().then(module => {
+            Module = module;
+            onModuleReady();
+        }).catch(err => {
+            setStatus('ERROR: Failed to load WASM module: ' + err.message);
+            console.error(err);
+        });
+    </script>
+    <script src="gal_webgl_test.js"></script>
+</body>
+</html>
