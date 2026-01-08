@@ -57,7 +57,10 @@ void renderCurrentScenario() {
     // Set target to non-cached for immediate rendering
     g_gal->SetTarget(KIGFX::TARGET_NONCACHED);
 
-    // Clear the screen
+    // Clear the target buffer first (clears the FBO where content is rendered)
+    g_gal->ClearTarget(KIGFX::TARGET_NONCACHED);
+
+    // Clear the screen (clears the direct rendering buffer)
     g_gal->ClearScreen();
 
     // Render the scenario

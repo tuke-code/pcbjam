@@ -254,13 +254,6 @@ build_webgl() {
         return 0
     fi
 
-    # Check if we have the output already (built previously)
-    local output_dir="$PROJECT_ROOT/tests/apps/gal-webgl"
-    if [ -f "$output_dir/gal_webgl_test.js" ] && [ -f "$output_dir/gal_webgl_test.wasm" ]; then
-        log_step "WebGL test already built, skipping rebuild"
-        return 0
-    fi
-
     # Check if Emscripten is available
     if ! command -v emcmake &> /dev/null; then
         log_step "Emscripten not available - WebGL build requires emsdk or Docker"
