@@ -98,6 +98,10 @@ protected:
 
     ///< true: enable Z test when drawing
     bool m_enableDepthTest;
+
+    ///< VAO for WebGL 2.0 / OpenGL ES 3.0 compatibility
+    ///< WebGL 2.0 requires a VAO to be bound before setting vertex attributes
+    unsigned int m_vao;
 };
 
 

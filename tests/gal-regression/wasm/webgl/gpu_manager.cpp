@@ -61,13 +61,20 @@ GPU_MANAGER::GPU_MANAGER( VERTEX_CONTAINER* aContainer ) :
         m_shaderAttrib( 0 ),
         m_vertexAttrib( 0 ),
         m_colorAttrib( 0 ),
-        m_enableDepthTest( true )
+        m_enableDepthTest( true ),
+        m_vao( 0 )
 {
 }
 
 
 GPU_MANAGER::~GPU_MANAGER()
 {
+    // Delete VAO if it was created
+    if( m_vao != 0 )
+    {
+        glDeleteVertexArrays( 1, &m_vao );
+        m_vao = 0;
+    }
 }
 
 
@@ -81,6 +88,13 @@ void GPU_MANAGER::SetShader( SHADER& aShader )
     if( m_shaderAttrib == -1 )
     {
         DisplayError( nullptr, wxT( "Could not get the shader attribute location" ) );
+    }
+
+    // Create VAO for WebGL 2.0 / OpenGL ES 3.0 compatibility
+    // WebGL 2.0 requires a VAO to be bound before calling glVertexAttribPointer
+    if( m_vao == 0 )
+    {
+        glGenVertexArrays( 1, &m_vao );
     }
 }
 
@@ -162,6 +176,9 @@ void GPU_CACHED_MANAGER::EndDrawing()
         glEnable( GL_DEPTH_TEST );
     else
         glDisable( GL_DEPTH_TEST );
+
+    // Bind VAO first (required for WebGL 2.0 / OpenGL ES 3.0)
+    glBindVertexArray( m_vao );
 
     // Bind vertices data buffers
     glBindBuffer( GL_ARRAY_BUFFER, cached->GetBufferHandle() );
@@ -250,6 +267,9 @@ void GPU_CACHED_MANAGER::EndDrawing()
         m_shader->Deactivate();
     }
 
+    // Unbind VAO
+    glBindVertexArray( 0 );
+
     m_isDrawing = false;
 }
 
@@ -301,6 +321,9 @@ void GPU_NONCACHED_MANAGER::EndDrawing()
     else
         glDisable( GL_DEPTH_TEST );
 
+    // Bind VAO first (required for WebGL 2.0 / OpenGL ES 3.0)
+    glBindVertexArray( m_vao );
+
     // Modern vertex attributes (replacing legacy glEnableClientState/glVertexPointer/glColorPointer)
     // Vertex position (a_vertex)
     glEnableVertexAttribArray( m_vertexAttrib );
@@ -337,6 +360,9 @@ void GPU_NONCACHED_MANAGER::EndDrawing()
         glDisableVertexAttribArray( m_shaderAttrib );
         m_shader->Deactivate();
     }
+
+    // Unbind VAO
+    glBindVertexArray( 0 );
 
     m_container->Clear();
 
