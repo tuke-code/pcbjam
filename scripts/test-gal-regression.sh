@@ -154,10 +154,17 @@ compare_screenshots() {
             fi
         fi
 
+        # Normalize both images to TrueColor RGB for consistent comparison
+        # This handles PNG format differences (RGBA vs RGB, palette vs truecolor)
+        local ref_normalized="$tmpdir/ref_$filename"
+        local cur_normalized="$tmpdir/cur_$filename"
+        convert "$ref" -flatten -colorspace sRGB -type TrueColor "$ref_normalized" 2>/dev/null
+        convert "$compare_file" -flatten -colorspace sRGB -type TrueColor "$cur_normalized" 2>/dev/null
+
         # Compare with fuzz factor (allows small pixel differences from anti-aliasing)
         # Use AE (Absolute Error) metric - counts differing pixels
         # Output format: "123456 (0.123)" - extract just the first number
-        local compare_output=$(compare -metric AE -fuzz 2% "$ref" "$compare_file" null: 2>&1 || true)
+        local compare_output=$(compare -metric AE -fuzz 2% "$ref_normalized" "$cur_normalized" null: 2>&1 || true)
         local diff_pixels=$(echo "$compare_output" | awk '{print $1}')
 
         # Handle scientific notation (e.g., 1.92e+06)
@@ -173,7 +180,7 @@ compare_screenshots() {
         fi
 
         # Calculate percentage
-        local total_pixels=$(identify -format "%[fx:w*h]" "$ref" 2>/dev/null)
+        local total_pixels=$(identify -format "%[fx:w*h]" "$ref_normalized" 2>/dev/null)
         # Handle scientific notation in total_pixels
         if [[ "$total_pixels" =~ [eE] ]]; then
             total_pixels=$(printf "%.0f" "$total_pixels")

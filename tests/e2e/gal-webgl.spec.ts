@@ -162,12 +162,21 @@ test.describe('GAL WebGL Regression Tests', () => {
   test('Run all scenarios sequentially', async ({ page, testLogger }) => {
     await page.goto('/gal-webgl/gal_webgl_test.html');
 
-    // Wait for module to be ready
+    // Wait for module to be fully ready (not just defined)
     await page.waitForFunction(() => {
-      return (window as any).galTest !== undefined;
+      return (window as any).galTest !== undefined && (window as any).galTest.isReady();
     }, { timeout: 60000 });
 
     console.log('Running all 28 scenarios...');
+
+    // Find the GL canvas (same logic as individual tests)
+    let canvas = page.locator('.gl-canvas').first();
+    if (!(await canvas.count())) {
+      canvas = page.locator('#canvas');
+    }
+    if (!(await canvas.count())) {
+      canvas = page.locator('canvas').first();
+    }
 
     for (let i = 0; i < SCENARIO_NAMES.length; i++) {
       const scenarioName = SCENARIO_NAMES[i];
@@ -177,14 +186,13 @@ test.describe('GAL WebGL Regression Tests', () => {
         (window as any).galTest.runScenario(index);
       }, i);
 
-      // Wait for rendering
-      await page.waitForTimeout(50);
+      // Wait for rendering to complete (same timeout as individual tests)
+      await page.waitForTimeout(100);
 
       // Hide controls overlay before screenshot
       await page.locator('#controls-overlay').evaluate(el => el.style.visibility = 'hidden');
 
-      // Screenshot the canvas
-      const canvas = await page.locator('#canvas');
+      // Screenshot the GL canvas
       const screenshotPath = path.join(OUTPUT_DIR, `gal-${scenarioName}.png`);
       await canvas.screenshot({ path: screenshotPath });
 
