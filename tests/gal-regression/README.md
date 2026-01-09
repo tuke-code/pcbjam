@@ -83,9 +83,11 @@ This is acceptable because:
 - The WebGL port will need its own bitmap rendering implementation anyway
 - All other 69 GAL methods are fully tested
 
-### Transform() API (Scenario 27)
+### Transform() API (Scenario 27) - EXCLUDED FROM COMPARISON
 
-The Transform() method is documented but not visually tested because it's dead code in KiCad - never called in production. It uses `glMultMatrixd()` which doesn't integrate with the VERTEX_MANAGER shader pipeline.
+The Transform() method is **dead code in KiCad** - never called anywhere in the codebase. KiCad uses Rotate(), Translate(), Scale() instead.
+
+In native OPENGL_GAL, Transform() calls `glMultMatrixd()` which modifies GL_MODELVIEW, but VERTEX_MANAGER uses its own independent `m_transform` - so glMultMatrixd has no visible effect on rendered output. The scenario is kept for documentation but excluded from WebGL vs Native comparisons since both implementations are effectively broken (by design).
 
 ## Directory Structure
 

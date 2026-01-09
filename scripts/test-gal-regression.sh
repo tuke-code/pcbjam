@@ -126,11 +126,23 @@ compare_screenshots() {
     local tmpdir=$(mktemp -d)
     trap "rm -rf '$tmpdir'" EXIT
 
+    # Files to exclude from comparison (documented as broken/dead code)
+    local excluded_files="gal-transform-api.png"
+
     # Compare all reference screenshots
     for ref in "$dir1"/*.png; do
         [ -e "$ref" ] || continue  # Handle no matches
 
         local filename=$(basename "$ref")
+
+        # Skip excluded files
+        if echo "$excluded_files" | grep -q "$filename"; then
+            if [ -n "$VERBOSE" ]; then
+                echo "  SKIPPED: $filename (excluded - see README.md)"
+            fi
+            continue
+        fi
+
         local current="$dir2/$filename"
         total=$((total + 1))
 
@@ -220,6 +232,64 @@ compare_screenshots() {
 
     echo ""
     echo "  Results: $matching/$total matching, $different different, $missing missing, $extra extra"
+
+    # Show diagnostic details for failing scenarios
+    if [ "$different" -gt 0 ] && [ -n "$VERBOSE" ]; then
+        echo ""
+        echo "  === DIAGNOSTIC DETAILS for DIFFERENT scenarios ==="
+        for ref in "$dir1"/*.png; do
+            [ -e "$ref" ] || continue
+            local filename=$(basename "$ref")
+            local current="$dir2/$filename"
+            [ -f "$current" ] || continue
+
+            # Recalculate diff to identify failing scenarios
+            local ref_normalized="$tmpdir/ref_$filename"
+            local cur_normalized="$tmpdir/cur_$filename"
+            [ -f "$ref_normalized" ] || convert "$ref" -flatten -colorspace sRGB -type TrueColor "$ref_normalized" 2>/dev/null
+            [ -f "$cur_normalized" ] || convert "$current" -flatten -colorspace sRGB -type TrueColor "$cur_normalized" 2>/dev/null
+
+            local compare_output=$(compare -metric AE -fuzz 2% "$ref_normalized" "$cur_normalized" null: 2>&1 || true)
+            local diff_pixels=$(echo "$compare_output" | awk '{print $1}')
+            [[ "$diff_pixels" =~ [eE] ]] && diff_pixels=$(printf "%.0f" "$diff_pixels")
+            [[ "$diff_pixels" =~ ^[0-9]+\.?[0-9]*$ ]] || continue
+
+            local total_pixels=$(identify -format "%[fx:w*h]" "$ref_normalized" 2>/dev/null)
+            [[ "$total_pixels" =~ [eE] ]] && total_pixels=$(printf "%.0f" "$total_pixels")
+            [ -z "$total_pixels" ] || [ "$total_pixels" = "0" ] && total_pixels=1
+            local diff_pct=$(awk "BEGIN {printf \"%.4f\", ($diff_pixels * 100.0) / $total_pixels}")
+            local is_match=$(awk "BEGIN {print ($diff_pct < $threshold) ? 1 : 0}")
+
+            if [ "$is_match" -eq 0 ]; then
+                echo ""
+                echo "  --- $filename (${diff_pct}% different) ---"
+
+                # Content bounds
+                local ref_bounds=$(magick "$ref" -flatten -fuzz 1% -trim -format "%w x %h at %O" info: 2>/dev/null || echo "N/A")
+                local cur_bounds=$(magick "$current" -fuzz 1% -trim -format "%w x %h at %O" info: 2>/dev/null || echo "N/A")
+                echo "    Content bounds:"
+                echo "      Ref:     $ref_bounds"
+                echo "      Current: $cur_bounds"
+
+                # Sample pixel colors at center
+                local ref_dims=$(identify -format "%w %h" "$ref" 2>/dev/null)
+                local cx=$(echo "$ref_dims" | awk '{print int($1/2)}')
+                local cy=$(echo "$ref_dims" | awk '{print int($2/2)}')
+                local ref_pixel=$(magick "$ref" -format "%[pixel:p{$cx,$cy}]" info: 2>/dev/null || echo "N/A")
+                local cur_pixel=$(magick "$current" -format "%[pixel:p{$cx,$cy}]" info: 2>/dev/null || echo "N/A")
+                echo "    Center pixel ($cx,$cy):"
+                echo "      Ref:     $ref_pixel"
+                echo "      Current: $cur_pixel"
+
+                # Check for mostly-empty content
+                local cur_unique=$(magick "$current" -format %c histogram:info: 2>/dev/null | wc -l)
+                if [ "$cur_unique" -lt 10 ]; then
+                    echo "    WARNING: Current image has only $cur_unique unique colors (possible rendering issue)"
+                fi
+            fi
+        done
+        echo ""
+    fi
 
     if [ "$different" -gt 0 ] || [ "$missing" -gt 0 ]; then
         log_error "$label: FAILED"
