@@ -8,6 +8,11 @@
 # Uses a Makefile with direct em++ calls (like build-wasm-test.sh)
 # to avoid emcmake Python 3.10+ requirement.
 #
+# Usage:
+#   ./scripts/build-gal-webgl-test.sh              # Clean build (default)
+#   ./scripts/build-gal-webgl-test.sh --no-clean   # Incremental build
+#   ./scripts/build-gal-webgl-test.sh --debug      # Debug build with source maps
+#
 
 # Redirect all output to a log file (re-execs script with redirection)
 source "$(dirname "$0")/common/logging.sh"
@@ -37,18 +42,19 @@ fi
 echo "  Emscripten: $(em++ --version 2>&1 | head -1)"
 
 # Parse arguments
+# Default: clean build to avoid stale object file issues (header deps not tracked in old builds)
 DEBUG_BUILD=0
-CLEAN_BUILD=0
+CLEAN_BUILD=1
 
 for arg in "$@"; do
     if [ "$arg" = "--debug" ]; then
         DEBUG_BUILD=1
-    elif [ "$arg" = "--clean" ]; then
-        CLEAN_BUILD=1
+    elif [ "$arg" = "--no-clean" ]; then
+        CLEAN_BUILD=0
     fi
 done
 
-# Build using Makefile
+# Build using Makefile (compiles WebGL sources directly from kicad/)
 cd "$TEST_DIR"
 
 if [ "$CLEAN_BUILD" = "1" ]; then
@@ -62,6 +68,7 @@ fi
 rm -f "$OUTPUT_DIR"/*.js "$OUTPUT_DIR"/*.wasm 2>/dev/null || true
 
 # Generate shaders (converts GLSL 1.20 to GLSL ES 3.00)
+# TODO: Eventually these should come from KiCad's build
 echo ""
 echo "Generating WebGL shaders..."
 python3 generate_shaders.py

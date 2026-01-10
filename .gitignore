@@ -55,3 +55,4 @@ wxwidgets-clean/
 *.log
 *.tmp
 output/
+*.d

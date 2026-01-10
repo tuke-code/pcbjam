@@ -35,17 +35,18 @@ KICAD_INCLUDES = -I../native \
                  -Igenerated \
                  -I$(KICAD_ROOT)/include \
                  -I$(KICAD_ROOT)/include/gal \
-                 -I$(KICAD_ROOT)/include/gal/opengl \
+                 -I$(KICAD_ROOT)/include/gal/webgl \
+                 -I$(KICAD_ROOT)/common/gal/webgl \
                  -I$(KICAD_ROOT)/common \
                  -I$(KICAD_ROOT)/libs/kimath/include \
+                 -I$(KICAD_ROOT)/libs/kimath/glu_tess \
                  -I$(KICAD_ROOT)/libs/kiplatform/include \
                  -I$(KICAD_ROOT)/libs/core/include \
                  -I$(KICAD_ROOT)/thirdparty/glm \
                  -I$(KICAD_ROOT)/thirdparty/nlohmann_json \
                  -I$(KICAD_ROOT)/thirdparty/thread-pool \
                  -I$(KICAD_ROOT)/thirdparty/clipper2/Clipper2Lib/include \
-                 -I$(SYSROOT)/include \
-                 -Iwebgl
+                 -I$(SYSROOT)/include
 
 # Debug or Release build
 ifdef DEBUG
@@ -56,7 +57,9 @@ else
     DEBUG_LDFLAGS =
 endif
 
-CXXFLAGS = $(OPT_FLAGS) $(WX_CXXFLAGS) $(KICAD_INCLUDES) -std=c++20
+# -MMD -MP generates .d dependency files for header tracking
+# This ensures header changes trigger rebuilds (prevents stale object issues)
+CXXFLAGS = $(OPT_FLAGS) $(WX_CXXFLAGS) $(KICAD_INCLUDES) -std=c++20 -MMD -MP
 
 # Emscripten flags
 BASE_LDFLAGS = -sALLOW_MEMORY_GROWTH=1 \
@@ -88,21 +91,14 @@ HTML_TEMPLATE = $(TOOLS_ROOT)/template.html
 # Source files
 MAIN_SRCS = gal_webgl_test.cpp wasm_stubs.cpp
 
-# KiCad sources needed for linking (not in WEBGL_SRCS)
-KICAD_SRCS = $(KICAD_ROOT)/common/gal/hidpi_gl_canvas.cpp \
-             $(KICAD_ROOT)/common/gal/graphics_abstraction_layer.cpp \
-             $(KICAD_ROOT)/common/gal/gal_display_options.cpp
-
 # Test scenario sources (shared with native test)
 # Include ALL scenario files - they should use the abstract GAL interface only.
 # The harness decides whether to use OPENGL_GAL (native) or WEBGL_GAL (wasm).
 SCENARIO_SRCS = ../scenarios/gal_test_scenarios.cpp \
                 $(wildcard ../scenarios/scenario_*.cpp)
 
-# GLU tesselator - implemented using Mapbox earcut.hpp
-GLU_SRCS = glu_tess_impl.cpp
-
 # Generated shader sources (from generate_shaders.py)
+# TODO: Eventually these should come from KiCad's build, but for now we generate them here
 SHADER_SRCS = generated/glsl_kicad_frag.cpp \
               generated/glsl_kicad_vert.cpp \
               generated/glsl_smaa_base.cpp \
@@ -114,26 +110,35 @@ SHADER_SRCS = generated/glsl_kicad_frag.cpp \
               generated/glsl_smaa_pass_3_frag.cpp \
               generated/glsl_smaa_pass_3_vert.cpp
 
-# WebGL GAL sources (ported from OpenGL GAL)
-WEBGL_SRCS = webgl/webgl_gal.cpp \
-             webgl/vertex_manager.cpp \
-             webgl/vertex_container.cpp \
-             webgl/vertex_item.cpp \
-             webgl/gpu_manager.cpp \
-             webgl/noncached_container.cpp \
-             webgl/cached_container.cpp \
-             webgl/cached_container_gpu.cpp \
-             webgl/cached_container_ram.cpp \
-             webgl/shader.cpp \
-             webgl/webgl_compositor.cpp \
-             webgl/fullscreen_quad.cpp \
-             webgl/utils.cpp \
-             webgl/gl_context_mgr.cpp \
-             webgl/gl_resources.cpp \
-             webgl/webgl_antialiasing.cpp
+# KiCad GAL sources needed for linking (base GAL classes)
+KICAD_GAL_SRCS = $(KICAD_ROOT)/common/gal/hidpi_gl_canvas.cpp \
+                 $(KICAD_ROOT)/common/gal/graphics_abstraction_layer.cpp \
+                 $(KICAD_ROOT)/common/gal/gal_display_options.cpp
 
-SRCS = $(MAIN_SRCS) $(KICAD_SRCS) $(SCENARIO_SRCS) $(GLU_SRCS) $(SHADER_SRCS) $(WEBGL_SRCS)
+# GLU tesselator - implemented using Mapbox earcut.hpp
+GLU_SRCS = $(KICAD_ROOT)/libs/kimath/glu_tess/glu_tess_impl.cpp
+
+# WebGL GAL sources (now in kicad/common/gal/webgl/)
+WEBGL_SRCS = $(KICAD_ROOT)/common/gal/webgl/webgl_gal.cpp \
+             $(KICAD_ROOT)/common/gal/webgl/vertex_manager.cpp \
+             $(KICAD_ROOT)/common/gal/webgl/vertex_container.cpp \
+             $(KICAD_ROOT)/common/gal/webgl/vertex_item.cpp \
+             $(KICAD_ROOT)/common/gal/webgl/gpu_manager.cpp \
+             $(KICAD_ROOT)/common/gal/webgl/noncached_container.cpp \
+             $(KICAD_ROOT)/common/gal/webgl/cached_container.cpp \
+             $(KICAD_ROOT)/common/gal/webgl/cached_container_gpu.cpp \
+             $(KICAD_ROOT)/common/gal/webgl/cached_container_ram.cpp \
+             $(KICAD_ROOT)/common/gal/webgl/shader.cpp \
+             $(KICAD_ROOT)/common/gal/webgl/webgl_compositor.cpp \
+             $(KICAD_ROOT)/common/gal/webgl/fullscreen_quad.cpp \
+             $(KICAD_ROOT)/common/gal/webgl/utils.cpp \
+             $(KICAD_ROOT)/common/gal/webgl/gl_context_mgr.cpp \
+             $(KICAD_ROOT)/common/gal/webgl/gl_resources.cpp \
+             $(KICAD_ROOT)/common/gal/webgl/webgl_antialiasing.cpp
+
+SRCS = $(MAIN_SRCS) $(KICAD_GAL_SRCS) $(SCENARIO_SRCS) $(GLU_SRCS) $(SHADER_SRCS) $(WEBGL_SRCS)
 OBJS = $(SRCS:.cpp=.o)
+DEPS = $(OBJS:.o=.d)
 
 # Target
 TARGET = $(OUTPUT_DIR)/gal_webgl_test.js
@@ -146,14 +151,21 @@ $(OUTPUT_DIR):
 %.o: %.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
+# Link test harness (compiles WebGL sources directly from kicad/)
 $(TARGET): $(OBJS)
+	@echo "Linking $(words $(OBJS)) objects..."
 	$(CXX) $(OBJS) $(LDFLAGS) --pre-js $(JS) -o $@
 	cp gal_webgl_test.html $(OUTPUT_DIR)/
 
 clean:
-	rm -f $(OBJS)
+	rm -f $(OBJS) $(DEPS)
 	rm -f $(OUTPUT_DIR)/gal_webgl_test.js
 	rm -f $(OUTPUT_DIR)/gal_webgl_test.wasm
 	rm -f $(OUTPUT_DIR)/gal_webgl_test.html
+	# Also clean object files in scenario directories
+	rm -f ../scenarios/*.o ../scenarios/*.d
 
 .PHONY: all clean
+
+# Include generated dependency files (silently ignore if missing on first build)
+-include $(DEPS)

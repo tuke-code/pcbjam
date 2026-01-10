@@ -320,24 +320,18 @@ build_webgl() {
     log_header "Building WebGL Test"
 
     if [ ! -f "$SCRIPT_DIR/build-gal-webgl-test.sh" ]; then
-        log_step "WebGL build script not found (Phase 2)"
+        log_step "WebGL build script not found"
         return 0
     fi
 
-    # Check if Emscripten is available
-    if ! command -v emcmake &> /dev/null; then
-        log_step "Emscripten not available - WebGL build requires emsdk or Docker"
-        log_step "Skipping WebGL build (run inside Docker or activate emsdk first)"
-        return 0
-    fi
-
+    # Delegate to build-gal-webgl-test.sh (handles Emscripten check, clean build, etc.)
     log_step "Running scripts/build-gal-webgl-test.sh..."
 
     if "$SCRIPT_DIR/build-gal-webgl-test.sh"; then
         log_success "WebGL build succeeded"
     else
-        log_error "WebGL build failed (Emscripten may need Python 3.10+)"
-        log_step "Try running inside Docker or with a compatible emsdk"
+        log_error "WebGL build failed"
+        log_step "Check if KiCad is built first: docker/build.sh"
         return 0  # Don't fail the whole test, just skip WebGL
     fi
 }
