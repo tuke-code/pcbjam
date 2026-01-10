@@ -3,6 +3,7 @@
 
 # Redirect all output to a log file (re-execs script with redirection)
 source "$(dirname "$0")/common/logging.sh"
+source "$(dirname "$0")/common/env.sh"
 # This script creates library symlinks and builds the test apps
 #
 # Usage:
