@@ -10,6 +10,7 @@ The test have screenshots that are tracked with git, use compare-screenshots.sh 
 Update test images with /scripts/update-baseline-screenshots.sh when a new image is added
 The tests have log files in tests/logs/{wxwidgets/kicad}/{test-name} after each run where the js console and cpp logs are visible
 Always check screenshots for validating tests
+Run e2e tests from /tests folder: `npm run test:kicad` or `npm run test:e2e` (not playwright directly)
 
 Build wxwidgets with scripts/build-wxuniversal-wasm.sh
 Build kicad with docker/build.sh

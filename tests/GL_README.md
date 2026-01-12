@@ -1,4 +1,4 @@
-# Emscripten LEGACY_GL_EMULATION - Immediate Mode Notes
+Wha# Emscripten LEGACY_GL_EMULATION - Immediate Mode Notes
 
 ## Overview
 
