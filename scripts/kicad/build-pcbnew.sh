@@ -181,7 +181,11 @@ log_info "Stub libraries built"
 # Step 6.2: Replace Emscripten's wasm-opt with stub to bypass asyncify transformation
 # This allows Emscripten to generate JS with Asyncify runtime, but we run the real
 # wasm-opt --asyncify on the host where more RAM is available (needs 50GB+ for KiCad)
-EMSDK_WASM_OPT="/emsdk/upstream/bin/wasm-opt"
+if [ -z "${EMSDK}" ]; then
+    log_error "EMSDK environment variable is not set."
+    exit 1
+fi
+EMSDK_WASM_OPT="${EMSDK}/upstream/bin/wasm-opt"
 if [ -f "${EMSDK_WASM_OPT}" ] && [ ! -f "${EMSDK_WASM_OPT}.real" ]; then
     log_info "Backing up real wasm-opt..."
     mv "${EMSDK_WASM_OPT}" "${EMSDK_WASM_OPT}.real"
@@ -193,7 +197,7 @@ log_info "wasm-opt stub installed (asyncify will run on host)"
 
 # Step 6.3: Replace wasm-emscripten-finalize with stub (same pattern as wasm-opt)
 # This tool also OOMs on large WASM with debug symbols, so we run it on the host
-EMSDK_FINALIZE="/emsdk/upstream/bin/wasm-emscripten-finalize"
+EMSDK_FINALIZE="${EMSDK}/upstream/bin/wasm-emscripten-finalize"
 if [ -f "${EMSDK_FINALIZE}" ] && [ ! -f "${EMSDK_FINALIZE}.real" ]; then
     log_info "Backing up real wasm-emscripten-finalize..."
     mv "${EMSDK_FINALIZE}" "${EMSDK_FINALIZE}.real"

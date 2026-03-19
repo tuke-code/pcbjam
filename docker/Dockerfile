@@ -1,5 +1,7 @@
-# Use ARM64-native image for Apple Silicon (M1/M2/M3/M4)
-FROM emscripten/emsdk:4.0.2-arm64
+# Plain Ubuntu base — multi-arch (ARM64/x86_64 auto-detected)
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
 
 # Install build tools required for KiCad WASM build
 RUN apt-get update && apt-get install -y \
@@ -19,7 +21,16 @@ RUN apt-get update && apt-get install -y \
     unixodbc-dev \
     ccache \
     rsync \
+    xz-utils \
     && rm -rf /var/lib/apt/lists/*
+
+# Install emsdk from source (same approach as scripts/setup-emsdk.sh)
+# EMSCRIPTEN_VERSION must match scripts/common/versions.sh
+ARG EMSCRIPTEN_VERSION=4.0.2
+RUN git clone https://github.com/emscripten-core/emsdk.git /emsdk \
+    && cd /emsdk \
+    && ./emsdk install ${EMSCRIPTEN_VERSION} \
+    && ./emsdk activate ${EMSCRIPTEN_VERSION}
 
 # Configure ccache for Emscripten
 # CCACHE_DIR in named volume persists across containers

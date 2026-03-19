@@ -36,18 +36,26 @@ export WX_BUILD="$BUILD_ROOT/wxwidgets-universal"
 # Emscripten settings
 export EMSDK_QUIET=1
 
-# Local emsdk: auto-install if missing, then source its environment
-# The emsdk bundles its own Python, Node, and LLVM — no Homebrew needed
-_EMSDK_DIR="$_KICAD_WASM_PROJECT_ROOT/tools/emsdk"
-_EMSDK_ENV="$_EMSDK_DIR/emsdk_env.sh"
+# Emscripten SDK setup
+# If EMSDK is already set (e.g. Docker entrypoint sourced emsdk_env.sh), use it.
+# Otherwise auto-install a local copy under tools/emsdk/.
+if [ -n "$EMSDK" ] && [ -f "$EMSDK/emsdk_env.sh" ]; then
+    # emsdk already active (e.g., Docker entrypoint sourced it)
+    source "$EMSDK/emsdk_env.sh" 2>/dev/null
+else
+    # Local emsdk: auto-install if missing, then source its environment
+    # The emsdk bundles its own Python, Node, and LLVM — no Homebrew needed
+    _EMSDK_DIR="$_KICAD_WASM_PROJECT_ROOT/tools/emsdk"
+    _EMSDK_ENV="$_EMSDK_DIR/emsdk_env.sh"
 
-if [ ! -f "$_EMSDK_ENV" ]; then
-    echo "Emscripten SDK not found. Installing..."
-    "$_KICAD_WASM_SCRIPTS_DIR/setup-emsdk.sh"
-fi
+    if [ ! -f "$_EMSDK_ENV" ]; then
+        echo "Emscripten SDK not found. Installing..."
+        "$_KICAD_WASM_SCRIPTS_DIR/setup-emsdk.sh"
+    fi
 
-if [ -f "$_EMSDK_ENV" ]; then
-    source "$_EMSDK_ENV" 2>/dev/null
+    if [ -f "$_EMSDK_ENV" ]; then
+        source "$_EMSDK_ENV" 2>/dev/null
+    fi
 fi
 
 # Common compiler flags
