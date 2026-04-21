@@ -55,7 +55,8 @@ export default defineConfig({
 
   use: {
     baseURL: `http://localhost:${port}`,
-    trace: 'on-first-retry',
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
   },
 
   projects: [
@@ -68,11 +69,14 @@ export default defineConfig({
       },
     },
     {
-      // Chrome for headed debugging only (headless crashes on ARM Mac)
-      // Use --headed flag when running: npm run test:kicad:headed
+      // Uses the SYSTEM-installed Google Chrome (not the Playwright-bundled
+      // Chromium) so WebGL runs on the real GPU instead of SwiftShader.
+      // The bundled Chromium fails with canvas hidden on ARM Mac because of
+      // Chromium issues #1416283, #338414704 (SwiftShader WebGL bug).
+      // Run via: npm run test:kicad:headed
       name: 'chromium',
       use: {
-        ...devices['Desktop Chrome'],
+        channel: 'chrome',
         viewport: { width: 1280, height: 720 },
       },
     },

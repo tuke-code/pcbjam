@@ -7,6 +7,7 @@
 
 WXCONFIG = ../../build-wasm/wxwidgets-universal/wx-config
 TOOLS_ROOT = ../../wxwidgets/build/wasm
+KICAD_ROOT = ../../kicad
 
 CXX = em++
 WX_CXXFLAGS := $(shell $(WXCONFIG) --cxxflags)
@@ -93,6 +94,14 @@ LDFLAGS_PTHREAD = $(DEBUG_LDFLAGS) $(BASE_LDFLAGS) -pthread \
                   -sPTHREAD_POOL_SIZE_STRICT=0 \
                   $(WX_LDFLAGS_NOGL)
 
+# Coroutine harness flags - mirror KiCad's fiber-related runtime needs
+COROUTINE_BASE_LDFLAGS = -sALLOW_MEMORY_GROWTH -sERROR_ON_UNDEFINED_SYMBOLS=0 \
+               -s "EXPORTED_RUNTIME_METHODS=['HEAPU8','HEAP8','HEAP32','ccall']" \
+               -sASYNCIFY=1 \
+               -sASYNCIFY_STACK_SIZE=65536 \
+               -sASYNCIFY_IMPORTS=['startModal','js_writeTextToClipboard','js_readTextFromClipboard','js_clipboardHasText','js_clearClipboard','js_enumerateFonts','emscripten_fiber_swap']
+LDFLAGS_COROUTINE = $(DEBUG_LDFLAGS) $(COROUTINE_BASE_LDFLAGS) $(WX_LDFLAGS_NOGL)
+
 JS = $(TOOLS_ROOT)/wx.js
 HTML = $(TOOLS_ROOT)/template.html
 
@@ -147,7 +156,9 @@ all: minimal_test.html \
      $(S)/earlysize/earlysize_test.html \
      $(S)/threadpool/threadpool_test.html \
      $(S)/logerror/logerror_test.html \
-     $(S)/retinascale/retinascale_test.html
+     $(S)/retinascale/retinascale_test.html \
+     $(S)/coroutine/coroutine_test.html \
+     $(S)/coroutine-nested/nested_test.html
 
 # Main test app (uses GL)
 minimal_test.o: minimal_test.cpp
@@ -450,6 +461,26 @@ $(S)/logerror/logerror_test.o: $(S)/logerror/logerror_test.cpp
 $(S)/logerror/logerror_test.html: $(S)/logerror/logerror_test.o $(WX_CORE_LIB)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
+# Coroutine stress harness - mirrors KiCad coroutine semantics against real libcontext
+$(S)/coroutine/coroutine_test.o: $(S)/coroutine/coroutine_test.cpp $(S)/coroutine/kicad_coroutine_harness.h
+	$(CXX) -c $(CXXFLAGS) -I$(KICAD_ROOT)/thirdparty/libcontext $< -o $@
+
+$(S)/coroutine/libcontext.o: $(KICAD_ROOT)/thirdparty/libcontext/libcontext.cpp $(KICAD_ROOT)/thirdparty/libcontext/libcontext.h
+	$(CXX) -c $(CXXFLAGS) -I$(KICAD_ROOT)/thirdparty/libcontext $< -o $@
+
+$(S)/coroutine/coroutine_test.html: $(S)/coroutine/coroutine_test.o $(S)/coroutine/libcontext.o $(WX_CORE_LIB)
+	$(CXX) $^ $(LDFLAGS_COROUTINE) --pre-js $(JS) --shell-file $(HTML) -o $@
+	../../scripts/common/inject-dyncall-shims.sh $(basename $@).js
+
+# Nested coroutine+modal interaction harness - reproduces Asyncify rewind corruption
+# when fiber swaps happen inside a wxDialog::ShowModal event loop (Issue #9153).
+$(S)/coroutine-nested/nested_test.o: $(S)/coroutine-nested/nested_test.cpp $(S)/coroutine/kicad_coroutine_harness.h
+	$(CXX) -c $(CXXFLAGS) -I$(KICAD_ROOT)/thirdparty/libcontext -I$(S)/coroutine $< -o $@
+
+$(S)/coroutine-nested/nested_test.html: $(S)/coroutine-nested/nested_test.o $(S)/coroutine/libcontext.o $(WX_CORE_LIB)
+	$(CXX) $^ $(LDFLAGS_COROUTINE) --pre-js $(JS) --shell-file $(HTML) -o $@
+	../../scripts/common/inject-dyncall-shims.sh $(basename $@).js
+
 # Convenience targets
 menu: $(S)/menu/menu_test.html
 clipboard: $(S)/clipboard/clipboard_test.html
@@ -502,9 +533,11 @@ $(S)/retinascale/retinascale_test.html: $(S)/retinascale/retinascale_test.o $(WX
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 retinascale: $(S)/retinascale/retinascale_test.html
+coroutine: $(S)/coroutine/coroutine_test.html
+coroutine-nested: $(S)/coroutine-nested/nested_test.html
 
 clean:
 	rm -f minimal_test.o minimal_test.html minimal_test.js minimal_test.wasm
 	rm -f $(S)/*/*.o $(S)/*/*.html $(S)/*/*.js $(S)/*/*.wasm
 
-.PHONY: all clean menu clipboard filedialog layout aui toolbar grid dialog timer tree dataview htmlwin stc print dnd propgrid pickers collapsible listctrl infobar dataviewvirtual auinotebook wizard gridedit calendar gridrenderers printpreview bitmapbuttons specialized validators ownerdrawn popup xml wasmedge fontenum textdecor bitmask regions maximize earlysize threadpool logerror retinascale
+.PHONY: all clean menu clipboard filedialog layout aui toolbar grid dialog timer tree dataview htmlwin stc print dnd propgrid pickers collapsible listctrl infobar dataviewvirtual auinotebook wizard gridedit calendar gridrenderers printpreview bitmapbuttons specialized validators ownerdrawn popup xml wasmedge fontenum textdecor bitmask regions maximize earlysize threadpool logerror retinascale coroutine coroutine-nested

@@ -30,11 +30,10 @@ echo "  Tool:   ${WASM_OPT}"
 # Asyncify import patterns (functions that trigger async suspension)
 # - env.invoke_* : Exception handling trampolines
 # - env.__asyncjs__* : EM_ASYNC_JS functions (like startModal())
-ASYNCIFY_IMPORTS="env.invoke_*,env.__asyncjs__*"
+ASYNCIFY_IMPORTS="env.invoke_*,env.__asyncjs__*,env.emscripten_fiber_swap"
 
 # Functions to exclude from asyncify instrumentation
-# These are large functions that inflate beyond V8's 7.65MB function limit
-# The names must match exactly as they appear in the WASM (C++ mangled names)
+# These are large functions that inflate beyond V8's local-count limits.
 ASYNCIFY_REMOVE=$(cat << 'REMOVELIST'
 COLOR_SETTINGS::COLOR_SETTINGS(wxString const&, bool)
 BuildBitmapInfo(std::__2::unordered_map<BITMAPS, std::__2::vector<BITMAP_INFO, std::__2::allocator<BITMAP_INFO>>, std::__2::hash<BITMAPS>, std::__2::equal_to<BITMAPS>, std::__2::allocator<std::__2::pair<BITMAPS const, std::__2::vector<BITMAP_INFO, std::__2::allocator<BITMAP_INFO>>>>>&)
@@ -49,7 +48,6 @@ ShapeFix_Wire::FixGap2d(int, bool)
 REMOVELIST
 )
 
-# Convert newlines to commas for the removelist
 ASYNCIFY_REMOVE_ARG=$(echo "${ASYNCIFY_REMOVE}" | tr '\n' ',' | sed 's/,$//')
 
 echo ""
