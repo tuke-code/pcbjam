@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y \
     ccache \
     rsync \
     xz-utils \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
 # Install emsdk from source (same approach as scripts/setup-emsdk.sh)
