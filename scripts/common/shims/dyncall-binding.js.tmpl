@@ -1,0 +1,12 @@
+// Template for one dynCall_<sig> binding. Placeholders substituted per signature
+// by inject-dyncall-shims.sh:  @SIG@ = signature, @ARGS@ = "index, a0, a1, ...",
+// @CALLARGS@ = "a0, a1, ..." (the args without the function-pointer index).
+//
+// Binds the bare name to the REAL asyncify-instrumented wasm export
+// (wasmExports["dynCall_<sig>"], present because the build links -sDYNCALLS=1).
+// Falls back to getWasmTableEntry only if no such export exists.
+function dynCall_@SIG@(@ARGS@) {
+  var f = (typeof wasmExports !== 'undefined') && wasmExports["dynCall_@SIG@"];
+  if (f) return f(@ARGS@);
+  return getWasmTableEntry(index)(@CALLARGS@);
+}
