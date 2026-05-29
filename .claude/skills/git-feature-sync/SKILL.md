@@ -19,25 +19,26 @@ So after the user resolves a conflict manually + runs `git rebase --continue` in
 
 ## Steps
 
-1. **Get status snapshot.** Run `bash /Users/torcsi/dev/kicad-wasm/scripts/git-workflow/repo-status.sh` and parse the per-repo JSON.
+1. **Fetch every origin FIRST.** Run `bash /Users/torcsi/dev/kicad-wasm/scripts/git-workflow/for-each-repo.sh fetch origin`. This is mandatory on every sync and must happen *before* the status snapshot. `repo-status.sh` derives `up_to_date_with_main` from the local `origin/<main>` ref **without fetching** — so without this step the work plan (step 4) can wrongly mark a repo "up to date" and skip a needed rebase when its origin has moved. (This is the bug that let a stale sync report "all 3 up to date" while `origin/wasm-port` had actually advanced.)
 
-2. **Pre-flight checks.**
+2. **Get status snapshot.** Run `bash /Users/torcsi/dev/kicad-wasm/scripts/git-workflow/repo-status.sh` and parse the per-repo JSON. Because step 1 just fetched, `up_to_date_with_main` now reflects true remote state.
+
+3. **Pre-flight checks.**
    - If any repo has `rebase_in_progress: true`, STOP. Tell the user which repo, and that they need to resolve (`git -C <repo> rebase --continue` after `git add`-ing resolved files) or abort (`git -C <repo> rebase --abort`) before sync can proceed.
    - Determine the feature branch from root's `branch` field. If root is on its main (`main`) or detached, STOP and say "no feature branch active in root — nothing to sync".
    - For each submodule with `branch != <feature-branch>`:
      - If branch is empty (detached), prose-ask: "wxwidgets is at detached HEAD `<sha>`. Want me to `git -C wxwidgets checkout <feature-branch>` first? (y/N)". On yes, run it (auto-allowed). On no, STOP.
      - If branch is some other name, STOP and tell the user which repo is on which branch. Don't auto-switch.
 
-3. **Determine work plan.** For each repo, mark "needs rebase" if `up_to_date_with_main: false`. If all three are up-to-date, print "all 3 repos already up to date with their mains" and stop cleanly.
+4. **Determine work plan.** For each repo, mark "needs rebase" if `up_to_date_with_main: false`. If all three are up-to-date, print "all 3 repos already up to date with their mains" and stop cleanly.
 
-4. **Execute per repo** in order [root, kicad, wxwidgets]. Skip any repo with `up_to_date_with_main: true`. For each repo that needs rebase:
+5. **Execute per repo** in order [root, kicad, wxwidgets]. Skip any repo with `up_to_date_with_main: true`. For each repo that needs rebase:
    - Prose-announce: "About to rebase <repo> (`<feature>`) onto `origin/<main>` — proceed?"
-   - `git -C <path> fetch origin`
-   - `git -C <path> rebase origin/<main>` (this hits the `ask` permission — user confirms again at tool layer)
+   - `git -C <path> rebase origin/<main>` (origins were already fetched in step 1; this hits the `ask` permission — user confirms again at tool layer)
    - If the rebase command exits non-zero (conflict), STOP and emit the handoff message (see below).
    - On success, continue to the next repo.
 
-5. **After all 3 succeed:** check `git -C <root> status --short` for staged or unstaged changes to the `kicad` / `wxwidgets` submodule entries. If present, suggest:
+6. **After all 3 succeed:** check `git -C <root> status --short` for staged or unstaged changes to the `kicad` / `wxwidgets` submodule entries. If present, suggest:
    > Submodule SHAs changed during rebase. When ready: `/git-feature-commit "sync: bump submodule pointers after rebase"`.
    Do NOT auto-commit.
 
