@@ -1,13 +1,18 @@
 #!/bin/bash
-# Build a KiCad editor (pcbnew or eeschema) inside Docker, then run asyncify
-# and friends on the host.
+# Build a KiCad app (pcbnew, eeschema, calculator) inside Docker, then run
+# asyncify and friends on the host.
 #
 # Usage:
-#   ./docker/build.sh                # builds pcbnew (default)
-#   ./docker/build.sh pcbnew         # explicit
-#   ./docker/build.sh eeschema       # builds the schematic editor
-#   ./docker/build.sh all            # builds both, sequentially
-#   ./docker/build.sh <app> -j 8 ... # any extra args are forwarded to build-*.sh
+#   ./docker/build.sh <app> [args...]
+#
+# Apps:
+#   pcbnew       PCB editor
+#   eeschema     schematic editor
+#   calculator   PCB calculator
+#   all          build pcbnew, eeschema, calculator sequentially
+#
+# Any extra args are forwarded to scripts/kicad/build-<app>.sh (e.g. -j 8,
+# --full, --release, --diag=gal).
 #
 # The build is split into two phases:
 # 1. Docker: Compile KiCad to WASM (without asyncify)
@@ -15,25 +20,42 @@
 #
 # Binaryen is downloaded automatically - no prerequisites needed.
 
-# Redirect all output to a log file (re-execs script with redirection)
+# Redirect all output to a log file (re-execs script with redirection).
+# MUST be sourced before arg parsing — the re-exec relies on the original
+# "$@", so any shifts before this point would strip args from the re-exec.
 source "$(dirname "$0")/../scripts/common/logging.sh"
 
 set -e
 
 cd "$(dirname "$0")/.."
 
-# First positional arg is the app name; everything else is forwarded to build-*.sh.
-APP_NAME=""
-if [[ $# -gt 0 ]] && [[ "$1" != -* ]]; then
-    APP_NAME="$1"
-    shift
+VALID_APPS="pcbnew | eeschema | calculator | all"
+
+usage() {
+    echo "Usage: ./docker/build.sh <app> [args...]" >&2
+    echo "  <app>: ${VALID_APPS}" >&2
+    echo "  args:  forwarded to scripts/kicad/build-<app>.sh (e.g. -j 8, --release)" >&2
+}
+
+# First positional arg must be the app name. No default — picking one would
+# silently build the wrong thing for someone who forgot the argument.
+if [[ "${1:-}" == "-h" ]] || [[ "${1:-}" == "--help" ]]; then
+    usage
+    exit 0
 fi
-APP_NAME="${APP_NAME:-pcbnew}"
+if [[ $# -lt 1 ]] || [[ "$1" == -* ]]; then
+    echo "Error: missing <app> argument" >&2
+    usage
+    exit 1
+fi
+APP_NAME="$1"
+shift
 
 case "$APP_NAME" in
-    pcbnew|eeschema|all) ;;
+    pcbnew|eeschema|calculator|all) ;;
     *)
-        echo "Error: unknown app '$APP_NAME' (expected: pcbnew | eeschema | all)" >&2
+        echo "Error: unknown app '$APP_NAME' (expected: ${VALID_APPS})" >&2
+        usage
         exit 1
         ;;
 esac
@@ -87,17 +109,29 @@ if [ $sync_rc -ne 0 ] && [ $sync_rc -ne 24 ]; then
     echo "ERROR: source sync failed after retries (exit ${sync_rc})"; exit 1
 fi
 
+# Map an app name to its inner CMake build subdirectory. Most apps share their
+# subdir name with the app name; pcb_calculator emits OUTPUT_NAME=calculator
+# but lives under the pcb_calculator/ subtree.
+kicad_subdir_for() {
+    case "$1" in
+        calculator) echo "pcb_calculator" ;;
+        *)          echo "$1" ;;
+    esac
+}
+
 # Build one app: compile in container, then run host-side post-processing.
 build_app() {
     local app="$1"
+    local subdir
+    subdir=$(kicad_subdir_for "$app")
     echo ""
     echo "=== Building ${app} ==="
 
-    # Run build command (without asyncify - handled on host due to memory requirements)
+    # Run build inside the container.
     # -e EMSDK=/emsdk: `docker compose exec` bypasses the entrypoint that sources
-# emsdk_env.sh, so the build shell would lack emcc/embuilder on PATH. Setting
-# EMSDK lets scripts/common/env.sh source /emsdk/emsdk_env.sh and activate the toolchain.
-docker compose -f docker/docker-compose.yml exec -e EMSDK=/emsdkkicad-wasm-builder \
+    # emsdk_env.sh, so the build shell would lack emcc/embuilder on PATH. Setting
+    # EMSDK lets scripts/common/env.sh source /emsdk/emsdk_env.sh and activate the toolchain.
+    docker compose -f docker/docker-compose.yml exec -e EMSDK=/emsdk kicad-wasm-builder \
         "/workspace/scripts/kicad/build-${app}.sh" "${ARGS[@]}"
 
     # Copy output to host-accessible directory.
@@ -105,8 +139,8 @@ docker compose -f docker/docker-compose.yml exec -e EMSDK=/emsdkkicad-wasm-build
     echo "Copying ${app} build output to ./output/..."
     docker compose -f docker/docker-compose.yml exec kicad-wasm-builder \
         bash -c "mkdir -p /workspace/output && \
-            cp /workspace/build-wasm/kicad-${app}/${app}/${app}.{js,wasm,wasm.debug.wasm,wasm.map,worker.js} /workspace/output/ 2>/dev/null || \
-            cp /workspace/build-wasm/kicad-${app}/${app}/${app}.{js,wasm} /workspace/output/; \
+            cp /workspace/build-wasm/kicad-${app}/${subdir}/${app}.{js,wasm,wasm.debug.wasm,wasm.map,worker.js} /workspace/output/ 2>/dev/null || \
+            cp /workspace/build-wasm/kicad-${app}/${subdir}/${app}.{js,wasm} /workspace/output/; \
             cp /workspace/build-wasm/kicad-${app}/resources/images.tar.gz /workspace/output/ 2>/dev/null || true; \
             cp /workspace/build-wasm/wxwidgets/build/wasm/wx.js /workspace/output/ 2>/dev/null || true"
 
@@ -123,6 +157,7 @@ docker compose -f docker/docker-compose.yml exec -e EMSDK=/emsdkkicad-wasm-build
 if [[ "${APP_NAME}" == "all" ]]; then
     build_app pcbnew
     build_app eeschema
+    build_app calculator
 else
     build_app "${APP_NAME}"
 fi

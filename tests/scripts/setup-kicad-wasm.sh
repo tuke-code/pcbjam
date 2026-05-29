@@ -4,7 +4,7 @@
 # Priority: Use local output/ directory (populated by docker/build.sh)
 # Fallback: Copy from Docker volume directly
 #
-# Copies whichever editors are present (pcbnew, eeschema).
+# Copies whichever apps are present (pcbnew, eeschema, calculator).
 
 set -e
 
@@ -15,10 +15,22 @@ OUTPUT_DIR="$PROJECT_ROOT/output"
 
 mkdir -p "$KICAD_TEST"
 
-# Copy one editor's artifacts (js, wasm, optional debug/map/worker). Returns 0
-# if the editor was present, 1 if neither output/ nor the docker volume has it.
+# Map an app name to its inner CMake build subdirectory. Most apps share their
+# subdir name with the app name; pcb_calculator emits OUTPUT_NAME=calculator
+# but lives under the pcb_calculator/ subtree of the build dir.
+kicad_subdir_for() {
+    case "$1" in
+        calculator) echo "pcb_calculator" ;;
+        *)          echo "$1" ;;
+    esac
+}
+
+# Copy one app's artifacts (js, wasm, optional debug/map/worker). Returns 0
+# if the app was present, 1 if neither output/ nor the docker volume has it.
 copy_app() {
     local app="$1"
+    local subdir
+    subdir=$(kicad_subdir_for "$app")
 
     if [ -f "$OUTPUT_DIR/${app}.js" ] && [ -f "$OUTPUT_DIR/${app}.wasm" ]; then
         echo "Copying ${app} WASM files from output directory..."
@@ -32,13 +44,13 @@ copy_app() {
 
     echo "Output ${app} not found locally, trying Docker volume..."
     if docker compose -f "$PROJECT_ROOT/docker/docker-compose.yml" cp \
-         kicad-wasm-builder:/workspace/build-wasm/kicad-${app}/${app}/${app}.js "$KICAD_TEST/" 2>/dev/null \
+         kicad-wasm-builder:/workspace/build-wasm/kicad-${app}/${subdir}/${app}.js "$KICAD_TEST/" 2>/dev/null \
        && docker compose -f "$PROJECT_ROOT/docker/docker-compose.yml" cp \
-         kicad-wasm-builder:/workspace/build-wasm/kicad-${app}/${app}/${app}.wasm "$KICAD_TEST/" 2>/dev/null; then
+         kicad-wasm-builder:/workspace/build-wasm/kicad-${app}/${subdir}/${app}.wasm "$KICAD_TEST/" 2>/dev/null; then
         docker compose -f "$PROJECT_ROOT/docker/docker-compose.yml" cp \
-            kicad-wasm-builder:/workspace/build-wasm/kicad-${app}/${app}/${app}.wasm.map "$KICAD_TEST/" 2>/dev/null || true
+            kicad-wasm-builder:/workspace/build-wasm/kicad-${app}/${subdir}/${app}.wasm.map "$KICAD_TEST/" 2>/dev/null || true
         docker compose -f "$PROJECT_ROOT/docker/docker-compose.yml" cp \
-            kicad-wasm-builder:/workspace/build-wasm/kicad-${app}/${app}/${app}.worker.js "$KICAD_TEST/" 2>/dev/null || true
+            kicad-wasm-builder:/workspace/build-wasm/kicad-${app}/${subdir}/${app}.worker.js "$KICAD_TEST/" 2>/dev/null || true
         docker compose -f "$PROJECT_ROOT/docker/docker-compose.yml" cp \
             kicad-wasm-builder:/workspace/build-wasm/kicad-${app}/resources/images.tar.gz "$KICAD_TEST/" 2>/dev/null || true
         return 0
@@ -49,11 +61,12 @@ copy_app() {
 }
 
 found_any=0
-copy_app pcbnew && found_any=1
-copy_app eeschema && found_any=1
+copy_app pcbnew     && found_any=1
+copy_app eeschema   && found_any=1
+copy_app calculator && found_any=1
 
 if [ "$found_any" -eq 0 ]; then
-    echo "Error: neither pcbnew nor eeschema artifacts found in output/ or docker volume" >&2
+    echo "Error: no pcbnew/eeschema/calculator artifacts found in output/ or docker volume" >&2
     exit 1
 fi
 

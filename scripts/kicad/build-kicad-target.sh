@@ -1,11 +1,11 @@
 #!/bin/bash
-# Build a KiCad editor (pcbnew or eeschema) for WebAssembly.
+# Build a KiCad app (pcbnew, eeschema, calculator) for WebAssembly.
 #
 # Usage:
 #   ./scripts/kicad/build-kicad-target.sh <app> [options]
 #
 # Args:
-#   <app>         pcbnew | eeschema (required)
+#   <app>         pcbnew | eeschema | calculator (required)
 #
 # Options:
 #   --full        Full clean rebuild (dependencies + KiCad)
@@ -16,25 +16,35 @@
 #   --diag=...    Diagnostic preprocessor flags (gal, coroutine, ctor, all)
 #   -j N          Parallel compilation jobs (default: 1)
 #
-# Each editor builds into its own tree: build-wasm/kicad-<app>/.
-# Per-editor extras live alongside generic stubs:
+# Each app builds into its own tree: build-wasm/kicad-<app>/.
+# Per-app extras live alongside generic stubs:
 #   - wasm/bindings/<app>_embind.cpp        (optional)
 #   - wasm/stubs/<app>_frame_stub.cpp       (optional, app-specific stubs)
 #   - wasm/stubs/<app>_scripting_stub.cpp   (optional, app-specific scripting stubs)
+#
+# Most apps use the same name for the user-facing app, the CMake target, and
+# the source subdirectory. Calculator is the exception: app=calculator but the
+# upstream target and source subdir are both pcb_calculator (the OUTPUT_NAME
+# property in pcb_calculator/CMakeLists.txt emits calculator.{js,wasm}).
 
 set -e
 
 if [ -z "$1" ]; then
-    echo "Error: missing <app> argument (pcbnew | eeschema)" >&2
+    echo "Error: missing <app> argument (pcbnew | eeschema | calculator)" >&2
     exit 1
 fi
 APP_NAME="$1"
 shift
 
 case "$APP_NAME" in
-    pcbnew|eeschema) ;;
+    pcbnew|eeschema)
+        KICAD_TARGET="$APP_NAME"
+        ;;
+    calculator)
+        KICAD_TARGET="pcb_calculator"
+        ;;
     *)
-        echo "Error: unknown app '$APP_NAME' (expected: pcbnew | eeschema)" >&2
+        echo "Error: unknown app '$APP_NAME' (expected: pcbnew | eeschema | calculator)" >&2
         exit 1
         ;;
 esac
@@ -362,7 +372,7 @@ emcmake cmake "${KICAD_DIR}" \
 if [ -f "${EMBIND_SRC}" ]; then
     log_info "Compiling Embind bindings (${APP_NAME})..."
     # Use the same includes and flags that KiCad uses
-    KICAD_INCLUDES="-I${KICAD_BUILD} -I${KICAD_DIR}/include -I${KICAD_DIR}/${APP_NAME} -I${KICAD_DIR}/common"
+    KICAD_INCLUDES="-I${KICAD_BUILD} -I${KICAD_DIR}/include -I${KICAD_DIR}/${KICAD_TARGET} -I${KICAD_DIR}/common"
     KICAD_INCLUDES+=" -I${KICAD_DIR}/libs/core/include -I${KICAD_DIR}/libs/kimath/include -I${KICAD_DIR}/libs/kiplatform/include"
     KICAD_INCLUDES+=" -I${KICAD_DIR}/thirdparty/clipper2/Clipper2Lib/include"
     KICAD_INCLUDES+=" -I${KICAD_DIR}/thirdparty/nlohmann_json"
@@ -381,8 +391,8 @@ else
 fi
 
 # Step 8: Build the app target
-log_info "Building ${APP_NAME}..."
-emmake make -j${JOBS} "${APP_NAME}"
+log_info "Building ${APP_NAME} (CMake target: ${KICAD_TARGET})..."
+emmake make -j${JOBS} "${KICAD_TARGET}"
 
 # Step 8.1: Build bitmap resources (images.tar.gz)
 # This creates the icon archive that KiCad loads at runtime
@@ -392,4 +402,4 @@ emmake make bitmap_archive_build
 # Step 9: Create stamp file
 create_stamp "${KICAD_STAMP}"
 log_info "KiCad ${APP_NAME} build complete!"
-log_info "Output: ${KICAD_BUILD}/${APP_NAME}/${APP_NAME}.js"
+log_info "Output: ${KICAD_BUILD}/${KICAD_TARGET}/${APP_NAME}.js"
