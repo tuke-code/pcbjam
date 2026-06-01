@@ -17,10 +17,12 @@ mkdir -p "$KICAD_TEST"
 
 # Map an app name to its inner CMake build subdirectory. Most apps share their
 # subdir name with the app name; pcb_calculator emits OUTPUT_NAME=calculator
-# but lives under the pcb_calculator/ subtree of the build dir.
+# but lives under the pcb_calculator/ subtree of the build dir, and pl_editor's
+# source lives under pagelayout_editor/.
 kicad_subdir_for() {
     case "$1" in
         calculator) echo "pcb_calculator" ;;
+        pl_editor)  echo "pagelayout_editor" ;;
         *)          echo "$1" ;;
     esac
 }
@@ -64,9 +66,10 @@ found_any=0
 copy_app pcbnew     && found_any=1
 copy_app eeschema   && found_any=1
 copy_app calculator && found_any=1
+copy_app pl_editor  && found_any=1
 
 if [ "$found_any" -eq 0 ]; then
-    echo "Error: no pcbnew/eeschema/calculator artifacts found in output/ or docker volume" >&2
+    echo "Error: no pcbnew/eeschema/calculator/pl_editor artifacts found in output/ or docker volume" >&2
     exit 1
 fi
 

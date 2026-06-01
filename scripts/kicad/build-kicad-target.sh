@@ -1,11 +1,11 @@
 #!/bin/bash
-# Build a KiCad app (pcbnew, eeschema, calculator) for WebAssembly.
+# Build a KiCad app (pcbnew, eeschema, calculator, pl_editor) for WebAssembly.
 #
 # Usage:
 #   ./scripts/kicad/build-kicad-target.sh <app> [options]
 #
 # Args:
-#   <app>         pcbnew | eeschema | calculator (required)
+#   <app>         pcbnew | eeschema | calculator | pl_editor (required)
 #
 # Options:
 #   --full        Full clean rebuild (dependencies + KiCad)
@@ -26,25 +26,26 @@
 # the source subdirectory. Calculator is the exception: app=calculator but the
 # upstream target and source subdir are both pcb_calculator (the OUTPUT_NAME
 # property in pcb_calculator/CMakeLists.txt emits calculator.{js,wasm}).
+# pl_editor is the standard case but its source subdir is pagelayout_editor.
 
 set -e
 
 if [ -z "$1" ]; then
-    echo "Error: missing <app> argument (pcbnew | eeschema | calculator)" >&2
+    echo "Error: missing <app> argument (pcbnew | eeschema | calculator | pl_editor)" >&2
     exit 1
 fi
 APP_NAME="$1"
 shift
 
 case "$APP_NAME" in
-    pcbnew|eeschema)
+    pcbnew|eeschema|pl_editor)
         KICAD_TARGET="$APP_NAME"
         ;;
     calculator)
         KICAD_TARGET="pcb_calculator"
         ;;
     *)
-        echo "Error: unknown app '$APP_NAME' (expected: pcbnew | eeschema | calculator)" >&2
+        echo "Error: unknown app '$APP_NAME' (expected: pcbnew | eeschema | calculator | pl_editor)" >&2
         exit 1
         ;;
 esac

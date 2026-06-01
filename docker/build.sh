@@ -29,7 +29,7 @@ set -e
 
 cd "$(dirname "$0")/.."
 
-VALID_APPS="pcbnew | eeschema | calculator | all"
+VALID_APPS="pcbnew | eeschema | calculator | pl_editor | all"
 
 usage() {
     echo "Usage: ./docker/build.sh <app> [args...]" >&2
@@ -52,7 +52,7 @@ APP_NAME="$1"
 shift
 
 case "$APP_NAME" in
-    pcbnew|eeschema|calculator|all) ;;
+    pcbnew|eeschema|calculator|pl_editor|all) ;;
     *)
         echo "Error: unknown app '$APP_NAME' (expected: ${VALID_APPS})" >&2
         usage
@@ -115,6 +115,7 @@ fi
 kicad_subdir_for() {
     case "$1" in
         calculator) echo "pcb_calculator" ;;
+        pl_editor)  echo "pagelayout_editor" ;;
         *)          echo "$1" ;;
     esac
 }
@@ -158,6 +159,7 @@ if [[ "${APP_NAME}" == "all" ]]; then
     build_app pcbnew
     build_app eeschema
     build_app calculator
+    build_app pl_editor
 else
     build_app "${APP_NAME}"
 fi
