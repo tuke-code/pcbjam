@@ -136,6 +136,22 @@ else
     fi
 fi
 
+# --- 3b. embind dynCall fallback (dynCallLegacy -> wasmExports) ----------------
+# embind's generic caller (getDynCaller) routes through dynCallLegacy, which only
+# reads Module["dynCall_<sig>"]. But the DYNCALLS=1 trampolines are wasm EXPORTS,
+# not Module properties, so that lookup is undefined and an Asyncify unwind/rewind
+# through an embind call (e.g. kicadOpenFile -> OpenProjectFiles) dies with
+# "f is not a function" in Asyncify.doRewind. Add a wasmExports fallback so the
+# instrumented trampoline is found and rewind survives.
+if grep -q 'embind dynCall fallback installed' "$JS_FILE"; then
+    echo "dynCallLegacy fallback already present - skipping"
+elif grep -qF '  var f = Module["dynCall_" + sig];' "$JS_FILE"; then
+    perl -0pi -e 's/(\Q  var f = Module["dynCall_" + sig];\E)/$1\n  \/\/ embind dynCall fallback installed: DYNCALLS=1 trampolines live on wasmExports, not Module.\n  if (!f && typeof wasmExports !== "undefined") f = wasmExports["dynCall_" + sig];/' "$JS_FILE"
+    echo "Injected dynCallLegacy wasmExports fallback"
+else
+    echo "Warning: dynCallLegacy pattern not found - skipping embind dynCall fallback"
+fi
+
 # --- 4. Optional diagnostics (logging only) -----------------------------------
 if [ "$SHIM_DIAGNOSTICS" = "1" ]; then
     if grep -q 'DIAG] Asyncify/fiber/modal diagnostics installed' "$JS_FILE"; then

@@ -81,19 +81,34 @@ function pressKey(win: ToolWindow, key: string): void {
   el.dispatchEvent(new KE("keyup", init));
 }
 
-function tryProgrammaticOpen(
+/** True if the build exposes the programmatic open hook. */
+function hasProgrammaticHook(win: ToolWindow): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mod = win.Module as any;
+  return !!mod && typeof mod.kicadOpenFile === "function";
+}
+
+/**
+ * Invoke the programmatic hook. NOTE: kicadOpenFile runs OpenProjectFiles under
+ * Asyncify, so the call SUSPENDS and unwinds back to JS before the load finishes
+ * — its synchronous return is a falsy placeholder, not the real bool. So we fire
+ * it and ignore the return; the caller polls for the loaded schematic instead.
+ */
+function invokeProgrammaticOpen(
   win: ToolWindow,
   absPath: string,
   log: (m: string) => void,
-): boolean {
+): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mod = win.Module as any;
-  if (mod && typeof mod.kicadOpenFile === "function") {
-    const ok = mod.kicadOpenFile(absPath) === true;
-    log(`[open] Module.kicadOpenFile(${absPath}) -> ${ok}`);
-    return ok; // false → caller falls back to UI automation
-  }
-  return false;
+  mod.kicadOpenFile(absPath);
+  log(`[open] invoked Module.kicadOpenFile(${absPath}) (async; polling for load)`);
+}
+
+/** Heuristic: the editor frame title drops "untitled" once a real file is open. */
+function schematicLoaded(win: ToolWindow): boolean {
+  const title = win.document?.title ?? "";
+  return title.length > 0 && !/untitled/i.test(title);
 }
 
 export async function openFileInTool(
@@ -125,9 +140,23 @@ export async function openFileInTool(
   }
 
   // Strategy 1: programmatic hook (preferred — deterministic, no UI automation).
-  if (tryProgrammaticOpen(win, absPath, log)) return "programmatic";
+  // Because the call is Asyncify-async we can't trust its return value; instead
+  // we invoke it and poll the frame title until the schematic loads. We must NOT
+  // fall back to UI automation while the hook is in flight — synthesizing input
+  // would re-enter the suspended Asyncify call and corrupt it.
+  if (hasProgrammaticHook(win)) {
+    invokeProgrammaticOpen(win, absPath, log);
+    const loaded = await waitFor(() => schematicLoaded(win), timeoutMs);
+    if (loaded) {
+      log(`[open] schematic loaded: ${win.document.title}`);
+      return "programmatic";
+    }
+    log("[open] kicadOpenFile did not load the schematic within timeout");
+    return "failed";
+  }
 
-  // Strategy 2: UI automation fallback (EXPERIMENTAL, fragile).
+  // Strategy 2: UI automation fallback (EXPERIMENTAL, fragile). Only when the
+  // build has no programmatic hook at all.
   log("[open] no programmatic hook; using EXPERIMENTAL UI automation");
 
   const fileMenu =
