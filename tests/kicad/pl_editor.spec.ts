@@ -140,6 +140,12 @@ test.describe('pl_editor WASM', () => {
                 .some((el: { typeName: string }) => el.typeName === 'wxFileDialog');
         }, null, { timeout: 15000 });
 
+        // The dialog object exists in the registry as soon as C++ constructs it,
+        // but the directory enumeration (MEMFS readdir → asyncify suspend) hasn't
+        // returned yet so the inner file list isn't painted. Without this wait the
+        // screenshot catches the dialog as a black rectangle.
+        await page.waitForTimeout(600);
+
         await page.screenshot({ path: 'test-results/pl_editor-04-save-as-dialog.png', scale: 'device' });
 
         // The bug: pressing Enter on a folder name treated it as a file and surfaced
