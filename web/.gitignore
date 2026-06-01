@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.turbo/
+.data/
+*.log
+.env
+.env.local
+# WASM artifacts: public/wasm is a symlink to the synced artifact dir
+# (tests/apps/kicad), created on `dev` — never committed.
+**/public/wasm
+**/public/wasm/

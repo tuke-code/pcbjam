@@ -137,10 +137,41 @@
       }
     };
 
+    // KiCad's standalone entry (single_top.cpp) runs STARTWIZARD on launch: a
+    // modal first-run "Setup" wizard shown whenever the settings dir lacks a
+    // kicad_common.json or valid global library tables. In this ephemeral MEMFS
+    // that is EVERY load, and the wizard's modal event loop crashes Asyncify
+    // (func is not a function). Seed a minimal default config before main() so
+    // all three providers report NeedsUserInput()==false — equivalent to the
+    // wizard's "use defaults" path — and it never opens. Settings dir matches
+    // PATHS::GetUserSettingsPath() for this build.
+    var seedKicadConfig = function() {
+      var cfgDir = '/home/kicad/.config/kicad/kicad/9.99';
+      FS.mkdirTree(cfgDir);
+
+      var writeIfAbsent = function(path, contents) {
+        try { FS.stat(path); return; } catch (e) { /* absent — seed it */ }
+        FS.writeFile(path, contents);
+        console.log('[KICAD] Seeded ' + path);
+      };
+
+      // SETTINGS provider: settings dir is "valid" once kicad_common.json exists.
+      // PRIVACY provider: both prompts must be flagged do-not-show-again.
+      writeIfAbsent(cfgDir + '/kicad_common.json', JSON.stringify({
+        do_not_show_again: { update_check_prompt: true, data_collection_prompt: true }
+      }, null, 2));
+
+      // LIBRARIES provider: needs valid global symbol/footprint/design-block
+      // tables. Empty (zero-row) tables parse fine and satisfy GlobalTablesValid().
+      writeIfAbsent(cfgDir + '/sym-lib-table', '(sym_lib_table\n  (version 7)\n)\n');
+      writeIfAbsent(cfgDir + '/fp-lib-table', '(fp_lib_table\n  (version 7)\n)\n');
+      writeIfAbsent(cfgDir + '/design-block-lib-table', '(design_block_lib_table\n  (version 7)\n)\n');
+    };
+
     var Module = {
       thisProgram: '/usr/bin/eeschema',  // Fake absolute path for argv[0] (KiCad DEBUG check)
 
-      preRun: [createCanvas, writeResources],
+      preRun: [createCanvas, writeResources, seedKicadConfig],
       postRun: [],
 
       print: function(text) {

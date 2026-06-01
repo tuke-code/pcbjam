@@ -79,9 +79,11 @@ case "$APP_NAME" in
         ;;
 esac
 
-# Use branch name as Docker Compose project name for isolated containers/volumes
+# Use branch name as Docker Compose project name for isolated containers/volumes.
+# Honor a pre-set COMPOSE_PROJECT_NAME so a build can target an existing volume
+# (e.g. reuse another branch's already-provisioned deps).
 BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD | tr '/' '-' | tr '[:upper:]' '[:lower:]')
-export COMPOSE_PROJECT_NAME="kicad-wasm-${BRANCH_NAME}"
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-kicad-wasm-${BRANCH_NAME}}"
 echo "Using Docker project: ${COMPOSE_PROJECT_NAME}"
 echo "Building app: ${APP_NAME}"
 
