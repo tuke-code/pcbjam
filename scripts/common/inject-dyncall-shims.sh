@@ -152,6 +152,24 @@ else
     echo "Warning: dynCallLegacy pattern not found - skipping embind dynCall fallback"
 fi
 
+# --- 3c. Fiber trampoline self-heal -------------------------------------------
+# emscripten_set_main_loop(...,1) throws "unwind" during startup to establish the
+# main loop. KiCad establishes that loop from inside a tool coroutine, so the throw
+# propagates THROUGH Fibers.trampoline()'s do/while, skipping its
+# `trampolineRunning = false` reset. The flag then stays true forever and
+# Fibers.trampoline() becomes a permanent no-op (guard: `if (!trampolineRunning ...)`),
+# so every later fiber swap silently fails to switch — the schematic load and all
+# post-idle tool actions hang. Wrap the loop in try/finally so the flag is always
+# reset (self-healing).
+if grep -qF '} finally { Fibers.trampolineRunning = false; }' "$JS_FILE"; then
+    echo "fiber trampoline self-heal already present - skipping"
+elif grep -qF 'Fibers.trampolineRunning = true;' "$JS_FILE"; then
+    perl -0pi -e 's/(Fibers\.trampolineRunning = true;)(\s*)(do \{.*?\} while \(Fibers\.nextFiber\);)(\s*)(Fibers\.trampolineRunning = false;)/$1$2try {$3} finally { $5 }/s' "$JS_FILE"
+    echo "Injected fiber trampoline self-heal (try/finally)"
+else
+    echo "Warning: Fibers.trampoline pattern not found - skipping trampoline self-heal"
+fi
+
 # --- 4. Optional diagnostics (logging only) -----------------------------------
 if [ "$SHIM_DIAGNOSTICS" = "1" ]; then
     if grep -q 'DIAG] Asyncify/fiber/modal diagnostics installed' "$JS_FILE"; then
