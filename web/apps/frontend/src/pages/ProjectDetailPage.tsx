@@ -1,5 +1,10 @@
 import { Link, useParams } from "react-router-dom";
-import { EXTENSION_TOOL, type Tool } from "@kicad-web/contract";
+import {
+  EXTENSION_TOOL,
+  FILELESS_TOOLS,
+  TOOL_LABELS,
+  type Tool,
+} from "@kicad-web/contract";
 import { ArrowLeft, ExternalLink, Loader2 } from "lucide-react";
 import { useProject } from "@/lib/api";
 import { formatBytes } from "@/lib/utils";
@@ -44,13 +49,17 @@ export function ProjectDetailPage() {
           </div>
 
           <div className="mb-6 flex flex-wrap gap-3">
-            {/* Full reload (anchor) so Emscripten boots into a clean page. */}
-            <a
-              className="text-sm underline underline-offset-4"
-              href={`/p/${slug}/calculator/`}
-            >
-              Open PCB Calculator
-            </a>
+            {/* Standalone (file-less) tools — launched without a target file.
+                Full reload (anchor) so Emscripten boots into a clean page. */}
+            {[...FILELESS_TOOLS].map((tool) => (
+              <a
+                key={tool}
+                className="text-sm underline underline-offset-4"
+                href={`/p/${slug}/${tool}/`}
+              >
+                Open {TOOL_LABELS[tool]}
+              </a>
+            ))}
           </div>
 
           <div className="mb-8">
@@ -79,7 +88,7 @@ export function ProjectDetailPage() {
                       className="inline-flex shrink-0 items-center gap-1 rounded-md border px-3 py-1.5 text-sm hover:bg-accent"
                       href={`/p/${slug}/${tool}/${f.path}`}
                     >
-                      <ExternalLink size={14} /> Open in {tool}
+                      <ExternalLink size={14} /> Open in {TOOL_LABELS[tool]}
                     </a>
                   )}
                 </div>
