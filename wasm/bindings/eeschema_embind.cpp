@@ -29,8 +29,12 @@
 #include <sch_no_connect.h>
 #include <sch_text.h>
 #include <sch_label.h>
+#include <sch_shape.h>
+#include <eda_shape.h>
+#include <stroke_params.h>
 #include <sch_screen.h>
 #include <sch_sheet_path.h>
+#include <schematic_settings.h>
 
 using namespace emscripten;
 using json = nlohmann::json;
@@ -110,6 +114,35 @@ json itemToJson( SCH_ITEM* aItem )
     if( SCH_LABEL_BASE* lbl = dynamic_cast<SCH_LABEL_BASE*>( aItem ) )
         j["shape"] = (int) lbl->GetShape();
 
+    // Graphic shapes (circle / rectangle / arc / line / bezier): geometry is start/end plus,
+    // for an arc, the center, and for a bezier the two control points. Stroke + fill complete it.
+    if( aItem->Type() == SCH_SHAPE_T )
+    {
+        auto* shp   = static_cast<SCH_SHAPE*>( aItem );
+        j["stype"]  = (int) shp->GetShape();          // SHAPE_T
+        j["sx"]     = shp->GetStart().x;
+        j["sy"]     = shp->GetStart().y;
+        j["ex"]     = shp->GetEnd().x;
+        j["ey"]     = shp->GetEnd().y;
+        j["layer"]  = (int) shp->GetLayer();
+        j["width"]  = shp->GetStroke().GetWidth();
+        j["fill"]   = (int) shp->GetFillMode();
+
+        if( shp->GetShape() == SHAPE_T::ARC )
+        {
+            VECTOR2I c = shp->GetCenter();
+            j["cx"]    = c.x;
+            j["cy"]    = c.y;
+        }
+        else if( shp->GetShape() == SHAPE_T::BEZIER )
+        {
+            j["c1x"] = shp->GetBezierC1().x;
+            j["c1y"] = shp->GetBezierC1().y;
+            j["c2x"] = shp->GetBezierC2().x;
+            j["c2y"] = shp->GetBezierC2().y;
+        }
+    }
+
     return j;
 }
 
@@ -138,8 +171,20 @@ SCH_ITEM* makeItem( const json& j )
     }
     else if( type == "SCH_TEXT" )
     {
-        item = new SCH_TEXT( VECTOR2I( j.value( "x", 0 ), j.value( "y", 0 ) ),
-                             wxString::FromUTF8( j.value( "text", "" ).c_str() ) );
+        auto* txt = new SCH_TEXT( VECTOR2I( j.value( "x", 0 ), j.value( "y", 0 ) ),
+                                  wxString::FromUTF8( j.value( "text", "" ).c_str() ) );
+
+        // Mirror the interactive text tool (sch_drawing_tools.cpp createNewText): parent the
+        // item to the schematic and apply the project's default text size, so a remotely-added
+        // text resolves variables / renders identically to a locally-placed one.
+        if( SCH_EDIT_FRAME* fr = schFrame() )
+        {
+            txt->SetParent( &fr->Schematic() );
+            int sz = fr->Schematic().Settings().m_DefaultTextSize;
+            txt->SetTextSize( VECTOR2I( sz, sz ) );
+        }
+
+        item = txt;
     }
     else if( type == "SCH_LABEL" || type == "SCH_GLOBALLABEL" || type == "SCH_HIERLABEL" )
     {
@@ -155,6 +200,17 @@ SCH_ITEM* makeItem( const json& j )
 
         item = lbl;
     }
+    // SCH_SHAPE `added` reconstruction is DEFERRED (returns nullptr → logged "no converter").
+    // A constructed shape builds fine, but committing a *new* one traps in SCH_COMMIT::Push's
+    // CHT_ADD path (the GAL view->Add of a new SCH_SHAPE) with a wasm "memory access out of
+    // bounds". The identical view->Add succeeds when the shape is loaded from file and when an
+    // existing shape is MOVED (CHT_MODIFY) — so this is the asyncify indirect-call (invoke_viii)
+    // mis-dispatch class: a SCH_SHAPE add-path virtual that mis-dispatches only from the
+    // programmatic CallAfter/apply context (same family as the original SCH_ITEM::Move trap,
+    // 0003). The dyncall shim only catches the "signature mismatch" variant, and this trap
+    // fires inside the wrong function so it can't be safely retried. itemToJson still emits the
+    // shape geometry (forward-compatible + drives `changed`/move); only `added` is skipped.
+    // Same blocker as SCH_SYMBOL add — see features/yjs-bridge/0006.
 
     if( item )
         const_cast<KIID&>( item->m_Uuid ) = KIID( wxString::FromUTF8( j.value( "id", "" ).c_str() ) );

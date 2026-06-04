@@ -107,12 +107,13 @@ test.describe("eeschema collab bridge — single page", () => {
     expect(hasAbort(testLogger), "no WASM abort").toBe(false);
   });
 
-  // SKIP headless: verified working in the real web app (wire move/add/remove syncs A↔B),
-  // but the e2e harness's kicadOpenFile returns false (OpenProjectFiles bails before the
-  // connectivity graph is built — files-io.cpp), so SCH_COMMIT::Push no-ops here. Re-enable
-  // once the harness loads a full project. (Crash-free + no-echo still hold; the move just
-  // doesn't persist in this incomplete-load editor.)
-  test.skip("apply moves/removes by uuid, no echo", async ({ page, testLogger }) => {
+  // Apply mutates the model headless: kicadOpenFile returns false (the incomplete-project
+  // load skips some late steps) but the schematic + screens ARE built, so SCH_COMMIT::Push
+  // takes effect. (Earlier this was skipped on the belief Push no-ops headless; that predated
+  // the dyncall-shim fix — apply now works here. Rendering still needs the real app.)
+  const TEXT_ID = "33333333-0000-0000-0000-000000000001";
+
+  test("apply moves/removes/adds by uuid, no echo", async ({ page, testLogger }) => {
     await bootAndOpen(page, "apply");
 
     const before = await page.evaluate((id) => window.Module.kicadCollabGetPos(id), WIRE1);
@@ -126,11 +127,17 @@ test.describe("eeschema collab bridge — single page", () => {
       };
     });
 
-    // Move WIRE1 (deferred via CallAfter+coroutine → poll).
+    // changed: move WIRE1. A wire reshapes via its endpoints (SetStart/EndPoint) — the same
+    // sx/sy/ex/ey form the emit side always produces for a SCH_LINE (a bare x/y Move is a no-op
+    // for a line, whose endpoints only move when flagged). Deferred via CallAfter → poll.
     await page.evaluate(
       ({ id, nx, by }) =>
         window.Module.kicadCollabApply(
-          JSON.stringify({ changed: [{ id, type: "SCH_LINE", x: nx, y: by }], added: [], removed: [] }),
+          JSON.stringify({
+            changed: [{ id, type: "SCH_LINE", sx: nx, sy: by, ex: nx + 508000, ey: by }],
+            added: [],
+            removed: [],
+          }),
         ),
       { id: WIRE1, nx, by },
     );
@@ -141,7 +148,7 @@ test.describe("eeschema collab bridge — single page", () => {
       })
       .toBe(`${nx},${by}`);
 
-    // Remove WIRE2.
+    // removed: delete WIRE2.
     await page.evaluate(
       (wire) =>
         window.Module.kicadCollabApply(JSON.stringify({ changed: [], added: [], removed: [wire] })),
@@ -153,6 +160,27 @@ test.describe("eeschema collab bridge — single page", () => {
         intervals: [200],
       })
       .toBe("");
+
+    // added: a graphic text reconstructs by uuid. (SCH_SHAPE / SCH_SYMBOL `added` are deferred —
+    // committing a newly-constructed shape/symbol traps via the asyncify invoke_* mis-dispatch
+    // in SCH_COMMIT::Push from the programmatic apply context; see features/yjs-bridge/0006.)
+    await page.evaluate(
+      (textId) =>
+        window.Module.kicadCollabApply(
+          JSON.stringify({
+            changed: [],
+            removed: [],
+            added: [{ id: textId, type: "SCH_TEXT", x: 600000, y: 600000, text: "hello" }],
+          }),
+        ),
+      TEXT_ID,
+    );
+    await expect
+      .poll(
+        async () => (await page.evaluate(() => window.Module.kicadCollabSnapshot())).includes(TEXT_ID),
+        { timeout: 10000, intervals: [250] },
+      )
+      .toBe(true);
 
     const echoes = await page.evaluate(() => (window as unknown as { __echo: string[] }).__echo);
     expect(echoes, "apply() must not echo a local onDelta").toHaveLength(0);
