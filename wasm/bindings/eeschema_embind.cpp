@@ -30,6 +30,7 @@
 #include <sch_text.h>
 #include <sch_label.h>
 #include <sch_symbol.h>
+#include <sch_field.h>
 #include <sch_shape.h>
 #include <eda_shape.h>
 #include <stroke_params.h>
@@ -330,13 +331,25 @@ SCHEMATIC* ensureBridge()
 
 namespace {
 
+// SCH_SYMBOL::Move() / SCH_LABEL_BASE::Move() move their child fields (reference, value, …) via
+// an inner `field.Move()` — itself a virtual call that mis-dispatches in the apply context, so
+// the field text is left behind at its old position while the body moves. Re-move the fields
+// with a devirtualized call so the labels follow the symbol on the peer. (The inner call is a
+// harmless no-op when it mis-dispatches — the fields stay put — so this doesn't double-move.)
+void moveFields( std::vector<SCH_FIELD>& aFields, const VECTOR2I& aDelta )
+{
+    for( SCH_FIELD& field : aFields )
+        field.SCH_FIELD::Move( aDelta );
+}
+
 // Move an item to an absolute position for the `changed` path. SCH_ITEM::Move() is virtual;
 // dispatching it through the vtable from the apply/CallAfter context hits the asyncify
 // call_indirect mis-dispatch and silently NO-OPS (so symbols/junctions/labels never moved on
 // the peer — only SCH_LINE worked, via its direct SetStart/EndPoint path). GetPosition() reads
 // fine (it's a plain virtual read; see 0003 / eeschema_collab_asyncify_apply). The fix:
 // devirtualize Move() with an explicit class-qualified call, which is statically bound — a
-// plain wasm `call`, not an instrumented call_indirect — so it actually executes.
+// plain wasm `call`, not an instrumented call_indirect — so it actually executes. Composite
+// items additionally need their child fields moved (see moveFields).
 void moveItemTo( SCH_ITEM* aItem, const VECTOR2I& aNewPos )
 {
     VECTOR2I delta = aNewPos - aItem->GetPosition();
@@ -346,15 +359,25 @@ void moveItemTo( SCH_ITEM* aItem, const VECTOR2I& aNewPos )
 
     switch( aItem->Type() )
     {
-    case SCH_SYMBOL_T:     static_cast<SCH_SYMBOL*>( aItem )->SCH_SYMBOL::Move( delta ); break;
+    case SCH_SYMBOL_T:
+    {
+        auto* sym = static_cast<SCH_SYMBOL*>( aItem );
+        sym->SCH_SYMBOL::Move( delta );
+        moveFields( sym->GetFields(), delta );
+        break;
+    }
     case SCH_JUNCTION_T:   static_cast<SCH_JUNCTION*>( aItem )->SCH_JUNCTION::Move( delta ); break;
     case SCH_NO_CONNECT_T: static_cast<SCH_NO_CONNECT*>( aItem )->SCH_NO_CONNECT::Move( delta ); break;
     case SCH_TEXT_T:       static_cast<SCH_TEXT*>( aItem )->SCH_TEXT::Move( delta ); break;
     case SCH_LABEL_T:
     case SCH_GLOBAL_LABEL_T:
     case SCH_HIER_LABEL_T:
-        static_cast<SCH_LABEL_BASE*>( aItem )->SCH_LABEL_BASE::Move( delta );
+    {
+        auto* lbl = static_cast<SCH_LABEL_BASE*>( aItem );
+        lbl->SCH_LABEL_BASE::Move( delta );
+        moveFields( lbl->GetFields(), delta );
         break;
+    }
     default:
         aItem->Move( delta );   // virtual fallback (may no-op in the apply context)
         break;
