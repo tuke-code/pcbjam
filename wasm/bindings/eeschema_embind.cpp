@@ -29,6 +29,7 @@
 #include <sch_no_connect.h>
 #include <sch_text.h>
 #include <sch_label.h>
+#include <sch_symbol.h>
 #include <sch_shape.h>
 #include <eda_shape.h>
 #include <stroke_params.h>
@@ -329,6 +330,37 @@ SCHEMATIC* ensureBridge()
 
 namespace {
 
+// Move an item to an absolute position for the `changed` path. SCH_ITEM::Move() is virtual;
+// dispatching it through the vtable from the apply/CallAfter context hits the asyncify
+// call_indirect mis-dispatch and silently NO-OPS (so symbols/junctions/labels never moved on
+// the peer — only SCH_LINE worked, via its direct SetStart/EndPoint path). GetPosition() reads
+// fine (it's a plain virtual read; see 0003 / eeschema_collab_asyncify_apply). The fix:
+// devirtualize Move() with an explicit class-qualified call, which is statically bound — a
+// plain wasm `call`, not an instrumented call_indirect — so it actually executes.
+void moveItemTo( SCH_ITEM* aItem, const VECTOR2I& aNewPos )
+{
+    VECTOR2I delta = aNewPos - aItem->GetPosition();
+
+    if( delta == VECTOR2I( 0, 0 ) )
+        return;
+
+    switch( aItem->Type() )
+    {
+    case SCH_SYMBOL_T:     static_cast<SCH_SYMBOL*>( aItem )->SCH_SYMBOL::Move( delta ); break;
+    case SCH_JUNCTION_T:   static_cast<SCH_JUNCTION*>( aItem )->SCH_JUNCTION::Move( delta ); break;
+    case SCH_NO_CONNECT_T: static_cast<SCH_NO_CONNECT*>( aItem )->SCH_NO_CONNECT::Move( delta ); break;
+    case SCH_TEXT_T:       static_cast<SCH_TEXT*>( aItem )->SCH_TEXT::Move( delta ); break;
+    case SCH_LABEL_T:
+    case SCH_GLOBAL_LABEL_T:
+    case SCH_HIER_LABEL_T:
+        static_cast<SCH_LABEL_BASE*>( aItem )->SCH_LABEL_BASE::Move( delta );
+        break;
+    default:
+        aItem->Move( delta );   // virtual fallback (may no-op in the apply context)
+        break;
+    }
+}
+
 // The actual model mutation, via SCH_COMMIT so connectivity/ERC recompute as for a UI
 // edit. (Editor write ops like SCH_ITEM::Move are called through invoke_vii, whose
 // asyncify-instrumented dynCall trampoline traps on a stale type — fixed at the JS shim
@@ -372,8 +404,7 @@ void doApply( SCH_EDIT_FRAME* aFrame, const json& aDelta )
             }
             else if( j.contains( "x" ) && j.contains( "y" ) )
             {
-                VECTOR2I newPos( j["x"].get<int>(), j["y"].get<int>() );
-                item->Move( newPos - item->GetPosition() );
+                moveItemTo( item, VECTOR2I( j["x"].get<int>(), j["y"].get<int>() ) );
             }
 
             staged = true;
