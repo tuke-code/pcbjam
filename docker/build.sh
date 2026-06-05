@@ -174,6 +174,13 @@ build_app() {
             cp /workspace/build-wasm/kicad-${app}/resources/images.tar.gz /workspace/output/ 2>/dev/null || true; \
             cp /workspace/build-wasm/wxwidgets/build/wasm/wx.js /workspace/output/ 2>/dev/null || true"
 
+    # The container runs as root, so files in the bind-mounted ./output land
+    # root-owned on the host. macOS Docker Desktop remaps ownership to the host
+    # user, but on a Linux CI runner the following host-side steps (dyncall,
+    # finalize, asyncify) can't write into ./output. Hand ownership back.
+    docker compose -f docker/docker-compose.yml exec kicad-wasm-builder \
+        chown -R "$(id -u):$(id -g)" /workspace/output || true
+
     # Inject dynCall shims (fixes "dynCall_* is not defined" errors in Emscripten 4.x)
     kw_stage dyncall-shims
     ./scripts/common/inject-dyncall-shims.sh "output/${app}.js"
