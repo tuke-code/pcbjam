@@ -10,6 +10,7 @@
 #include <emscripten/bind.h>
 #include <kiway_player.h>
 #include <kiway.h>
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
@@ -284,93 +285,124 @@ void emit( const json& aDelta )
     }, s.c_str() );
 }
 
-// ChangeSource: native SCHEMATIC_LISTENER. SCH_COMMIT::Push fires these in bulk for
-// every local edit (move, add, remove, …) — that's our emit trigger.
+// ── Emit via post-settle snapshot diff ───────────────────────────────────────────────────
 //
-// CRUCIAL: one local edit (a single SCH_COMMIT::Push) calls OnItemsAdded, OnItemsRemoved
-// and OnItemsChanged *separately and synchronously*, then runs RecalculateConnections once
-// (sch_commit.cpp). Emitting each category as its own delta makes the peer apply them as
-// THREE separate commits, each followed by its own connectivity recompute — so an item that
-// only makes sense in the final state is mis-handled mid-sequence. Concretely, a connected
-// drag adds a junction at the wires' new crossing AND moves those wires; if the junction
-// (added) is applied before the wires (changed), the peer sees a dangling junction and
-// connectivity cleanup deletes it → the peer permanently loses it (the "lost segments on a
-// big drag" divergence). Fix: buffer all three categories and emit ONE combined delta after
-// Push returns (coalesced via CallAfter), so the peer applies it atomically in a single
-// SCH_COMMIT — doApply orders it removed→changed→added, with one recompute at the end, so the
-// junction is added after its wires are in place and survives.
+// A local edit is a single SCH_COMMIT::Push that fires OnItemsAdded/Removed/Changed
+// synchronously and THEN runs RecalculateConnections (sch_commit.cpp ~402-430). So the native
+// listener only ever sees the *pre-cleanup* (raw) geometry, while the connectivity cleanup
+// that follows — merging collinear wires, dropping redundant junctions, splitting at new
+// crossings — is never reported. Broadcasting those raw per-category lists made the peer
+// reconstruct the edit from the raw state and run ITS OWN cleanup, over a different "dirty"
+// scope, so on a big connected drag the two peers cleaned up differently and the peer lost
+// segments/junctions.
+//
+// Instead, treat the listener purely as a "something changed" trigger and broadcast a DIFF of
+// the full model taken AFTER the edit settles — a CallAfter, which runs once Push (cleanup
+// included) has fully returned. That captures tab A's FINAL, already-clean geometry; the peer
+// applies it and re-cleaning already-clean geometry is idempotent, so the two converge. (This
+// mirrors pl_editor's snapshot-differ.) g_baseline is the last-broadcast state.
+
+std::map<std::string, json> snapshotByUuid( SCHEMATIC& aSch )
+{
+    std::map<std::string, json> m;
+
+    for( const SCH_SHEET_PATH& path : aSch.Hierarchy() )
+    {
+        SCH_SCREEN* screen = const_cast<SCH_SHEET_PATH&>( path ).LastScreen();
+
+        if( !screen )
+            continue;
+
+        for( SCH_ITEM* item : screen->Items() )
+        {
+            std::string id = toUtf8( item->m_Uuid.AsString() );
+
+            if( !m.count( id ) )
+                m[id] = itemToJson( item );
+        }
+    }
+
+    return m;
+}
+
+std::map<std::string, json> g_baseline;
+bool                        g_flushScheduled = false;
+
+// Re-seed the diff baseline to the current model — after handing out a seed snapshot, or after
+// applying a remote delta (so those items aren't re-broadcast as a spurious local diff/echo).
+void rebaseline()
+{
+    if( SCH_EDIT_FRAME* fr = schFrame() )
+        g_baseline = snapshotByUuid( fr->Schematic() );
+}
+
+// Diff the current (settled, post-cleanup) model against the baseline and broadcast the change.
+void flushDiff()
+{
+    g_flushScheduled = false;
+
+    SCH_EDIT_FRAME* fr = schFrame();
+
+    if( !fr )
+        return;
+
+    std::map<std::string, json> cur = snapshotByUuid( fr->Schematic() );
+
+    json added = json::array(), changed = json::array(), removed = json::array();
+
+    for( const auto& [id, j] : cur )
+    {
+        auto it = g_baseline.find( id );
+
+        if( it == g_baseline.end() )
+            added.push_back( j );
+        else if( it->second != j )
+            changed.push_back( j );
+    }
+
+    for( const auto& [id, j] : g_baseline )
+    {
+        if( !cur.count( id ) )
+            removed.push_back( id );
+    }
+
+    g_baseline = std::move( cur );
+
+    if( !added.empty() || !changed.empty() || !removed.empty() )
+        emit( json{ { "added", added }, { "changed", changed }, { "removed", removed } } );
+}
+
+// Coalesce all the listener callbacks of one commit (and any other edits in the same loop
+// turn) into a single post-settle diff.
+void scheduleFlush()
+{
+    if( g_flushScheduled )
+        return;
+
+    g_flushScheduled = true;
+
+    if( SCH_EDIT_FRAME* fr = schFrame() )
+        fr->CallAfter( []() { flushDiff(); } );
+    else
+        flushDiff();
+}
+
+// ChangeSource: the native SCHEMATIC_LISTENER is just a trigger — the actual change set comes
+// from the post-settle snapshot diff above. Skipped while applying a remote delta (no echo);
+// doApply rebaselines instead.
 class COLLAB_LISTENER : public SCHEMATIC_LISTENER
 {
 public:
-    void OnSchItemsAdded( SCHEMATIC&, std::vector<SCH_ITEM*>& aItems ) override
-    {
-        accumulate( m_added, aItems );
-    }
-
-    void OnSchItemsChanged( SCHEMATIC&, std::vector<SCH_ITEM*>& aItems ) override
-    {
-        accumulate( m_changed, aItems );
-    }
-
-    void OnSchItemsRemoved( SCHEMATIC&, std::vector<SCH_ITEM*>& aItems ) override
-    {
-        if( s_applyingRemote )
-            return;
-
-        for( SCH_ITEM* item : aItems )
-            m_removed.push_back( toUtf8( item->m_Uuid.AsString() ) );
-
-        scheduleFlush();
-    }
+    void OnSchItemsAdded( SCHEMATIC&, std::vector<SCH_ITEM*>& ) override   { trigger(); }
+    void OnSchItemsChanged( SCHEMATIC&, std::vector<SCH_ITEM*>& ) override { trigger(); }
+    void OnSchItemsRemoved( SCHEMATIC&, std::vector<SCH_ITEM*>& ) override { trigger(); }
 
 private:
-    // Serialize the items NOW (they're valid during the synchronous callback); the buffered
-    // json is emitted later by flush().
-    void accumulate( json& aBucket, std::vector<SCH_ITEM*>& aItems )
+    void trigger()
     {
-        if( s_applyingRemote )
-            return;
-
-        for( SCH_ITEM* item : aItems )
-            aBucket.push_back( itemToJson( item ) );
-
-        scheduleFlush();
+        if( !s_applyingRemote )
+            scheduleFlush();
     }
-
-    // All three category callbacks for one Push fire synchronously before control returns to
-    // the main loop, so a single CallAfter run after Push drains them into one delta. (Several
-    // commits in the same loop turn coalesce into one delta — harmless for the CRDT.)
-    void scheduleFlush()
-    {
-        if( m_flushScheduled )
-            return;
-
-        m_flushScheduled = true;
-
-        if( SCH_EDIT_FRAME* fr = schFrame() )
-            fr->CallAfter( [this]() { flush(); } );
-        else
-            flush();
-    }
-
-    void flush()
-    {
-        m_flushScheduled = false;
-
-        if( m_added.empty() && m_changed.empty() && m_removed.empty() )
-            return;
-
-        emit( json{ { "added", m_added }, { "changed", m_changed }, { "removed", m_removed } } );
-
-        m_added = json::array();
-        m_changed = json::array();
-        m_removed = json::array();
-    }
-
-    json m_added = json::array();
-    json m_changed = json::array();
-    json m_removed = json::array();
-    bool m_flushScheduled = false;
 };
 
 COLLAB_LISTENER* g_listener = nullptr;
@@ -524,6 +556,10 @@ void doApply( SCH_EDIT_FRAME* aFrame, const json& aDelta )
     if( staged )
         commit.Push( wxT( "Collaborative edit" ) );
 
+    // The applied remote changes (and any connectivity cleanup they triggered) are now the
+    // shared state — fold them into the baseline so the post-apply listener flush doesn't
+    // re-broadcast them as a local diff (echo).
+    rebaseline();
     s_applyingRemote = false;
 }
 
@@ -586,6 +622,10 @@ std::string kicadCollabSnapshot()
 {
     SCHEMATIC* sch = ensureBridge();
     json       added = sch ? snapshotItems( *sch ) : json::array();
+
+    // Seed the diff baseline to exactly the model we're handing out, so the first local edit
+    // diffs against this snapshot (and we don't re-broadcast the whole model).
+    rebaseline();
 
     return json{ { "added", added }, { "changed", json::array() },
                  { "removed", json::array() } }.dump();

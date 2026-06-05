@@ -103,13 +103,25 @@ recompute. A `G`-drag of U1A emitted `{added:[junction]}`, `{removed:[wire]}`,
 it**. Result: tab A 75 items / 8 junctions, tab B 74 / 7 (the junction lost). Simple
 translates (`M` tool) always converged — they touch only `changed`.
 
-**Fix (`wasm/bindings/eeschema_embind.cpp`):** `COLLAB_LISTENER` now buffers the three
-categories (serializing items in each synchronous callback) and flushes **one combined
-delta** after Push returns, coalesced via `CallAfter`. The peer's `doApply` applies a
-combined delta removed→changed→added in a single `SCH_COMMIT` with one recompute, so the
-junction is added after its wires are in place and survives. **Verified:** the same G-drag
-now emits 1 delta `{a:1,c:4,r:1}` and both tabs converge identically (75 items, 8 junctions,
-zero wire/junction diff). Embind-only build; eeschema-collab + eeschema-ui suites green.
+**First fix (batched emit) was insufficient.** Combining the three callbacks into one delta
+fixed the junction-add case, but the user could still break it: a *large* connected drag
+made the peer lose the P3↔C1 wire. **Deeper root cause:** the SCHEMATIC_LISTENER fires in
+`pushSchEdit` *before* `RecalculateConnections` (sch_commit.cpp ~402 vs ~430), so the emit
+was always **pre-cleanup raw geometry**; the connectivity cleanup that follows (merge
+collinear wires, drop/split junctions) was never broadcast. The peer reconstructed the raw
+edit and ran ITS OWN cleanup over a different "dirty" scope → the two peers cleaned up
+differently and the peer lost segments.
+
+**Final fix (`wasm/bindings/eeschema_embind.cpp`): emit a post-settle snapshot diff.** The
+native listener is now just a "something changed" trigger; the actual change set is a DIFF of
+the full model taken after the edit *settles* — a `CallAfter` flush, which runs once Push
+(cleanup included) returns — so it captures tab A's FINAL, already-clean geometry. The peer
+applies that and re-cleaning already-clean geometry is idempotent, so the two converge.
+(Mirrors pl_editor's snapshot-differ.) `g_baseline` holds the last-broadcast state;
+`doApply` and `kicadCollabSnapshot` rebaseline so applied/seed items aren't re-broadcast
+(echo). No kicad-fork change. **Verified two-tab, rigorously** (real edit: `tabA` state
+changed AND `tabA===tabB` byte-for-byte): a wire reroute, plus U1A/U1B/C2 symbol drags, all
+converge exactly; eeschema-collab + eeschema-ui suites green. Embind-only build.
 
 ## Files touched (all root repo)
 
