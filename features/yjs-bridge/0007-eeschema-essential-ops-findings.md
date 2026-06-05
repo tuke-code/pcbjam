@@ -87,6 +87,30 @@ produce the s-expr clipboard blob (`SCH_IO_KICAD_SEXPR::Format` →
 until symbol libraries are bundled (you can't place a symbol natively to sync). Symbol
 **move/position** already syncs via the generic `changed` path.
 
+## Thrust C — collab wire/symbol-drag divergence (lost segments) — fixed
+
+User-reported follow-up: dragging a wire OR symbol with multiple connections a *large*
+distance (small drags don't reroute) lost segments on the peer. Reproduced + root-caused
+in the real app, two tabs.
+
+**Root cause:** one atomic edit (a single `SCH_COMMIT::Push`) calls `OnItemsAdded`,
+`OnItemsRemoved`, `OnItemsChanged` **separately and synchronously**, then
+`RecalculateConnections` once. The old `COLLAB_LISTENER` emitted each category as its own
+delta, so the peer applied them as THREE separate commits, each with its own connectivity
+recompute. A `G`-drag of U1A emitted `{added:[junction]}`, `{removed:[wire]}`,
+`{changed:[3 wires, symbol]}`; the junction (at the wires' new crossing) was applied
+*before* the wires moved → a **dangling junction on the peer → connectivity cleanup deleted
+it**. Result: tab A 75 items / 8 junctions, tab B 74 / 7 (the junction lost). Simple
+translates (`M` tool) always converged — they touch only `changed`.
+
+**Fix (`wasm/bindings/eeschema_embind.cpp`):** `COLLAB_LISTENER` now buffers the three
+categories (serializing items in each synchronous callback) and flushes **one combined
+delta** after Push returns, coalesced via `CallAfter`. The peer's `doApply` applies a
+combined delta removed→changed→added in a single `SCH_COMMIT` with one recompute, so the
+junction is added after its wires are in place and survives. **Verified:** the same G-drag
+now emits 1 delta `{a:1,c:4,r:1}` and both tabs converge identically (75 items, 8 junctions,
+zero wire/junction diff). Embind-only build; eeschema-collab + eeschema-ui suites green.
+
 ## Files touched (all root repo)
 
 - `web/apps/frontend/src/index.css` — `.window` / `.window-canvas` CSS (Thrust A).

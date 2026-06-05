@@ -286,17 +286,30 @@ void emit( const json& aDelta )
 
 // ChangeSource: native SCHEMATIC_LISTENER. SCH_COMMIT::Push fires these in bulk for
 // every local edit (move, add, remove, …) — that's our emit trigger.
+//
+// CRUCIAL: one local edit (a single SCH_COMMIT::Push) calls OnItemsAdded, OnItemsRemoved
+// and OnItemsChanged *separately and synchronously*, then runs RecalculateConnections once
+// (sch_commit.cpp). Emitting each category as its own delta makes the peer apply them as
+// THREE separate commits, each followed by its own connectivity recompute — so an item that
+// only makes sense in the final state is mis-handled mid-sequence. Concretely, a connected
+// drag adds a junction at the wires' new crossing AND moves those wires; if the junction
+// (added) is applied before the wires (changed), the peer sees a dangling junction and
+// connectivity cleanup deletes it → the peer permanently loses it (the "lost segments on a
+// big drag" divergence). Fix: buffer all three categories and emit ONE combined delta after
+// Push returns (coalesced via CallAfter), so the peer applies it atomically in a single
+// SCH_COMMIT — doApply orders it removed→changed→added, with one recompute at the end, so the
+// junction is added after its wires are in place and survives.
 class COLLAB_LISTENER : public SCHEMATIC_LISTENER
 {
 public:
     void OnSchItemsAdded( SCHEMATIC&, std::vector<SCH_ITEM*>& aItems ) override
     {
-        emitItems( "added", aItems );
+        accumulate( m_added, aItems );
     }
 
     void OnSchItemsChanged( SCHEMATIC&, std::vector<SCH_ITEM*>& aItems ) override
     {
-        emitItems( "changed", aItems );
+        accumulate( m_changed, aItems );
     }
 
     void OnSchItemsRemoved( SCHEMATIC&, std::vector<SCH_ITEM*>& aItems ) override
@@ -304,35 +317,60 @@ public:
         if( s_applyingRemote )
             return;
 
-        json removed = json::array();
-
         for( SCH_ITEM* item : aItems )
-            removed.push_back( toUtf8( item->m_Uuid.AsString() ) );
+            m_removed.push_back( toUtf8( item->m_Uuid.AsString() ) );
 
-        if( !removed.empty() )
-            emit( json{ { "added", json::array() }, { "changed", json::array() },
-                        { "removed", removed } } );
+        scheduleFlush();
     }
 
 private:
-    void emitItems( const char* aKey, std::vector<SCH_ITEM*>& aItems )
+    // Serialize the items NOW (they're valid during the synchronous callback); the buffered
+    // json is emitted later by flush().
+    void accumulate( json& aBucket, std::vector<SCH_ITEM*>& aItems )
     {
         if( s_applyingRemote )
             return;
 
-        json arr = json::array();
-
         for( SCH_ITEM* item : aItems )
-            arr.push_back( itemToJson( item ) );
+            aBucket.push_back( itemToJson( item ) );
 
-        if( arr.empty() )
+        scheduleFlush();
+    }
+
+    // All three category callbacks for one Push fire synchronously before control returns to
+    // the main loop, so a single CallAfter run after Push drains them into one delta. (Several
+    // commits in the same loop turn coalesce into one delta — harmless for the CRDT.)
+    void scheduleFlush()
+    {
+        if( m_flushScheduled )
             return;
 
-        json d = { { "added", json::array() }, { "changed", json::array() },
-                   { "removed", json::array() } };
-        d[aKey] = arr;
-        emit( d );
+        m_flushScheduled = true;
+
+        if( SCH_EDIT_FRAME* fr = schFrame() )
+            fr->CallAfter( [this]() { flush(); } );
+        else
+            flush();
     }
+
+    void flush()
+    {
+        m_flushScheduled = false;
+
+        if( m_added.empty() && m_changed.empty() && m_removed.empty() )
+            return;
+
+        emit( json{ { "added", m_added }, { "changed", m_changed }, { "removed", m_removed } } );
+
+        m_added = json::array();
+        m_changed = json::array();
+        m_removed = json::array();
+    }
+
+    json m_added = json::array();
+    json m_changed = json::array();
+    json m_removed = json::array();
+    bool m_flushScheduled = false;
 };
 
 COLLAB_LISTENER* g_listener = nullptr;
