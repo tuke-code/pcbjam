@@ -1,0 +1,26 @@
+---
+/** CheckItem — a ✓ capability row (§12). Render inside a <ul class="checklist">. */
+interface Props {
+  label: string;
+}
+const { label } = Astro.props;
+---
+
+<li class="check">
+  <span class="tick" aria-hidden="true">✓</span>
+  <span>{label}</span>
+</li>
+
+<style>
+  .check {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.3rem 0;
+  }
+  .tick {
+    color: var(--signal-400);
+    font-weight: 700;
+    line-height: 1.5;
+  }
+</style>

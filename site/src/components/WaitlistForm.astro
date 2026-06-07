@@ -1,0 +1,203 @@
+---
+/**
+ * WaitlistForm — email capture with progressive enhancement.
+ *  - Works with NO JS: native POST to /api/waitlist → 303 back to /?waitlist=ok.
+ *  - With JS: fetch + inline success state, no navigation.
+ * Reused in the hero, final CTA, and footer via the `source` prop (attribution).
+ * The script is bound on astro:page-load so it survives ClientRouter SPA swaps.
+ */
+interface Props {
+  source: string; // 'hero' | 'final' | 'footer' …
+  id?: string; // wrapper id; pass "waitlist" on the hero for the #waitlist anchor
+  layout?: 'row' | 'stack';
+  microcopy?: string;
+  class?: string;
+}
+
+const {
+  source,
+  id,
+  layout = 'row',
+  microcopy = "Early access rolls out in waves. We'll email you when your seat opens — no spam.",
+  class: cls = '',
+} = Astro.props;
+
+const emailId = `wl-email-${source}`;
+const hpId = `wl-hp-${source}`;
+---
+
+<div class={`waitlist layout-${layout} ${cls}`} id={id} data-waitlist-wrap>
+  <form
+    class="wl-form"
+    method="POST"
+    action="/api/waitlist"
+    data-waitlist
+    data-source={source}
+  >
+    <label class="sr-only" for={emailId}>Email address</label>
+    <input
+      id={emailId}
+      type="email"
+      name="email"
+      placeholder="you@company.com"
+      autocomplete="email"
+      required
+    />
+
+    {/* Honeypot — humans never see/fill this. */}
+    <div class="sr-only" aria-hidden="true">
+      <label for={hpId}>Leave this empty</label>
+      <input id={hpId} type="text" name="company_url" tabindex="-1" autocomplete="off" />
+    </div>
+
+    <input type="hidden" name="source" value={source} />
+    <button class="btn btn-primary" type="submit">Join the waitlist</button>
+  </form>
+
+  <p class="wl-error" role="alert" hidden data-wl-error>
+    Please enter a valid email address and try again.
+  </p>
+
+  <div class="wl-success" hidden data-wl-success>
+    <strong>You're on the list. 🎉</strong>
+    <span class="muted">We'll email you when your early-access seat opens — no spam.</span>
+  </div>
+
+  {microcopy && <p class="wl-micro muted">{microcopy}</p>}
+</div>
+
+<style>
+  .waitlist {
+    width: 100%;
+  }
+  .wl-form {
+    display: flex;
+    gap: 0.5rem;
+  }
+  .layout-stack .wl-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .wl-form input[type='email'] {
+    flex: 1 1 16rem;
+    min-width: 0;
+    padding: 0.7rem 0.9rem;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--fg);
+    font-size: 1rem;
+  }
+  .wl-form input[type='email']::placeholder {
+    color: var(--fg-muted);
+  }
+  .wl-form input[type='email']:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  .wl-form .btn {
+    flex: none;
+    white-space: nowrap;
+  }
+  .layout-stack .wl-form .btn {
+    width: 100%;
+  }
+  .wl-micro {
+    font-size: 0.85rem;
+    margin: 0.6rem 0 0;
+  }
+  .wl-error {
+    color: var(--presence-7);
+    font-size: 0.9rem;
+    margin: 0.6rem 0 0;
+  }
+  .wl-success {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.9rem 1rem;
+    border: 1px solid var(--signal-fill, var(--signal-600));
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--signal-600) 14%, transparent);
+    color: var(--fg);
+  }
+
+  @media (max-width: 540px) {
+    .wl-form {
+      flex-direction: column;
+    }
+    .wl-form .btn {
+      width: 100%;
+    }
+  }
+</style>
+
+<script>
+  function initWaitlist() {
+    document.querySelectorAll<HTMLFormElement>('[data-waitlist]').forEach((form) => {
+      if (form.dataset.bound === '1') return;
+      form.dataset.bound = '1';
+      const wrap = form.closest<HTMLElement>('[data-waitlist-wrap]');
+      const errEl = wrap?.querySelector<HTMLElement>('[data-wl-error]');
+      const okEl = wrap?.querySelector<HTMLElement>('[data-wl-success]');
+      const btn = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (errEl) errEl.hidden = true;
+        const payload = Object.fromEntries(new FormData(form).entries());
+        const label = btn?.textContent;
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = 'Joining…';
+        }
+        try {
+          const res = await fetch(form.action, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', accept: 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (res.ok && data.ok) {
+            form.hidden = true;
+            if (okEl) okEl.hidden = false;
+            return;
+          }
+          if (errEl) errEl.hidden = false;
+        } catch {
+          if (errEl) errEl.hidden = false;
+        }
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = label ?? 'Join the waitlist';
+        }
+      });
+    });
+
+    // No-JS redirect landing: /?waitlist=ok|error[#anchor]
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get('waitlist');
+    if (status === 'ok' || status === 'error') {
+      const hashId = window.location.hash.slice(1);
+      const wrap =
+        (hashId && document.getElementById(hashId)?.closest('[data-waitlist-wrap]')) ||
+        document.querySelector('[data-waitlist-wrap]');
+      if (wrap) {
+        if (status === 'ok') {
+          wrap.querySelector('[data-waitlist]')?.setAttribute('hidden', '');
+          wrap.querySelector('[data-wl-success]')?.removeAttribute('hidden');
+        } else {
+          wrap.querySelector('[data-wl-error]')?.removeAttribute('hidden');
+        }
+      }
+      params.delete('waitlist');
+      const qs = params.toString();
+      history.replaceState(
+        {},
+        '',
+        window.location.pathname + (qs ? `?${qs}` : '') + window.location.hash,
+      );
+    }
+  }
+  document.addEventListener('astro:page-load', initWaitlist);
+</script>

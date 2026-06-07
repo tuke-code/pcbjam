@@ -1,0 +1,37 @@
+---
+import SectionBand from '../components/SectionBand.astro';
+import Icon from '../components/Icon.astro';
+---
+
+<SectionBand tone="soft" labelledby="ai-h3">
+  <div class="ai">
+    <Icon name="icons/ai.svg" mode="img" size="2.5rem" alt="" class="ai-icon" />
+    <div>
+      <h3 id="ai-h3">AI when you want it. Never a paywall, never a black box.</h3>
+      <p class="muted">
+        Everyone else leads with an “AI hardware engineer.” We lead with <em>you</em> and an open
+        tool you control. AI assistance is on the roadmap as an <strong>opt-in</strong> helper —
+        never metered by the token, never the thing standing between you and your own board.
+      </p>
+    </div>
+  </div>
+</SectionBand>
+
+<style>
+  .ai {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+    max-width: 48rem;
+  }
+  .ai h3 {
+    margin: 0 0 0.4rem;
+    font-size: 1.25rem;
+  }
+  .ai p {
+    margin: 0;
+  }
+  .ai-icon {
+    flex: none;
+  }
+</style>

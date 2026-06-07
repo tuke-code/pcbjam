@@ -7,14 +7,24 @@ import '../styles/global.css';
 interface Props {
   title: string;
   description?: string;
+  /** When true, render the page edge-to-edge (no .container) so full-width
+   *  bands work; each section manages its own container. Used by the landing
+   *  page. Blog/legal keep the default centered container. */
+  wide?: boolean;
+  /** Absolute or root-relative OG/Twitter share image. */
+  ogImage?: string;
 }
 
-const { title, description = 'KiCad in the browser — WebAssembly port.' } =
-  Astro.props;
-const fullTitle =
-  title === 'KiCad in the browser'
-    ? title
-    : `${title} — KiCad in the browser`;
+const {
+  title,
+  description = 'PCBJam — open-source PCB design in your browser, with real-time multiplayer. Built on KiCad.',
+  wide = false,
+  ogImage = '/og/og-home.png',
+} = Astro.props;
+
+// Pages may pass a complete title (containing "PCBJam"); otherwise append the suffix.
+const fullTitle = title.includes('PCBJam') ? title : `${title} — PCBJam`;
+const canonical = Astro.url.href;
 ---
 
 <!doctype html>
@@ -23,18 +33,43 @@ const fullTitle =
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="canonical" href={canonical} />
     <meta name="description" content={description} />
     <title>{fullTitle}</title>
+
+    {/* Open Graph / Twitter */}
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="PCBJam" />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={fullTitle} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+
+    {/* Per-page extras (e.g. JSON-LD) */}
+    <slot name="head" />
+
     {/* SPA-style navigation: swaps the page without a full reload. */}
     <ClientRouter />
   </head>
   <body>
     <Header />
-    <main>
-      <div class="container">
-        <slot />
-      </div>
-    </main>
+    {
+      wide ? (
+        <main class="wide">
+          <slot />
+        </main>
+      ) : (
+        <main>
+          <div class="container">
+            <slot />
+          </div>
+        </main>
+      )
+    }
     <Footer />
   </body>
 </html>

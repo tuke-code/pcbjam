@@ -1,36 +1,64 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import Hero from '../sections/Hero.astro';
+import TrustBar from '../sections/TrustBar.astro';
+import Multiplayer from '../sections/Multiplayer.astro';
+import Pillars from '../sections/Pillars.astro';
+import HowItWorks from '../sections/HowItWorks.astro';
+import CapabilityProof from '../sections/CapabilityProof.astro';
+import OpenYours from '../sections/OpenYours.astro';
+import MigrationStrip from '../sections/MigrationStrip.astro';
+import PositioningMap from '../sections/PositioningMap.astro';
+import BuiltByEmergence from '../sections/BuiltByEmergence.astro';
+import MakeMoney from '../sections/MakeMoney.astro';
+import AiNote from '../sections/AiNote.astro';
+import FinalCta from '../sections/FinalCta.astro';
+
+// Toggle the optional positioning-map section (§15).
+const SHOW_MAP = true;
+
+const description =
+  'Open-source PCB design in your browser with real-time collaboration. Built on KiCad. No install, open format, free to start. Join the waitlist.';
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'PCBJam',
+  applicationCategory: 'DesignApplication',
+  operatingSystem: 'Web browser',
+  description,
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+  creator: {
+    '@type': 'Organization',
+    name: 'Emergence Engineering',
+    url: 'https://www.emergence-engineering.com',
+  },
+};
 ---
 
-<BaseLayout title="KiCad in the browser">
-  <section class="hero">
-    <h1>KiCad in the browser</h1>
-    <p class="lead">
-      Placeholder landing page for the KiCad WebAssembly port — run PCB and
-      schematic tools in a browser, no installation required. Copy here is a
-      placeholder and will be replaced.
-    </p>
-    <a class="cta" href="/blog">Read the blog</a>
-  </section>
+<BaseLayout
+  title="PCBJam — KiCad in your browser, now multiplayer"
+  description={description}
+  wide
+>
+  <script
+    slot="head"
+    type="application/ld+json"
+    is:inline
+    set:html={JSON.stringify(jsonLd)}
+  />
 
-  <section class="grid" aria-label="Highlights">
-    <div class="card">
-      <h3>Placeholder feature</h3>
-      <p class="muted">
-        Short description of something the project does. Replace with real copy.
-      </p>
-    </div>
-    <div class="card">
-      <h3>Placeholder feature</h3>
-      <p class="muted">
-        Short description of something the project does. Replace with real copy.
-      </p>
-    </div>
-    <div class="card">
-      <h3>Placeholder feature</h3>
-      <p class="muted">
-        Short description of something the project does. Replace with real copy.
-      </p>
-    </div>
-  </section>
+  <Hero />
+  <TrustBar />
+  <Multiplayer />
+  <Pillars />
+  <HowItWorks />
+  <CapabilityProof />
+  <OpenYours />
+  <MigrationStrip />
+  {SHOW_MAP && <PositioningMap />}
+  <BuiltByEmergence />
+  <MakeMoney />
+  <AiNote />
+  <FinalCta />
 </BaseLayout>

@@ -1,0 +1,55 @@
+---
+/**
+ * SectionBand — a full-width section wrapper. Centers its content in the shared
+ * .container with default vertical rhythm; optionally tints the band
+ * (`tone="soft"`) and/or paints the faint blueprint dot-grid motif (`grid`).
+ * Pass `flush` to drop the default block padding (e.g. the thin stat bar).
+ * Pass an `id` for in-page anchor links.
+ */
+interface Props {
+  id?: string;
+  tone?: 'default' | 'soft';
+  grid?: boolean;
+  flush?: boolean;
+  class?: string;
+  labelledby?: string;
+}
+
+const {
+  id,
+  tone = 'default',
+  grid = false,
+  flush = false,
+  class: cls = '',
+  labelledby,
+} = Astro.props;
+const bandClass = ['band', tone === 'soft' ? 'band-soft' : '', grid ? 'bp-grid' : '', cls]
+  .filter(Boolean)
+  .join(' ');
+const innerClass = ['container', flush ? '' : 'band-inner'].filter(Boolean).join(' ');
+---
+
+<section id={id} class={bandClass} aria-labelledby={labelledby}>
+  <div class={innerClass}>
+    <slot />
+  </div>
+</section>
+
+<style>
+  .band {
+    border-block: 1px solid transparent;
+  }
+  .band-soft {
+    background: var(--bg-soft);
+    border-color: var(--border);
+  }
+  .bp-grid {
+    background-color: var(--bg);
+  }
+  .band-soft.bp-grid {
+    background-color: var(--bg-soft);
+  }
+  .band-inner {
+    padding-block: clamp(3rem, 7vw, 5.5rem);
+  }
+</style>

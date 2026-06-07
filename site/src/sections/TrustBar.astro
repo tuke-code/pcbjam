@@ -1,0 +1,23 @@
+---
+import SectionBand from '../components/SectionBand.astro';
+import StatBar from '../components/StatBar.astro';
+
+// TODO(numbers): replace with defensible, current figures. Pull PCBJam-native
+// counts (boards opened in beta, GitHub stars) once they exist (§8, §31.6).
+const stats = [
+  { value: 'Millions', label: 'KiCad users worldwide' },
+  { value: 'Largest', label: 'open component & footprint library in EDA' },
+  { value: '100%', label: 'open file format — your .kicad_pcb / .kicad_sch' },
+  { value: 'Free', label: 'to start — no card, no per-seat toll' },
+];
+---
+
+<SectionBand tone="soft" flush class="trust">
+  <StatBar stats={stats} />
+</SectionBand>
+
+<style>
+  .trust :global(.container) {
+    padding-block: 1.75rem;
+  }
+</style>

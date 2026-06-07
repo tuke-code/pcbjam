@@ -1,18 +1,170 @@
 ---
+import Icon from './Icon.astro';
+
+// TODO(assets): replace favicon "K" + text wordmark with the real PCBJam logo (§4b.1).
+// TODO(links): add "Roadmap" → /roadmap and repoint How-it-works/Open to their own
+//   pages once the supporting pages ship; for now they anchor to landing sections.
+// TODO(config): point at the public PCBJam repo when it exists.
+const GITHUB_URL = 'https://github.com/emergence-engineering';
+
+const links = [
+  { href: '/#how-it-works', label: 'How it works' },
+  { href: '/#open', label: 'Open & yours' },
+  { href: '/blog', label: 'Blog' },
+  { href: '/#built-by', label: 'Built by Emergence Engineering' },
+];
+
 const path = Astro.url.pathname;
 const isActive = (href: string) =>
-  href === '/' ? path === '/' : path.startsWith(href);
+  href.startsWith('/#') ? false : href === '/' ? path === '/' : path.startsWith(href);
 ---
 
 <header class="site-header" transition:persist>
-  <div class="container">
+  <div class="container bar">
     <a class="brand" href="/">
       <img src="/favicon.svg" alt="" width="24" height="24" />
-      <span>KiCad in the browser</span>
+      <span class="brand-name">PCBJam</span>
+      <span class="brand-chip">built on KiCad</span>
     </a>
-    <nav class="nav">
-      <a href="/" aria-current={isActive('/') ? 'page' : undefined}>Home</a>
-      <a href="/blog" aria-current={isActive('/blog') ? 'page' : undefined}>Blog</a>
+
+    <input type="checkbox" id="nav-toggle" class="nav-toggle sr-only" />
+    <label class="hamburger" for="nav-toggle" aria-label="Toggle menu">
+      <span></span><span></span><span></span>
+    </label>
+
+    <nav class="nav" aria-label="Primary">
+      {
+        links.map((l) => (
+          <a href={l.href} aria-current={isActive(l.href) ? 'page' : undefined}>
+            {l.label}
+          </a>
+        ))
+      }
+      <a class="gh" href={GITHUB_URL} rel="noopener" target="_blank">
+        <Icon name="icons/github.svg" size="1rem" alt="GitHub" /> <span>★</span>
+      </a>
+      <a class="btn btn-primary cta-join" href="/#waitlist">Join the waitlist</a>
     </nav>
   </div>
 </header>
+
+<style>
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--bg-soft) 92%, transparent);
+    backdrop-filter: blur(8px);
+  }
+  .bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-block: 0.75rem;
+  }
+  .brand {
+    font-weight: 700;
+    color: var(--fg);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .brand img {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+  .brand-chip {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--fg-muted);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.1rem 0.4rem;
+  }
+  .nav {
+    display: flex;
+    align-items: center;
+    gap: 1.1rem;
+  }
+  .nav > a {
+    color: var(--fg-muted);
+    font-size: 0.95rem;
+  }
+  .nav > a:hover {
+    color: var(--fg);
+    text-decoration: none;
+  }
+  .nav > a[aria-current='page'] {
+    color: var(--fg);
+  }
+  .gh {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .cta-join {
+    padding-block: 0.5rem;
+    font-size: 0.95rem;
+  }
+
+  /* Mobile menu (CSS-only via checkbox toggle). */
+  .hamburger {
+    display: none;
+    flex-direction: column;
+    gap: 4px;
+    padding: 0.4rem;
+    cursor: pointer;
+  }
+  .hamburger span {
+    width: 22px;
+    height: 2px;
+    background: var(--fg);
+    border-radius: 2px;
+  }
+
+  @media (max-width: 820px) {
+    .brand-chip {
+      display: none;
+    }
+    .hamburger {
+      display: flex;
+    }
+    .nav {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0;
+      background: var(--bg-soft);
+      border-bottom: 1px solid var(--border);
+      padding: 0.5rem 1.25rem 1rem;
+      display: none;
+    }
+    .nav-toggle:checked ~ .nav {
+      display: flex;
+    }
+    .nav > a,
+    .gh {
+      padding-block: 0.6rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .cta-join {
+      margin-top: 0.75rem;
+      text-align: center;
+    }
+  }
+</style>
+
+<script>
+  // ClientRouter persists the header (transition:persist), so reset the mobile
+  // menu toggle after every navigation to avoid it staying open.
+  function resetNav() {
+    const t = document.getElementById('nav-toggle') as HTMLInputElement | null;
+    if (t) t.checked = false;
+  }
+  document.addEventListener('astro:page-load', resetNav);
+</script>

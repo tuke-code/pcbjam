@@ -1,0 +1,66 @@
+---
+/**
+ * EECredit — the "Built by Emergence Engineering" lockup. The EE wordmark keeps
+ * its own (guest-brand) colors via Icon mode="img".
+ *  - variant="footer": wordmark + studio blurb + contact (footer column 3).
+ *  - variant="inline": compact wordmark + "Built by" label.
+ */
+import Icon from './Icon.astro';
+
+interface Props {
+  variant?: 'footer' | 'inline';
+  class?: string;
+}
+const { variant = 'footer', class: cls = '' } = Astro.props;
+---
+
+{
+  variant === 'inline' ? (
+    <a class={`ee-inline ${cls}`} href="/built-by-emergence">
+      <span class="ee-by">Built by</span>
+      <Icon name="ee/ee-logo.svg" mode="img" size="1rem" alt="Emergence Engineering" />
+    </a>
+  ) : (
+    <div class={`ee-footer ${cls}`}>
+      <Icon name="ee/ee-logo.svg" mode="img" size="1.5rem" alt="Emergence Engineering" />
+      <p class="ee-blurb muted">
+        PCBJam is a project by Emergence Engineering, a full-stack software studio. Need
+        something hard built?{' '}
+        <a href="mailto:contact@emergence-engineering.com">contact@emergence-engineering.com</a>
+      </p>
+      <a class="ee-link" href="/built-by-emergence">
+        About Emergence Engineering →
+      </a>
+    </div>
+  )
+}
+
+<style>
+  .ee-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--fg-muted);
+  }
+  .ee-inline:hover {
+    text-decoration: none;
+    color: var(--fg);
+  }
+  .ee-by {
+    font-size: 0.85rem;
+  }
+  .ee-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    align-items: flex-start;
+  }
+  .ee-blurb {
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+  .ee-link {
+    font-size: 0.85rem;
+  }
+</style>

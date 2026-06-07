@@ -1,0 +1,100 @@
+---
+import WaitlistForm from '../components/WaitlistForm.astro';
+import DemoVideo from '../components/DemoVideo.astro';
+import Icon from '../components/Icon.astro';
+---
+
+<section class="hero bp-grid">
+  <div class="container hero-grid">
+    <div class="hero-copy">
+      <span class="eyebrow">PCBJam · built on KiCad</span>
+      <h1>KiCad, in your browser — now multiplayer.</h1>
+      <p class="lead">
+        The PCB design tool millions trust — now zero-install and collaborative. Open a
+        board in a tab, invite your team, and edit the same schematic and layout together
+        in real time. Open format. No install. Free to start.
+      </p>
+
+      <WaitlistForm source="hero" id="waitlist" class="hero-form" />
+
+      <p class="hero-secondary">
+        <a href="#multiplayer" class="watch">
+          <Icon name="icons/play.svg" size="1.1rem" alt="" /> Watch the 90-second demo →
+        </a>
+      </p>
+
+      <ul class="hero-trust">
+        <li>Open source</li>
+        <li>Your files stay in KiCad format</li>
+        <li>Runs on Mac, Linux, Chromebook, iPad</li>
+      </ul>
+    </div>
+
+    <div class="hero-visual">
+      {/* TODO(assets): swap for hero board still w/ presence cursors (§4b.3) or the
+          multiplayer demo loop (§4b.2) once produced. */}
+      <DemoVideo
+        caption="2 editors · live cursors · one board.kicad_pcb · no merge step"
+      />
+    </div>
+  </div>
+</section>
+
+<style>
+  .hero {
+    padding-block: clamp(2.5rem, 6vw, 4.5rem);
+  }
+  .hero-grid {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap: 2.5rem;
+    align-items: center;
+  }
+  .hero-copy h1 {
+    font-size: clamp(2rem, 5vw, 3.25rem);
+    margin-bottom: 0.75rem;
+  }
+  .hero-form {
+    margin-top: 1.5rem;
+    max-width: 30rem;
+  }
+  .hero-secondary {
+    margin: 1rem 0 0;
+  }
+  .watch {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--fg);
+  }
+  .hero-trust {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.25rem;
+    padding: 0;
+    margin: 1.5rem 0 0;
+    font-size: 0.85rem;
+    color: var(--fg-muted);
+  }
+  .hero-trust li {
+    position: relative;
+    padding-left: 1rem;
+  }
+  .hero-trust li::before {
+    content: '●';
+    position: absolute;
+    left: 0;
+    color: var(--signal-400);
+    font-size: 0.6rem;
+    top: 0.25rem;
+  }
+  @media (max-width: 880px) {
+    .hero-grid {
+      grid-template-columns: 1fr;
+    }
+    .hero-visual {
+      order: -1;
+    }
+  }
+</style>

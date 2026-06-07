@@ -1,0 +1,88 @@
+---
+import SectionBand from '../components/SectionBand.astro';
+import CheckItem from '../components/CheckItem.astro';
+import Placeholder from '../components/Placeholder.astro';
+
+const capabilities = [
+  'Schematic capture (Eeschema)',
+  'PCB layout (Pcbnew)',
+  'DRC / ERC',
+  'Interactive router',
+  '3D board view',
+  'BOM export',
+  'Gerber / drill export',
+  'Footprint & symbol libraries',
+  'Net classes & constraints',
+  'Push-and-shove routing',
+];
+
+// TODO(assets): replace with real annotated screenshots (§4b.4).
+const shots = [
+  'PRODUCE: PCB layout editor screenshot (§4b.4a)',
+  'PRODUCE: schematic capture (Eeschema) (§4b.4b)',
+  'PRODUCE: 3D board view (§4b.4c)',
+  'PRODUCE: DRC / ERC results panel (§4b.4d)',
+];
+---
+
+<SectionBand tone="soft" labelledby="cap-h2">
+  <div class="section-head">
+    <span class="eyebrow">The actual engine, compiled to WebAssembly</span>
+    <h2 id="cap-h2">This is real KiCad — the whole thing.</h2>
+    <p class="lead">
+      PCBJam isn’t a web re-implementation with a fraction of the features. It’s the genuine
+      KiCad engine compiled to WebAssembly, running in your tab. Schematic capture. Multi-layer
+      PCB layout. Design rule checks. 3D view. BOM and Gerber export. The same
+      <code>.kicad_pcb</code> you’d open on the desktop — because it <em>is</em> the same tool.
+    </p>
+  </div>
+
+  <div class="cap-grid">
+    <ul class="checklist">
+      {capabilities.map((c) => <CheckItem label={c} />)}
+    </ul>
+    <div class="shots">
+      {shots.map((s) => <Placeholder label={s} kind="image" ratio="4 / 3" />)}
+    </div>
+  </div>
+</SectionBand>
+
+<style>
+  .cap-grid {
+    display: grid;
+    grid-template-columns: 1fr 1.2fr;
+    gap: 2rem;
+    align-items: start;
+  }
+  .checklist {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    columns: 2;
+    column-gap: 1.5rem;
+  }
+  .checklist :global(.check) {
+    break-inside: avoid;
+  }
+  .shots {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+  :global(code) {
+    font-family: var(--font-mono);
+  }
+  @media (max-width: 820px) {
+    .cap-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  @media (max-width: 460px) {
+    .checklist {
+      columns: 1;
+    }
+    .shots {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

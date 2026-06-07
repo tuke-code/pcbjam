@@ -1,0 +1,21 @@
+---
+import SectionBand from '../components/SectionBand.astro';
+import Placeholder from '../components/Placeholder.astro';
+---
+
+<SectionBand labelledby="pos-h3">
+  <div class="section-head">
+    <h3 id="pos-h3">Everyone picks two. We do all three.</h3>
+    <p class="lead">
+      Browser-native. Open &amp; yours. Truly multiplayer. Flux is browser + collab but closed.
+      KiCanvas is browser + open but read-only. LibrePCB is open + full but desktop-only.
+      <strong>PCBJam is the only one in the middle.</strong>
+    </p>
+  </div>
+  {/* TODO(assets): build the quadrant/Venn graphic on the you-are-here motif (§4b.5). */}
+  <Placeholder
+    label="PRODUCE: positioning quadrant — Browser × Open × Multiplayer (§15)"
+    kind="image"
+    ratio="2 / 1"
+  />
+</SectionBand>

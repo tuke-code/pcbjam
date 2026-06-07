@@ -1,18 +1,98 @@
+/* Tailwind v4 — theme + utilities only. Preflight is intentionally skipped:
+   this file already ships a hand-rolled reset (below), and skipping Preflight
+   avoids base-reset clashes on the existing blog/legal pages. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
 :root {
-  --bg: #0b1020;
-  --bg-soft: #11182e;
-  --fg: #e7ecf5;
-  --fg-muted: #9aa6c0;
-  --accent: #4f7cff;
-  --border: #233052;
+  /* ── Ink neutrals (authoritative; existing names kept) ───────────────── */
+  --bg: #0b1020; /* ink-950 */
+  --bg-soft: #11182e; /* ink-900 / surface */
+  --fg: #e7ecf5; /* ink-100 */
+  --fg-muted: #9aa6c0; /* ink-400 */
+  --border: #233052; /* ink-800 */
+
+  /* ── Primary (Circuit Blue) ─────────────────────────────────────────── */
+  --accent: #4f7cff; /* brand-500 (links/accents) */
+  --brand-600: #2f57f5; /* primary button */
+  --brand-700: #1d4ed8; /* favicon / deep */
+
+  /* ── Signal (green / "live" presence) ───────────────────────────────── */
+  --signal-400: #32d583; /* online text */
+  --signal-600: #039855; /* online fill / success */
+
+  /* ── Presence palette (peer cursors) ────────────────────────────────── */
+  --presence-1: #818cf8;
+  --presence-2: #38bdf8;
+  --presence-3: #2dd4bf;
+  --presence-4: #4ade80;
+  --presence-5: #fbbf24;
+  --presence-6: #fb923c;
+  --presence-7: #fb7185;
+  --presence-8: #c084fc;
+
+  /* ── Geometry ───────────────────────────────────────────────────────── */
   --max-width: 64rem;
-  --radius: 10px;
+  --radius-sm: 6px;
+  --radius: 10px; /* radius-md (existing) */
+  --radius-lg: 16px;
+
+  /* ── Motion ─────────────────────────────────────────────────────────── */
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --dur-slow: 360ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* ── Type ───────────────────────────────────────────────────────────── */
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
     sans-serif;
 }
 
+/* Map the :root tokens into Tailwind's namespaces with `inline` so utilities
+   (bg-surface, text-accent, font-mono, rounded-lg…) emit `var(--token)` and
+   share ONE source of truth with the hand-written CSS — no duplicated hexes. */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--bg-soft);
+  --color-fg: var(--fg);
+  --color-muted: var(--fg-muted);
+  --color-border: var(--border);
+
+  --color-accent: var(--accent);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
+
+  --color-signal: var(--signal-400);
+  --color-signal-fill: var(--signal-600);
+
+  --color-presence-1: var(--presence-1);
+  --color-presence-2: var(--presence-2);
+  --color-presence-3: var(--presence-3);
+  --color-presence-4: var(--presence-4);
+  --color-presence-5: var(--presence-5);
+  --color-presence-6: var(--presence-6);
+  --color-presence-7: var(--presence-7);
+  --color-presence-8: var(--presence-8);
+
+  --font-mono: var(--font-mono);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius-lg);
+
+  --ease-brand: var(--ease);
+}
+
 * {
   box-sizing: border-box;
+}
+
+/* The `hidden` attribute must win over any component `display` (e.g. flex). */
+[hidden] {
+  display: none !important;
 }
 
 html {
@@ -61,46 +141,7 @@ main {
   color: var(--fg-muted);
 }
 
-/* Header */
-.site-header {
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-soft);
-}
-
-.site-header .container {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding-block: 1rem;
-}
-
-.brand {
-  font-weight: 700;
-  color: var(--fg);
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.brand img {
-  width: 1.5rem;
-  height: 1.5rem;
-}
-
-.nav {
-  display: flex;
-  gap: 1.25rem;
-}
-
-.nav a {
-  color: var(--fg-muted);
-}
-
-.nav a:hover {
-  color: var(--fg);
-  text-decoration: none;
-}
+/* Header & Footer styles live scoped in their components. */
 
 /* Hero / landing */
 .hero {
@@ -175,25 +216,146 @@ main {
   margin-top: 2rem;
 }
 
-/* Footer */
-.site-footer {
-  border-top: 1px solid var(--border);
-  background: var(--bg-soft);
-  color: var(--fg-muted);
-  font-size: 0.9rem;
+/* ─────────────────────────────────────────────────────────────────────────
+   Shared landing-page helpers
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* The landing page renders edge-to-edge; sections own their own spacing. */
+main.wide {
+  padding-block: 0;
 }
 
-.site-footer .container {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem 1.5rem;
+/* Visually-hidden but accessible (labels, honeypot). */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  padding-block: 1.5rem;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.7rem 1.25rem;
+  border-radius: var(--radius);
+  font-weight: 600;
+  font-size: 1rem;
+  line-height: 1;
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  transition:
+    background-color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    filter var(--dur) var(--ease);
+}
+.btn:hover {
+  text-decoration: none;
+}
+.btn-primary {
+  background: var(--brand-600);
+  color: #fff;
+}
+.btn-primary:hover {
+  filter: brightness(1.08);
+}
+.btn-ghost {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--fg);
+}
+.btn-ghost:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
-.site-footer nav {
+/* Eyebrow: mono, muted, uppercase-ish section kicker. */
+.eyebrow {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  color: var(--fg-muted);
+  margin-bottom: 0.75rem;
+}
+
+/* Mono file / feature chip. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg-soft) 70%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--fg);
+}
+
+/* Faint blueprint dot-grid backdrop (brand motif). */
+.bp-grid {
+  background-image: radial-gradient(
+    var(--border) 1px,
+    transparent 1px
+  );
+  background-size: 22px 22px;
+  background-position: center;
+}
+
+/* Section vertical rhythm + width. */
+.section {
+  padding-block: clamp(3rem, 7vw, 5.5rem);
+}
+.section-narrow {
+  max-width: 48rem;
+}
+
+/* Large intro paragraph. */
+.lead {
+  font-size: 1.2rem;
+  color: var(--fg-muted);
+  max-width: 42rem;
+  line-height: 1.6;
+}
+
+/* Section header block (eyebrow + heading + lead). */
+.section-head {
+  max-width: 44rem;
+  margin-bottom: 2rem;
+}
+.section-head h2 {
+  font-size: clamp(1.6rem, 3.5vw, 2.25rem);
+}
+.section-head h3 {
+  font-size: clamp(1.4rem, 3vw, 1.9rem);
+}
+
+/* Generic responsive 3-up card grid. */
+.cards-3 {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+}
+
+/* Inline cluster of chips/links. */
+.cluster {
   display: flex;
   flex-wrap: wrap;
-  gap: 1rem;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn {
+    transition: none;
+  }
 }

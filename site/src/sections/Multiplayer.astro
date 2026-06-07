@@ -1,0 +1,84 @@
+---
+import SectionBand from '../components/SectionBand.astro';
+import DemoVideo from '../components/DemoVideo.astro';
+import Icon from '../components/Icon.astro';
+
+const subpoints = [
+  {
+    icon: 'icons/collab.svg',
+    title: 'Live cursors & presence',
+    body: 'See who’s here and where they’re working.',
+  },
+  {
+    icon: 'icons/yjs.svg',
+    title: 'Conflict-free editing',
+    body: 'CRDT sync (Yjs) merges everyone’s edits — no overwrite wars.',
+  },
+  {
+    icon: 'icons/message.svg',
+    title: 'Pin a comment to a pad',
+    body: 'Review and resolve right on the canvas.',
+  },
+];
+---
+
+<SectionBand id="multiplayer" labelledby="mp-h2">
+  <div class="section-head">
+    <span class="eyebrow">Real-time, not “real-time-ish”</span>
+    <h2 id="mp-h2">Your whole team. One board. The same second.</h2>
+    <p class="lead">
+      Everyone else who says “real-time collaboration” means comments, check-out locks, or a
+      read-only viewer. PCBJam means <strong>live co-editing</strong>: shared cursors, presence,
+      and conflict-free edits on the same schematic and layout — the way you already work in
+      Google Docs and Figma. Route a trace while a teammate places parts on the other side of
+      the board. No emailing files. No “who has it checked out?”
+    </p>
+  </div>
+
+  <DemoVideo
+    class="mp-demo"
+    caption="2 editors · live cursors · one board.kicad_pcb · no merge step"
+  />
+
+  <ul class="subpoints">
+    {
+      subpoints.map((s) => (
+        <li class="subpoint">
+          <Icon name={s.icon} mode="img" size="1.6rem" alt="" />
+          <div>
+            <strong>{s.title}</strong>
+            <p class="muted">{s.body}</p>
+          </div>
+        </li>
+      ))
+    }
+  </ul>
+</SectionBand>
+
+<style>
+  .mp-demo {
+    margin-block: 0.5rem 2rem;
+  }
+  .subpoints {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 1.25rem;
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .subpoint {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+  }
+  .subpoint p {
+    margin: 0.2rem 0 0;
+    font-size: 0.95rem;
+  }
+  @media (max-width: 760px) {
+    .subpoints {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
