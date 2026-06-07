@@ -78,6 +78,11 @@ const hpId = `wl-hp-${source}`;
     flex-direction: column;
     align-items: stretch;
   }
+  /* In a column the 16rem flex-basis would apply to the HEIGHT, ballooning the
+     input — reset it to content height when stacked. */
+  .layout-stack .wl-form input[type='email'] {
+    flex: 0 0 auto;
+  }
   .wl-form input[type='email'] {
     flex: 1 1 16rem;
     min-width: 0;
@@ -125,6 +130,10 @@ const hpId = `wl-hp-${source}`;
   @media (max-width: 540px) {
     .wl-form {
       flex-direction: column;
+    }
+    /* Same column flex-basis fix as above: keep the input at content height. */
+    .wl-form input[type='email'] {
+      flex: 0 0 auto;
     }
     .wl-form .btn {
       width: 100%;

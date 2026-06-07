@@ -18,10 +18,21 @@ interface Props {
   poster?: string;
   caption?: string;
   ratio?: string; // default 16/9
+  /** When true and no video yet, show a big "Demo coming soon" panel instead of
+   *  the internal PRODUCE placeholder. */
+  comingSoon?: boolean;
   class?: string;
 }
 
-const { mp4, webm, poster, caption, ratio = '16 / 9', class: cls = '' } = Astro.props;
+const {
+  mp4,
+  webm,
+  poster,
+  caption,
+  ratio = '16 / 9',
+  comingSoon = false,
+  class: cls = '',
+} = Astro.props;
 const hasVideo = Boolean(mp4 || webm);
 ---
 
@@ -44,6 +55,10 @@ const hasVideo = Boolean(mp4 || webm);
         <button class="demo-play" type="button" aria-label="Play demo" data-demo-play>
           <Icon name="icons/play.svg" size="3.5rem" alt="" />
         </button>
+      </div>
+    ) : comingSoon ? (
+      <div class="demo-soon bp-grid" style={`aspect-ratio:${ratio};`}>
+        <span class="demo-soon-text">Demo coming soon</span>
       </div>
     ) : (
       <Placeholder
@@ -86,6 +101,22 @@ const hasVideo = Boolean(mp4 || webm);
   }
   .demo-play[hidden] {
     display: none;
+  }
+  .demo-soon {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    padding: 1.5rem;
+    text-align: center;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background-color: var(--bg-soft);
+  }
+  .demo-soon-text {
+    font-size: clamp(1.6rem, 5.5vw, 3rem);
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    color: var(--fg);
   }
   .demo-caption {
     margin-top: 0.75rem;
