@@ -1,0 +1,39 @@
+---
+import { getCollection, render } from 'astro:content';
+import type { GetStaticPaths } from 'astro';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+export const getStaticPaths = (async () => {
+  const posts = await getCollection('blog');
+  // post.id is the URL-safe identifier for glob-loaded collections
+  // (entry.slug was removed in Astro 5).
+  return posts.map((post) => ({
+    params: { slug: post.id },
+    props: { post },
+  }));
+}) satisfies GetStaticPaths;
+
+const { post } = Astro.props;
+const { Content } = await render(post);
+
+const dateFmt = new Intl.DateTimeFormat('en-US', {
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+});
+---
+
+<BaseLayout title={post.data.title} description={post.data.description}>
+  <article class="prose">
+    <p class="muted">
+      <a href="/blog">&larr; Back to blog</a>
+    </p>
+    <h1>{post.data.title}</h1>
+    <p class="muted">
+      <time datetime={post.data.pubDate.toISOString()}>
+        {dateFmt.format(post.data.pubDate)}
+      </time>
+    </p>
+    <Content />
+  </article>
+</BaseLayout>

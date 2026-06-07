@@ -1,0 +1,40 @@
+---
+import { ClientRouter } from 'astro:transitions';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description = 'KiCad in the browser — WebAssembly port.' } =
+  Astro.props;
+const fullTitle =
+  title === 'KiCad in the browser'
+    ? title
+    : `${title} — KiCad in the browser`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="description" content={description} />
+    <title>{fullTitle}</title>
+    {/* SPA-style navigation: swaps the page without a full reload. */}
+    <ClientRouter />
+  </head>
+  <body>
+    <Header />
+    <main>
+      <div class="container">
+        <slot />
+      </div>
+    </main>
+    <Footer />
+  </body>
+</html>

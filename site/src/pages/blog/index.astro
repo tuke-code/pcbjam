@@ -1,0 +1,35 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+const posts = (await getCollection('blog')).sort(
+  (a, b) => b.data.pubDate.getTime() - a.data.pubDate.getTime(),
+);
+
+const dateFmt = new Intl.DateTimeFormat('en-US', {
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+});
+---
+
+<BaseLayout title="Blog" description="Placeholder blog index.">
+  <h1>Blog</h1>
+  <p class="muted">Placeholder blog index. Posts live in src/content/blog/.</p>
+
+  <ul class="post-list">
+    {
+      posts.map((post) => (
+        <li class="card">
+          <time datetime={post.data.pubDate.toISOString()}>
+            {dateFmt.format(post.data.pubDate)}
+          </time>
+          <h3>
+            <a href={`/blog/${post.id}`}>{post.data.title}</a>
+          </h3>
+          <p class="muted">{post.data.description}</p>
+        </li>
+      ))
+    }
+  </ul>
+</BaseLayout>
