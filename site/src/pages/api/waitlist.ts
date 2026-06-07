@@ -14,7 +14,7 @@ const RESEND_AUDIENCE_ID =
 const FROM_EMAIL =
   process.env.WAITLIST_FROM_EMAIL ??
   import.meta.env.WAITLIST_FROM_EMAIL ??
-  'PCBJam <waitlist@pcbjam.com>';
+  'PCBJam <hello@pcbjam.com>';
 
 function json(status: number, body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), {
