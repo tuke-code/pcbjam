@@ -24,8 +24,8 @@ concurrency:
 
 jobs:
   build-and-test:
-    runs-on: ubicloud-standard-16
-    timeout-minutes: 240          # cold --build-deps dominates; + wx build + both suites
+    runs-on: ubicloud-standard-32
+    timeout-minutes: 160          # cold --build-deps dominates; + wx build + both suites
     env:
       # Stream build-script output straight to the Actions log instead of redirecting
       # it to logs/<script>/<ts>.log (see scripts/common/logging.sh). Nothing consumes
