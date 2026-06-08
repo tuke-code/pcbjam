@@ -14,6 +14,23 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 # Get wasm-opt path
 WASM_OPT=$("${SCRIPT_DIR}/get-wasm-opt.sh")
 
+# Cap Binaryen's host thread pool. wasm-opt runs function-parallel passes, and
+# each worker holds the optimization working-set of one function at a time — so
+# peak RAM scales with thread count. On a 30-vCPU runner the asyncify-bloated
+# giant functions can spike RAM far past the nominal ~10-15 GB and thrash swap,
+# which is far slower than running on fewer cores. Binaryen reads BINARYEN_CORES
+# to bound the pool; default to 8, overridable via the environment.
+export BINARYEN_CORES="${BINARYEN_CORES:-8}"
+
+# Wrap wasm-opt in GNU `time -v` when available (Linux CI) so the log records
+# peak RSS + wall-clock for each pass. macOS `time` lacks -v, so fall back to
+# running wasm-opt directly there.
+if /usr/bin/time -v true >/dev/null 2>&1; then
+    TIME_CMD=(/usr/bin/time -v)
+else
+    TIME_CMD=()
+fi
+
 INPUT_WASM="${1:-output/pcbnew.wasm}"
 OUTPUT_WASM="${2:-${INPUT_WASM}}"
 
@@ -54,8 +71,9 @@ ASYNCIFY_REMOVE_ARG=$(echo "${ASYNCIFY_REMOVE}" | tr '\n' ',' | sed 's/,$//')
 echo ""
 echo "Running wasm-opt --asyncify..."
 echo "This may take several minutes and use significant RAM..."
+echo "  BINARYEN_CORES=${BINARYEN_CORES}"
 
-"${WASM_OPT}" --asyncify \
+"${TIME_CMD[@]}" "${WASM_OPT}" --asyncify \
     "--pass-arg=asyncify-imports@${ASYNCIFY_IMPORTS}" \
     "--pass-arg=asyncify-removelist@${ASYNCIFY_REMOVE_ARG}" \
     --pass-arg=asyncify-propagate-addlist \
@@ -68,8 +86,9 @@ echo "  per-function locals limit (otherwise large coroutine-entry and"
 echo "  similar functions silently stall in Chrome's V8). See docs/debugging/DEBUG.md §7"
 echo "  and memory/bundle-size-asyncify-optimization.md."
 echo "  This pass also takes several minutes and ~10-15 GB RAM."
+echo "  BINARYEN_CORES=${BINARYEN_CORES}"
 
-"${WASM_OPT}" -O2 "${OUTPUT_WASM}" -o "${OUTPUT_WASM}"
+"${TIME_CMD[@]}" "${WASM_OPT}" -O2 "${OUTPUT_WASM}" -o "${OUTPUT_WASM}"
 
 echo ""
 echo "Asyncify + -O2 complete: ${OUTPUT_WASM}"

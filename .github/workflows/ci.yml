@@ -47,8 +47,10 @@ jobs:
 
       # 1) Cold build every KiCad WASM app + all dependencies (Docker; longest step).
       #    Output lands in ./output/.
+      # `-j 30` matches the runner's vCPU count; without an explicit -j,
+      # docker/build.sh falls back to -j 10 and leaves 20 cores idle.
       - name: Build KiCad WASM (all, --build-deps)
-        run: ./docker/build.sh all --build-deps
+        run: ./docker/build.sh all --build-deps -j 30
 
       # 2) Host-side wxWidgets build that produces the wxWidgets test apps consumed by
       #    `npm run test` (NOT produced by docker/build.sh). Auto-installs emsdk.
