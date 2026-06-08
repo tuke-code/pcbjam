@@ -26,6 +26,8 @@ const SEG2 = "44444444-0000-0000-0000-000000000002";
 const FP1 = "66666666-0000-0000-0000-000000000001";
 const FP1_REF = "66666666-0000-0000-0000-0000000000aa"; // Reference field (PCB_FIELD, F.SilkS)
 const FP1_TXT = "66666666-0000-0000-0000-0000000000cc"; // user fp_text (PCB_TEXT, F.SilkS)
+const VIA1 = "77777777-0000-0000-0000-000000000001"; // a through via (PCB_VIA)
+const ZONE1 = "77777777-0000-0000-0000-000000000002"; // a copper zone (ZONE)
 const SAMPLE_PCB = `(kicad_pcb
 \t(version 20241229)
 \t(generator "pcbnew")
@@ -66,6 +68,17 @@ const SAMPLE_PCB = `(kicad_pcb
 \t\t\t(effects (font (size 1 1) (thickness 0.15)))
 \t\t)
 \t)
+\t(via (at 80 80) (size 1.4) (drill 0.6) (layers "F.Cu" "B.Cu") (net 0) (uuid "${VIA1}"))
+\t(zone
+\t\t(net 0)
+\t\t(net_name "")
+\t\t(layer "F.Cu")
+\t\t(uuid "${ZONE1}")
+\t\t(hatch edge 0.5)
+\t\t(connect_pads (clearance 0))
+\t\t(min_thickness 0.25)
+\t\t(polygon (pts (xy 60 110) (xy 75 110) (xy 75 125) (xy 60 125)))
+\t)
 \t(segment (start 50.8 50.8) (end 101.6 50.8) (width 0.2) (layer "F.Cu") (net 0) (uuid "${SEG1}"))
 \t(segment (start 50.8 76.2) (end 101.6 76.2) (width 0.2) (layer "F.Cu") (net 0) (uuid "${SEG2}"))
 )
@@ -78,6 +91,7 @@ type Mod = {
   kicadCollabApply(j: string): unknown;
   kicadCollabTestMoveFirst(dx: number, dy: number): string;
   kicadCollabGetPos(id: string): string;
+  kicadCollabTestItemBlob(id: string): string;
 };
 
 function hasAbort(l: { consoleLogs: string[]; errors: string[] }): boolean {
@@ -155,8 +169,68 @@ test.describe("pcbnew collab bridge — single page", () => {
     expect(byId.get(FP1_REF)!.type).toBe("PCB_FIELD");
     expect(byId.has(FP1_TXT), "footprint user fp_text present").toBe(true);
     expect(byId.get(FP1_TXT)!.type).toBe("PCB_TEXT");
+    // Via/zone carry the native geometry their `added` reconstruction needs (no blob path).
+    expect(byId.has(VIA1), "via present").toBe(true);
+    expect(byId.get(VIA1)!.type).toBe("PCB_VIA");
+    expect((byId.get(VIA1) as { drill?: number }).drill, "via drill emitted").toBeGreaterThan(0);
+    expect(byId.has(ZONE1), "zone present").toBe(true);
+    expect(byId.get(ZONE1)!.type).toBe("ZONE");
+    expect(
+      (byId.get(ZONE1) as { poly?: number[][] }).poly?.length,
+      "zone outline emitted",
+    ).toBeGreaterThanOrEqual(3);
     expect(hasAbort(testLogger), "no WASM abort").toBe(false);
   });
+
+  // `added` reconstruction of a footprint, via and zone. The emit side attaches BOTH the full
+  // itemToJson fields AND an s-expr clipboard blob; makeItem then reconstructs a footprint from
+  // the bare `(footprint …)` blob, and a via/zone NATIVELY from the geometry fields (the
+  // `(kicad_pcb …)` envelope parse is asyncify-fragile in wasm for those). Round-trip each: read
+  // its full snapshot item + blob, delete it, re-add, confirm it returns at the same position.
+  for (const [label, id, type] of [
+    ["footprint", FP1, "FOOTPRINT"],
+    ["via", VIA1, "PCB_VIA"],
+    ["zone", ZONE1, "ZONE"],
+  ] as const) {
+    test(`apply adds a ${label} (footprint via blob, via/zone native)`, async ({ page, testLogger }) => {
+      await bootAndOpen(page, `add-${label}`);
+
+      // Full emit-equivalent payload: snapshot item (native geometry fields) + the clipboard blob.
+      const payload = await page.evaluate((i) => {
+        const snap = JSON.parse(window.Module.kicadCollabSnapshot());
+        const item = snap.added.find((it: { id: string }) => it.id === i);
+        return { ...item, sexpr: window.Module.kicadCollabTestItemBlob(i) };
+      }, id);
+      expect(payload.id, `${label} in snapshot`).toBe(id);
+      const posBefore = await page.evaluate((i) => window.Module.kicadCollabGetPos(i), id);
+      expect(posBefore, `${label} resolvable before`).not.toBe("");
+
+      // delete it
+      await page.evaluate(
+        (i) => window.Module.kicadCollabApply(JSON.stringify({ added: [], changed: [], removed: [i] })),
+        id,
+      );
+      await expect
+        .poll(() => page.evaluate((i) => window.Module.kicadCollabGetPos(i), id), {
+          timeout: 10000,
+          intervals: [200],
+        })
+        .toBe("");
+
+      // re-add it
+      await page.evaluate(
+        (p) => window.Module.kicadCollabApply(JSON.stringify({ added: [p], changed: [], removed: [] })),
+        payload,
+      );
+      await expect
+        .poll(() => page.evaluate((i) => window.Module.kicadCollabGetPos(i), id), {
+          timeout: 10000,
+          intervals: [200],
+        })
+        .toBe(posBefore);
+      expect(hasAbort(testLogger), "no WASM abort").toBe(false);
+    });
+  }
 
   // Apply mutates the model headless: kicadOpenFile returns false (the incomplete-project load
   // skips some late steps) but the board IS built, so BOARD_COMMIT::Push takes effect. Rendering

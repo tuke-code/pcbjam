@@ -395,6 +395,9 @@ if [ -f "${EMBIND_SRC}" ]; then
     log_info "Compiling Embind bindings (${APP_NAME})..."
     # Use the same includes and flags that KiCad uses
     KICAD_INCLUDES="-I${KICAD_BUILD} -I${KICAD_DIR}/include -I${KICAD_DIR}/${KICAD_SUBDIR} -I${KICAD_DIR}/common"
+    # Generated DSN-lexer headers (e.g. pcb_lexer.h, used transitively via kicad_clipboard.h →
+    # pcb_io_kicad_sexpr_parser.h) are emitted into the common build subdir by make_lexer.
+    KICAD_INCLUDES+=" -I${KICAD_BUILD}/common"
     KICAD_INCLUDES+=" -I${KICAD_DIR}/libs/core/include -I${KICAD_DIR}/libs/kimath/include -I${KICAD_DIR}/libs/kiplatform/include"
     KICAD_INCLUDES+=" -I${KICAD_DIR}/thirdparty/clipper2/Clipper2Lib/include"
     KICAD_INCLUDES+=" -I${KICAD_DIR}/thirdparty/nlohmann_json"

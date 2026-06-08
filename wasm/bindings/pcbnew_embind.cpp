@@ -24,6 +24,10 @@
 #include <zone.h>
 #include <eda_text.h>
 #include <pcb_edit_frame.h>
+#include <kicad_clipboard.h>
+#include <tools/pcb_selection.h>
+#include <geometry/shape_poly_set.h>
+#include <geometry/shape_line_chain.h>
 #include <kiway_player.h>
 #include <kiway.h>
 #include <kiid.h>
@@ -163,6 +167,36 @@ json itemToJson( BOARD_ITEM* aItem )
         j["width"] = tr->GetWidth();
     }
 
+    // Vias and zones reconstruct NATIVELY on `added` (the s-expr clipboard blob's `(kicad_pcb …)`
+    // envelope parse — used for footprints — is asyncify-fragile in wasm for these, the same wall
+    // that deferred the eeschema symbol blob). So emit the geometry their makeItem needs.
+    if( aItem->Type() == PCB_VIA_T )
+    {
+        auto* via  = static_cast<PCB_VIA*>( aItem );
+        j["drill"] = via->GetDrillValue();
+        j["ltop"]  = (int) via->TopLayer();
+        j["lbot"]  = (int) via->BottomLayer();
+    }
+    else if( aItem->Type() == PCB_ZONE_T )
+    {
+        auto*                 zone = static_cast<ZONE*>( aItem );
+        const SHAPE_POLY_SET* poly = zone->Outline();
+        json                  pts  = json::array();
+
+        if( poly && poly->OutlineCount() > 0 )
+        {
+            const SHAPE_LINE_CHAIN& chain = poly->COutline( 0 );
+
+            for( int i = 0; i < chain.PointCount(); ++i )
+            {
+                const VECTOR2I& p = chain.CPoint( i );
+                pts.push_back( { p.x, p.y } );
+            }
+        }
+
+        j["poly"] = pts;
+    }
+
     // Text items (incl. footprint fields / graphic text): carry the string so a move diff is
     // legible and a future text `added` can reconstruct. Position-only sync uses x/y above.
     if( EDA_TEXT* txt = dynamic_cast<EDA_TEXT*>( aItem ) )
@@ -171,16 +205,89 @@ json itemToJson( BOARD_ITEM* aItem )
     return j;
 }
 
+// ── s-expr clipboard blob (the generic `added` mechanism) ────────────────────────────────────
+//
+// For added items beyond the natively-reconstructed PCB_TRACK (footprints, vias, zones, graphic
+// shapes/text…), reuse KiCad's own copy/paste serializer, CLIPBOARD_IO. It Format()s a one-item
+// selection exactly as Ctrl-C does — a bare `(footprint …)` for a footprint, or a fake
+// `(kicad_pcb … <layers> <item>)` envelope for everything else (the bare item tokens like
+// `(segment`/`(via`/`(zone` are NOT accepted by the parser top-level, so the envelope is
+// required). CLIPBOARD_IO normally talks to the system clipboard; SetWriter/SetReader redirect
+// it to a string so it works headless / in wasm.
+
+// Serialize one live board item to a clipboard blob (used only for `added` payloads — NOT the
+// diff unit, so `changed`/`removed` stay light and the blob never drives change detection).
+std::string blobForItem( BOARD* aBoard, BOARD_ITEM* aItem )
+{
+    PCB_SELECTION sel;
+    sel.Add( aItem );                       // pointer-only insert; no mutation of the live item
+
+    CLIPBOARD_IO io;
+    io.SetBoard( aBoard );
+
+    std::string out;
+    io.SetWriter( [&out]( const wxString& s ) { out = std::string( s.utf8_str() ); } );
+    io.SaveSelection( sel, /*isFootprintEditor*/ false );
+    return out;
+}
+
+// Reconstruct a board item from a clipboard blob. Parse() returns a bare FOOTPRINT*, or a BOARD*
+// (the `(kicad_pcb …)` envelope) holding the single item — in which case detach that item from
+// the throw-away board and hand back ownership. Returns nullptr on a parse failure (Parse catches
+// internally) or if no item is found. Runs inside the apply COROUTINE.
+BOARD_ITEM* makeFromBlob( BOARD& aBoard, const std::string& aBlob )
+{
+    if( aBlob.empty() )
+        return nullptr;
+
+    CLIPBOARD_IO io;
+    io.SetBoard( &aBoard );
+    io.SetReader( [&aBlob]() -> wxString { return wxString::FromUTF8( aBlob.c_str() ); } );
+
+    BOARD_ITEM* parsed = io.Parse();        // FOOTPRINT* (bare) | BOARD* (envelope) | nullptr
+
+    if( !parsed )
+        return nullptr;
+
+    if( parsed->Type() != PCB_T )
+        return parsed;                      // bare footprint — ready to commit.Add
+
+    // Envelope board: remap its net codes onto ours, then lift out the single item it carries.
+    BOARD* clip = static_cast<BOARD*>( parsed );
+    clip->MapNets( &aBoard );
+
+    BOARD_ITEM* found = nullptr;
+
+    if( !clip->Tracks().empty() )           found = clip->Tracks().front();      // track / via / arc
+    else if( !clip->Zones().empty() )       found = clip->Zones().front();
+    else if( !clip->Drawings().empty() )    found = clip->Drawings().front();    // shape / text / …
+    else if( !clip->Footprints().empty() )  found = clip->Footprints().front();
+    else if( !clip->Groups().empty() )      found = clip->Groups().front();
+
+    if( found )
+    {
+        clip->Remove( found );              // detach so clip's dtor doesn't delete it
+        // Reparent onto the REAL board before clip is freed: the item's m_parent still points at
+        // clip, and commit.Push/saveCopyInUndoList dereferences GetParent() — a dangling pointer
+        // here is what trapped via add ("index out of bounds") and tripped the zone undo assert.
+        found->SetParent( &aBoard );
+        found->SetParentGroup( nullptr );
+    }
+
+    delete clip;
+    return found;
+}
+
 // Construct a new BOARD_ITEM from a delta item (for `added`), with the delta's uuid (m_Uuid is
-// const → const_cast, exactly as the s-expr parser does). Returns nullptr for types without a
-// converter yet (footprints/vias/zones — deferred, see header). PCB_TRACK segments reconstruct
-// natively (no clipboard Parse), so the add path is trap-free for the common collab case.
+// const → const_cast, exactly as the s-expr parser does). PCB_TRACK segments reconstruct natively
+// from their fields (cheap, trap-free); every other type goes through the s-expr clipboard blob
+// (`sexpr`, attached to added payloads by the emit side). Returns nullptr if neither applies.
 BOARD_ITEM* makeItem( BOARD& aBoard, const json& j )
 {
     std::string type = j.value( "type", "" );
     BOARD_ITEM* item = nullptr;
 
-    if( type == "PCB_TRACK" )
+    if( type == "PCB_TRACK" && j.contains( "sx" ) )
     {
         auto* tr = new PCB_TRACK( &aBoard );
         tr->SetStart( VECTOR2I( j.value( "sx", 0 ), j.value( "sy", 0 ) ) );
@@ -189,10 +296,44 @@ BOARD_ITEM* makeItem( BOARD& aBoard, const json& j )
         tr->SetLayer( (PCB_LAYER_ID) j.value( "layer", (int) F_Cu ) );
         item = tr;
     }
-    // PCB_VIA / PCB_ARC / FOOTPRINT / ZONE `added` deferred (need layer-pair/drill, arc center,
-    // or a library / s-expr clipboard blob — same deferred class as SCH_SYMBOL). Their move/
-    // delete already sync via the generic changed/removed paths.
+    // Via / zone: reconstruct natively from emitted geometry (the envelope-blob parse is
+    // asyncify-fragile for these — see itemToJson). The blob is still emitted as a fallback.
+    else if( type == "PCB_VIA" && j.contains( "drill" ) )
+    {
+        auto*    via = new PCB_VIA( &aBoard );
+        VECTOR2I c( j.value( "x", 0 ), j.value( "y", 0 ) );
+        via->SetPosition( c );
+        via->SetWidth( j.value( "width", 0 ) );
+        via->SetDrill( j.value( "drill", 0 ) );
+        via->SetLayerPair( (PCB_LAYER_ID) j.value( "ltop", (int) F_Cu ),
+                           (PCB_LAYER_ID) j.value( "lbot", (int) B_Cu ) );
+        item = via;
+    }
+    else if( type == "ZONE" && j.contains( "poly" ) )
+    {
+        auto*                 zone = new ZONE( &aBoard );
+        std::vector<VECTOR2I> outline;
 
+        for( const json& p : j["poly"] )
+        {
+            if( p.is_array() && p.size() == 2 )
+                outline.emplace_back( p[0].get<int>(), p[1].get<int>() );
+        }
+
+        zone->SetLayer( (PCB_LAYER_ID) j.value( "layer", (int) F_Cu ) );
+
+        if( outline.size() >= 3 )
+            zone->AddPolygon( outline );
+
+        item = zone;
+    }
+    else if( j.contains( "sexpr" ) )
+    {
+        item = makeFromBlob( aBoard, j.value( "sexpr", "" ) );
+    }
+
+    // Force the delta's uuid (the blob already carries the sender's uuid for the item and any
+    // children, but set the top-level one explicitly to be certain peers agree on identity).
     if( item )
         const_cast<KIID&>( item->m_Uuid ) = KIID( wxString::FromUTF8( j.value( "id", "" ).c_str() ) );
 
@@ -275,7 +416,8 @@ void flushDiff()
     if( !fr )
         return;
 
-    std::map<std::string, json> cur = snapshotByUuid( *fr->GetBoard() );
+    BOARD*                      board = fr->GetBoard();
+    std::map<std::string, json> cur   = snapshotByUuid( *board );
 
     json added = json::array(), changed = json::array(), removed = json::array();
 
@@ -284,9 +426,31 @@ void flushDiff()
         auto it = g_baseline.find( id );
 
         if( it == g_baseline.end() )
-            added.push_back( j );
+        {
+            // Skip a newly-added footprint's text CHILDREN: the footprint's own add carries them,
+            // and emitting a lone child would (for a field) wrap it in a spurious footprint. (A
+            // child-only add onto an existing footprint is therefore not synced yet — rare.)
+            BOARD_ITEM* live =
+                    board->ResolveItem( KIID( wxString::FromUTF8( id.c_str() ) ), /*allowNull*/ true );
+
+            if( live && live->GetParentFootprint() )
+                continue;
+
+            json withBlob = j;
+
+            // Attach an s-expr clipboard blob ONLY for types makeItem reconstructs from it
+            // (footprints, board shapes/text, …). Tracks/vias/zones rebuild NATIVELY from the
+            // fields itemToJson already emitted, so they need no blob — and skipping it avoids a
+            // wasted SaveSelection plus the asyncify-fragile envelope parse for those.
+            if( live && !isTrackType( live->Type() ) && live->Type() != PCB_ZONE_T )
+                withBlob["sexpr"] = blobForItem( board, live );
+
+            added.push_back( withBlob );
+        }
         else if( it->second != j )
+        {
             changed.push_back( j );
+        }
     }
 
     for( const auto& [id, j] : g_baseline )
@@ -559,6 +723,27 @@ std::string kicadCollabGetPos( std::string aId )
     return "";
 }
 
+
+// Test helper: the s-expr clipboard blob for an item by uuid (what the emit side attaches to an
+// `added` payload). Lets the e2e round-trip the blob add path without a real draw.
+std::string kicadCollabTestItemBlob( std::string aId )
+{
+    PCB_EDIT_FRAME* fr = pcbFrame();
+
+    if( !fr )
+        return "";
+
+    BOARD* board = fr->GetBoard();
+
+    if( BOARD_ITEM* item = board->ResolveItem( KIID( wxString::FromUTF8( aId.c_str() ) ),
+                                               /*allowNullptr*/ true ) )
+    {
+        return blobForItem( board, item );
+    }
+
+    return "";
+}
+
 // Wrapper to return footprints as vector for JS iteration
 std::vector<FOOTPRINT*> Board_GetFootprints(BOARD* board) {
     if (!board) return {};
@@ -632,5 +817,6 @@ EMSCRIPTEN_BINDINGS(pcbnew) {
     function("kicadCollabSnapshot", &kicadCollabSnapshot);
     function("kicadCollabTestMoveFirst", &kicadCollabTestMoveFirst);
     function("kicadCollabGetPos", &kicadCollabGetPos);
+    function("kicadCollabTestItemBlob", &kicadCollabTestItemBlob);
 }
 #endif
