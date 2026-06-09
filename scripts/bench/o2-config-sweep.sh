@@ -1,33 +1,35 @@
 #!/bin/bash
-# o2-config-sweep.sh — replay `wasm-opt -O2` over a PREBUILT asyncified fixture
-# under a matrix of allocator / THP / thread configs. RUNS ON THE LINUX CI BOX.
+# o2-config-sweep.sh — replay wasm-opt over a PREBUILT asyncified fixture under a
+# matrix of {Binaryen version, optimization passes, thread count, allocator/THP}.
+# RUNS ON THE LINUX CI BOX.
 #
-# The `-O2` pass (not asyncify) is the ~80-min bottleneck. Its cost on glibc
-# Linux is a kernel page-management storm (madvise(MADV_DONTNEED) TLB-shootdowns
-# + possibly THP compaction), NOT the optimization work itself — see
-# docs/ci-build-slowness-findings.md. This harness isolates that pass and sweeps
-# the env knobs that kill the storm, recording /usr/bin/time -v counters (the
-# voluntary-context-switch + system-time numbers are the storm's fingerprint)
-# plus a near-zero-overhead perf-stat madvise/munmap count to PROVE whether each
-# config actually stopped returning memory to the OS.
+# WHY: the on-box diagnostic (docs/ci-build-slowness-findings.md) proved the
+# ~80-min `-O2` cost is ~90% FUTEX LOCK CONTENTION inside wasm-opt (Binaryen's
+# global type mutex), NOT the allocator and NOT memory management (madvise=0,
+# THP compaction=0, identical under glibc and mimalloc). So the levers that can
+# move wall-clock are: a NEWER Binaryen (the devs cut this contention after our
+# pinned v121) and FEWER threads (less lock contention) — plus reducing the -O2
+# work itself (lighter passes). Allocator/THP are dead ends, kept only as controls.
 #
-# Usage (on the Linux box, repo root):
-#   CONFIGS="baseline mimalloc-retain" CORES=32 DIAGNOSTIC=1 \
-#     ./scripts/bench/o2-config-sweep.sh /path/to/eeschema.asyncified.wasm
+# CONFIG NAME GRAMMAR:  <preset>[@<cores>]
+#   preset sets Binaryen version + passes + allocator/THP (see config_env).
+#   optional @<cores> overrides BINARYEN_CORES for that one cell (sweep threads).
+#   e.g. "v130-O2@8" = Binaryen 130, -O2, 8 threads.
 #
-# Env:
-#   CONFIGS    space-separated preset names (see config_env below). Run in order;
-#              order cheapest-expected first so a timeout still yields data.
-#   CORES      BINARYEN_CORES for every cell (default: nproc). Sweep separately.
-#   DIAGNOSTIC 1 = around the FIRST config, snapshot /proc/vmstat + /proc/interrupts
-#              deltas and take a 60s perf-record kernel-symbol sample (best effort).
-#              This attributes the kernel time: TLB-shootdown vs THP-compaction.
+# TWO MODES:
+#   CAP_SECONDS=0 (default): run to completion → true wall-clock + output size.
+#   CAP_SECONDS>0: WINDOWED sample — the lock storm is steady-state, so measure
+#     it over a [60s, CAP-30s] window and kill the pass. Reports, per cell:
+#       win_sysfrac   = system CPU fraction in the window (lock contention; LOWER better)
+#       win_usercores = REAL-work cores in the window (progress rate; HIGHER better
+#                       → predicts shorter wall for the same pass set)
+#       win_tlb       = TLB-shootdown interrupts in the window
+#     ~CAP/60 min per cell, so the whole matrix fits one CI run.
 #
-# Output (under /bench, which is gitignored; the workflow uploads it):
-#   bench/o2-results/results.csv         one row per config
-#   bench/o2-results/<config>.time       raw /usr/bin/time -v
-#   bench/o2-results/<config>.perfstat   raw perf stat (syscall counts)
-#   bench/o2-results/diag-*.{vmstat,irq,perf}   diagnostic captures
+# Usage: CONFIGS="baseline v130-O2 baseline@8" CAP_SECONDS=600 \
+#          ./scripts/bench/o2-config-sweep.sh <asyncified.wasm>
+# Env: CONFIGS, CORES (default nproc), CAP_SECONDS (default 0), DIAGNOSTIC (1 =
+#      perf kernel-symbol sample, full mode). Output under /bench/o2-results/.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -35,176 +37,130 @@ REPO="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 FIXTURE="${1:?usage: o2-config-sweep.sh <asyncified-fixture.wasm>}"
 CONFIGS="${CONFIGS:-baseline}"
-CORES="${CORES:-$(nproc)}"
+CORES_DEFAULT="${CORES:-$(nproc)}"
+CAP_SECONDS="${CAP_SECONDS:-0}"
 DIAGNOSTIC="${DIAGNOSTIC:-0}"
 
-if [[ "$(uname -s)" != "Linux" ]]; then
-    echo "ERROR: run on the Linux CI box (glibc + x86 TLB shootdowns are the point)." >&2
-    exit 1
-fi
+[[ "$(uname -s)" == "Linux" ]] || { echo "ERROR: run on the Linux CI box." >&2; exit 1; }
 [[ -f "${FIXTURE}" ]] || { echo "ERROR: fixture not found: ${FIXTURE}" >&2; exit 1; }
 command -v /usr/bin/time >/dev/null || { echo "ERROR: apt-get install -y time" >&2; exit 1; }
 
-WASM_OPT="$("${REPO}/scripts/common/get-wasm-opt.sh" 2>/dev/null)"
-[[ -x "${WASM_OPT}" ]] || { echo "ERROR: wasm-opt not resolved (${WASM_OPT})" >&2; exit 1; }
-echo "wasm-opt: ${WASM_OPT} ($("${WASM_OPT}" --version 2>&1))"
-
 ARCH="$(uname -m)"
+WASM_OPT_121="$("${REPO}/scripts/common/get-wasm-opt.sh" 2>/dev/null)"   # pinned v121
 JEMALLOC="$(ls /usr/lib/${ARCH}-linux-gnu/libjemalloc.so.2 2>/dev/null | head -1 || true)"
 MIMALLOC="$(ls /usr/lib/${ARCH}-linux-gnu/libmimalloc.so* 2>/dev/null | sort | tail -1 || true)"
 
-OUTDIR="${REPO}/bench/o2-results"
-mkdir -p "${OUTDIR}"
+OUTDIR="${REPO}/bench/o2-results"; mkdir -p "${OUTDIR}"
 CSV="${OUTDIR}/results.csv"
-echo "config,cores,thp,wall,wall_s,user_s,sys_s,cpu_pct,peak_rss_kb,minor_faults,vol_ctxsw,invol_ctxsw,madvise,munmap,mmap,out_bytes,preload" > "${CSV}"
+echo "config,cores,ver,flags,thp,mode,wall,wall_s,user_s,sys_s,vol_ctxsw,win_sysfrac,win_usercores,win_tlb,madvise,out_bytes,preload" > "${CSV}"
 
-# Lower perf paranoia so we can count syscall tracepoints unprivileged (keeps
-# LD_PRELOAD intact — running perf under sudo would scrub the env). Best effort.
 sudo sysctl -w kernel.perf_event_paranoid=-1 >/dev/null 2>&1 || true
-PERF=""
-if command -v perf >/dev/null 2>&1 && \
-   perf stat -e syscalls:sys_enter_madvise -- true >/dev/null 2>&1; then
-    PERF="yes"
-    echo "perf: syscall counting available"
-else
-    echo "perf: NOT available — madvise/munmap columns will be NA"
-fi
+PERF=""; command -v perf >/dev/null 2>&1 && perf stat -e syscalls:sys_enter_madvise -- true >/dev/null 2>&1 && PERF="yes"
+echo "perf syscall counting: ${PERF:-NO}"
+CLK="$(getconf CLK_TCK 2>/dev/null || echo 100)"
 
-thp_state() { cat /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null | grep -oP '\[\K[^]]+' || echo "?"; }
-set_thp() {  # $1 = never|madvise|always|asis
-    [[ "$1" == "asis" ]] && return 0
-    echo "$1" | sudo tee /sys/kernel/mm/transparent_hugepage/enabled >/dev/null 2>&1 || \
-        echo "WARN: could not set THP enabled=$1" >&2
-    echo "$1" | sudo tee /sys/kernel/mm/transparent_hugepage/defrag  >/dev/null 2>&1 || true
-}
-
-# Resolve a preset name -> PRELOAD path, THP_WANT, and EXTRA env (array).
-# KILL-the-storm presets disable the allocator's page purging (no madvise/munmap
-# of freed pages); 128 GB RAM vs ~40 GB peak makes "never return memory" safe.
-PRELOAD=""; THP_WANT="asis"; EXTRA=()
-config_env() {
-    PRELOAD=""; THP_WANT="asis"; EXTRA=()
-    case "$1" in
-        baseline)                 ;;                                           # glibc default, THP as-is (current CI control)
-        glibc-retain)             EXTRA=(MALLOC_TRIM_THRESHOLD_=-1 MALLOC_MMAP_MAX_=0) ;;
-        glibc-arenacap)           EXTRA=(MALLOC_ARENA_MAX=4) ;;                # contention-only lever (control)
-        jemalloc-default)         PRELOAD="${JEMALLOC}" ;;                     # reproduce the prior ~15% result
-        jemalloc-retain)          PRELOAD="${JEMALLOC}"; EXTRA=(MALLOC_CONF=dirty_decay_ms:-1,muzzy_decay_ms:-1,background_thread:true) ;;
-        mimalloc-default)         PRELOAD="${MIMALLOC}" ;;
-        mimalloc-retain)          PRELOAD="${MIMALLOC}"; EXTRA=(MIMALLOC_PURGE_DELAY=-1 MIMALLOC_ALLOW_THP=0) ;;
-        thp-off)                  THP_WANT="never" ;;                          # isolate THP effect on glibc
-        thp-off+jemalloc-retain)  THP_WANT="never"; PRELOAD="${JEMALLOC}"; EXTRA=(MALLOC_CONF=dirty_decay_ms:-1,muzzy_decay_ms:-1,background_thread:true) ;;
-        thp-off+mimalloc-retain)  THP_WANT="never"; PRELOAD="${MIMALLOC}"; EXTRA=(MIMALLOC_PURGE_DELAY=-1 MIMALLOC_ALLOW_THP=0) ;;
-        thp-off+glibc-retain)     THP_WANT="never"; EXTRA=(MALLOC_TRIM_THRESHOLD_=-1 MALLOC_MMAP_MAX_=0) ;;
-        *) echo "ERROR: unknown config '$1'" >&2; return 1 ;;
-    esac
-    if [[ -n "${PRELOAD}" && ! -e "${PRELOAD}" ]]; then
-        echo "WARN: preload lib for '$1' not found (${PRELOAD:-<empty>}) — SKIPPING" >&2
-        return 2
+# Resolve (download+cache) a standalone wasm-opt for a Binaryen version. 121 = the
+# pinned one from get-wasm-opt.sh; anything else is fetched from GitHub releases.
+get_wasm_opt_ver() {
+    local ver="$1"
+    if [[ -z "$ver" || "$ver" == "121" ]]; then echo "${WASM_OPT_121}"; return 0; fi
+    local dir="${REPO}/build-wasm/tools/binaryen-${ver}" bin="${REPO}/build-wasm/tools/binaryen-${ver}/bin/wasm-opt"
+    if [[ ! -x "$bin" ]]; then
+        local url="https://github.com/WebAssembly/binaryen/releases/download/version_${ver}/binaryen-version_${ver}-${ARCH}-linux.tar.gz"
+        mkdir -p "${REPO}/build-wasm/tools"
+        echo "  downloading Binaryen v${ver}..." >&2
+        curl -fsSL -o "/tmp/binaryen-${ver}.tgz" "$url" || { echo "  ERR: download v${ver} failed ($url)" >&2; return 1; }
+        tar -xzf "/tmp/binaryen-${ver}.tgz" -C "${REPO}/build-wasm/tools" || return 1
+        mv "${REPO}/build-wasm/tools/binaryen-version_${ver}" "$dir" 2>/dev/null || true
     fi
+    [[ -x "$bin" ]] && echo "$bin" || return 1
 }
 
-field() { grep -F "$1" "$2" | tail -1 | sed 's/.*: //' | tr -d ' '; }
+snap_cpu() { awk '/^cpu /{u=$2;s=$4;t=0;for(i=2;i<=NF;i++)t+=$i;print u,s,t}' /proc/stat; }
+snap_tlb() { awk '/TLB/{for(i=2;i<=NF;i++)if($i~/^[0-9]+$/)s+=$i}END{print s+0}' /proc/interrupts; }
+snap_vm()  { awk '/^compact_stall /{c=$2}/^thp_fault_alloc /{t=$2}END{print c+0,t+0}' /proc/vmstat; }
+thp_state(){ grep -oP '\[\K[^]]+' /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null || echo "?"; }
+set_thp()  { [[ "$1" == "asis" ]] && return 0
+    echo "$1"|sudo tee /sys/kernel/mm/transparent_hugepage/enabled >/dev/null 2>&1 || true
+    echo "$1"|sudo tee /sys/kernel/mm/transparent_hugepage/defrag  >/dev/null 2>&1 || true; }
+
+# preset -> BIN_VER, OPTARGS (pass list), PRELOAD, THP_WANT, EXTRA env
+BIN_VER=""; OPTARGS=(); PRELOAD=""; THP_WANT="asis"; EXTRA=()
+LIGHT=(--flatten --simplify-locals --coalesce-locals --reorder-locals --vacuum)
+config_env() {
+    BIN_VER="121"; OPTARGS=(-O2); PRELOAD=""; THP_WANT="asis"; EXTRA=()
+    case "$1" in
+        baseline)        ;;                                   # v121 -O2 (current CI = control)
+        v130-O2)         BIN_VER="130" ;;                     # newer Binaryen, same passes — lock fixed?
+        v130-O1)         BIN_VER="130"; OPTARGS=(-O1) ;;
+        v121-O1)         OPTARGS=(-O1) ;;                      # lighter passes (less work)
+        v130-light)      BIN_VER="130"; OPTARGS=("${LIGHT[@]}") ;;
+        v121-light)      OPTARGS=("${LIGHT[@]}") ;;
+        mimalloc-retain) PRELOAD="${MIMALLOC}"; EXTRA=(MIMALLOC_PURGE_DELAY=-1 MIMALLOC_ALLOW_THP=0) ;;  # control (proven dead)
+        thp-off)         THP_WANT="never" ;;                  # control (proven dead)
+        *) echo "ERROR: unknown preset '$1'" >&2; return 1 ;;
+    esac
+    if [[ -n "${PRELOAD}" && ! -e "${PRELOAD}" ]]; then echo "WARN: preload for '$1' missing — SKIP" >&2; return 2; fi
+}
+
+field() { grep -F "$1" "$2" 2>/dev/null | tail -1 | sed 's/.*: //' | tr -d ' '; }
 
 run_config() {
-    local cfg="$1"
-    if ! config_env "${cfg}"; then
-        echo "${cfg},${CORES},skip,SKIPPED,,,,,,,,,,,," >> "${CSV}"
-        return 0
-    fi
-    set_thp "${THP_WANT}"
-    local thp_now; thp_now="$(thp_state)"
+    local cfg="$1" base cores
+    base="${cfg%@*}"; if [[ "$cfg" == *"@"* ]]; then cores="${cfg##*@}"; else cores="${CORES_DEFAULT}"; fi
+    if ! config_env "${base}"; then echo "${cfg},${cores},,,skip,skip,SKIPPED,,,,,,,,,," >> "${CSV}"; return 0; fi
 
-    local timef="${OUTDIR}/${cfg}.time"
-    local statf="${OUTDIR}/${cfg}.perfstat"
-    local logf="${OUTDIR}/${cfg}.log"
-    local outw="/tmp/o2-out-${cfg}.wasm"
+    local wopt; wopt="$(get_wasm_opt_ver "${BIN_VER}")" || {
+        echo "  cannot resolve Binaryen v${BIN_VER} — SKIP"; echo "${cfg},${cores},${BIN_VER},,skip,skip,SKIP-NOBIN,,,,,,,,,," >> "${CSV}"; return 0; }
+    set_thp "${THP_WANT}"; local thp_now; thp_now="$(thp_state)"
+    local flags="${OPTARGS[*]}"
+    local timef="${OUTDIR}/${cfg//[@ ]/_}.time" statf="${OUTDIR}/${cfg//[@ ]/_}.perfstat" logf="${OUTDIR}/${cfg//[@ ]/_}.log"
+    local outw="/tmp/o2-out.wasm"
     cp "${FIXTURE}" /tmp/o2-in.wasm
+    local -a runenv=(BINARYEN_CORES="${cores}" "${EXTRA[@]}"); [[ -n "${PRELOAD}" ]] && runenv+=("LD_PRELOAD=${PRELOAD}")
 
-    # Build env for the run. LD_PRELOAD injected only when a preset names one.
-    local -a runenv=(BINARYEN_CORES="${CORES}" "${EXTRA[@]}")
-    [[ -n "${PRELOAD}" ]] && runenv+=("LD_PRELOAD=${PRELOAD}")
+    echo ""; echo "=== ${cfg}  (binaryen=$("${wopt}" --version 2>&1 | grep -oE '[0-9]+' | head -1), flags='${flags}', cores=${cores}, THP=${thp_now}, preload=${PRELOAD:-none}, extra=${EXTRA[*]:-none}) ==="
 
-    echo ""
-    echo "=== ${cfg}  (cores=${CORES}, THP=${thp_now}, preload=${PRELOAD:-<none>}, extra: ${EXTRA[*]:-<none>}) ==="
+    local mode="full" wall wall_s user sys volcsw sysf usercores tlbd madv outsz
+    sysf=NA; usercores=NA; tlbd=NA; madv=NA
 
-    # Optional diagnostic capture around the first config (attribute kernel time).
-    local diag_pid=""
-    if [[ "${DIAGNOSTIC}" == "1" ]]; then
-        grep -E 'thp_|compact_|pgfault|pgmajfault|numa_' /proc/vmstat > "${OUTDIR}/diag-${cfg}.vmstat.before" 2>/dev/null || true
-        grep -iE 'TLB|^\s*CAL|Function call' /proc/interrupts > "${OUTDIR}/diag-${cfg}.irq.before" 2>/dev/null || true
-        # Background sampler: wait for the pass to be deep into the storm, then
-        # take a 60s system-wide kernel-symbol sample. Best effort (needs perf).
-        if [[ -n "${PERF}" ]]; then
-            ( sleep 1200
-              p="$(pgrep -n -f 'wasm-opt -O2' || true)"
-              [[ -n "$p" ]] && perf record -g -a -o "${OUTDIR}/diag-${cfg}.perf.data" -- sleep 60 >/dev/null 2>&1
-              [[ -f "${OUTDIR}/diag-${cfg}.perf.data" ]] && \
-                perf report -i "${OUTDIR}/diag-${cfg}.perf.data" --stdio --sort comm,dso,symbol 2>/dev/null \
-                  | head -120 > "${OUTDIR}/diag-${cfg}.perf.txt"
-            ) & diag_pid=$!
-        fi
-    fi
-
-    # The measured run. perf stat (counter mode) adds negligible overhead and
-    # gives the whole-run madvise/munmap/mmap counts — the direct proof of
-    # whether the allocator stopped returning pages.
-    local madv="NA" munm="NA" mmp="NA"
-    if [[ -n "${PERF}" ]]; then
-        /usr/bin/time -v -o "${timef}" \
-            perf stat -o "${statf}" \
-                -e syscalls:sys_enter_madvise,syscalls:sys_enter_munmap,syscalls:sys_enter_mmap \
-                env "${runenv[@]}" "${WASM_OPT}" -O2 /tmp/o2-in.wasm -o "${outw}" \
-            > "${logf}" 2>&1
-        madv="$(grep -E 'sys_enter_madvise' "${statf}" 2>/dev/null | awk '{gsub(/,/,"",$1); print $1}' | head -1)"
-        munm="$(grep -E 'sys_enter_munmap'  "${statf}" 2>/dev/null | awk '{gsub(/,/,"",$1); print $1}' | head -1)"
-        mmp="$(grep  -E 'sys_enter_mmap'    "${statf}" 2>/dev/null | awk '{gsub(/,/,"",$1); print $1}' | head -1)"
+    if [[ "${CAP_SECONDS}" -gt 0 ]]; then
+        mode="cap${CAP_SECONDS}"
+        ( /usr/bin/time -v -o "${timef}" timeout "${CAP_SECONDS}" env "${runenv[@]}" "${wopt}" "${OPTARGS[@]}" /tmp/o2-in.wasm -o "${outw}" > "${logf}" 2>&1 ) &
+        local rp=$!
+        sleep 60
+        local cu0 cs0 ct0 tlb0; read -r cu0 cs0 ct0 <<<"$(snap_cpu)"; tlb0="$(snap_tlb)"
+        local win=$(( CAP_SECONDS>120 ? CAP_SECONDS-90 : 30 )); sleep "${win}"
+        local cu1 cs1 ct1 tlb1; read -r cu1 cs1 ct1 <<<"$(snap_cpu)"; tlb1="$(snap_tlb)"
+        wait "${rp}" 2>/dev/null || true
+        local dtot=$((ct1-ct0)) dsys=$((cs1-cs0)) duser=$((cu1-cu0))
+        sysf="$(awk -v s=${dsys} -v t=${dtot} 'BEGIN{print (t>0)?sprintf("%.2f",s/t):"NA"}')"
+        usercores="$(awk -v u=${duser} -v c=${CLK} -v w=${win} 'BEGIN{print (w>0)?sprintf("%.2f",(u/c)/w):"NA"}')"
+        tlbd=$((tlb1-tlb0)); wall="cap@${CAP_SECONDS}"; wall_s="${CAP_SECONDS}"
     else
-        /usr/bin/time -v -o "${timef}" \
-            env "${runenv[@]}" "${WASM_OPT}" -O2 /tmp/o2-in.wasm -o "${outw}" \
-            > "${logf}" 2>&1
-    fi
-    local rc=$?
-
-    [[ -n "${diag_pid}" ]] && wait "${diag_pid}" 2>/dev/null || true
-    if [[ "${DIAGNOSTIC}" == "1" ]]; then
-        grep -E 'thp_|compact_|pgfault|pgmajfault|numa_' /proc/vmstat > "${OUTDIR}/diag-${cfg}.vmstat.after" 2>/dev/null || true
-        grep -iE 'TLB|^\s*CAL|Function call' /proc/interrupts > "${OUTDIR}/diag-${cfg}.irq.after" 2>/dev/null || true
-    fi
-
-    if [[ ${rc} -ne 0 ]]; then
-        echo "  FAILED (rc=${rc}) — see ${logf}"; tail -5 "${logf}" || true
-        echo "${cfg},${CORES},${thp_now},FAILED,,,,,,,,,,,," >> "${CSV}"
-        return 0
+        if [[ -n "${PERF}" ]]; then
+            /usr/bin/time -v -o "${timef}" perf stat -o "${statf}" -e syscalls:sys_enter_madvise,syscalls:sys_enter_munmap \
+                env "${runenv[@]}" "${wopt}" "${OPTARGS[@]}" /tmp/o2-in.wasm -o "${outw}" > "${logf}" 2>&1
+            madv="$(grep -E 'sys_enter_madvise' "${statf}" 2>/dev/null | awk '{gsub(/,/,"",$1);print $1}' | head -1)"
+        else
+            /usr/bin/time -v -o "${timef}" env "${runenv[@]}" "${wopt}" "${OPTARGS[@]}" /tmp/o2-in.wasm -o "${outw}" > "${logf}" 2>&1
+        fi
+        if [[ $? -ne 0 ]]; then echo "  FAILED"; tail -4 "${logf}"; echo "${cfg},${cores},${BIN_VER},${flags// /+},${thp_now},full,FAILED,,,,,,,,,," >> "${CSV}"; return 0; fi
+        wall="$(field 'Elapsed (wall clock) time' "${timef}")"
+        wall_s="$(awk -F: '{if(NF==3)print $1*3600+$2*60+$3;else if(NF==2)print $1*60+$2;else print $1}' <<<"${wall}")"
     fi
 
-    local wall user sys cpu rss minflt volcsw involcsw wall_s outsz
-    wall="$(field 'Elapsed (wall clock) time' "${timef}")"
-    user="$(field 'User time (seconds)' "${timef}")"
-    sys="$(field 'System time (seconds)' "${timef}")"
-    cpu="$(grep -F 'Percent of CPU' "${timef}" | sed 's/.*: //' | tr -d ' ')"
-    rss="$(field 'Maximum resident set size' "${timef}")"
-    minflt="$(field 'Minor (reclaiming a frame) page faults' "${timef}")"
-    volcsw="$(field 'Voluntary context switches' "${timef}")"
-    involcsw="$(field 'Involuntary context switches' "${timef}")"
-    wall_s="$(awk -F: '{ if (NF==3) print $1*3600+$2*60+$3; else if (NF==2) print $1*60+$2; else print $1 }' <<<"${wall}")"
-    outsz="$(stat -c %s "${outw}" 2>/dev/null || echo NA)"
-
+    user="$(field 'User time (seconds)' "${timef}")"; sys="$(field 'System time (seconds)' "${timef}")"
+    volcsw="$(field 'Voluntary context switches' "${timef}")"; outsz="$(stat -c %s "${outw}" 2>/dev/null || echo NA)"
     printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
-        "${cfg}" "${CORES}" "${thp_now}" "${wall}" "${wall_s}" "${user}" "${sys}" "${cpu}" \
-        "${rss}" "${minflt}" "${volcsw}" "${involcsw}" "${madv}" "${munm}" "${mmp}" "${outsz}" "${PRELOAD:-none}" >> "${CSV}"
-
-    echo "  wall=${wall} (${wall_s}s)  user=${user}s sys=${sys}s cpu=${cpu}  rss=${rss}KB"
-    echo "  vol_ctxsw=${volcsw}  minor_faults=${minflt}  madvise=${madv} munmap=${munm}  out=${outsz}B"
+        "${cfg}" "${cores}" "${BIN_VER}" "${flags// /+}" "${thp_now}" "${mode}" "${wall}" "${wall_s}" \
+        "${user}" "${sys}" "${volcsw}" "${sysf}" "${usercores}" "${tlbd}" "${madv}" "${outsz}" "${PRELOAD:-none}" >> "${CSV}"
+    echo "  mode=${mode} wall=${wall} user=${user}s sys=${sys}s vol_ctxsw=${volcsw} out=${outsz}B"
+    echo "  WINDOW sys_frac=${sysf} (lock contention)  user_cores=${usercores} (real-work rate)  tlb=${tlbd}  madvise=${madv}"
     rm -f "${outw}" /tmp/o2-in.wasm
 }
 
 echo "Fixture: ${FIXTURE} ($(stat -c %s "${FIXTURE}" 2>/dev/null) bytes)"
-echo "Configs: ${CONFIGS}   Cores: ${CORES}   THP(initial): $(thp_state)   Diagnostic: ${DIAGNOSTIC}"
-for cfg in ${CONFIGS}; do
-    run_config "${cfg}"
-done
-
-echo ""
-echo "=== results (${CSV}) ==="
-column -t -s, "${CSV}" || cat "${CSV}"
+echo "Configs: ${CONFIGS}  CORES_DEFAULT=${CORES_DEFAULT}  CAP_SECONDS=${CAP_SECONDS}  THP(init)=$(thp_state)"
+for cfg in ${CONFIGS}; do run_config "${cfg}"; done
+echo ""; echo "=== results (${CSV}) ==="; column -t -s, "${CSV}" || cat "${CSV}"

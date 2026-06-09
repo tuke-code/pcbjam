@@ -29,6 +29,7 @@ on:
       cores:        { description: "BINARYEN_CORES (override conf)",                  required: false, default: "" }
       fixture_run_id: { description: "run id to pull the cached fixture from (blank = build it)", required: false, default: "" }
       diagnostic:   { description: "1 = capture perf/vmstat/irq around first config", required: false, default: "" }
+      cap_seconds:  { description: "windowed-sample seconds per config (0 = run to completion)", required: false, default: "" }
 
 # One Hetzner bench VM at a time. (The main CI uses a different runner; still,
 # don't push the ci-hetzner branches while a bench runs — we only have one slot.)
@@ -79,6 +80,7 @@ jobs:
           IN_CORES: ${{ inputs.cores }}
           IN_FIXTURE_RUN_ID: ${{ inputs.fixture_run_id }}
           IN_DIAGNOSTIC: ${{ inputs.diagnostic }}
+          IN_CAP: ${{ inputs.cap_seconds }}
         run: |
           set -e
           CONF="scripts/bench/sweep.conf"
@@ -87,6 +89,7 @@ jobs:
           CORES="${IN_CORES:-${CORES_CONF:-}}"
           FIXTURE_RUN_ID="${IN_FIXTURE_RUN_ID:-${FIXTURE_RUN_ID_CONF:-}}"
           DIAGNOSTIC="${IN_DIAGNOSTIC:-${DIAGNOSTIC_CONF:-0}}"
+          CAP_SECONDS="${IN_CAP:-${CAP_SECONDS_CONF:-0}}"
           if [ -n "$FIXTURE_RUN_ID" ] && ! printf '%s' "$FIXTURE_RUN_ID" | grep -qE '^[0-9]+$'; then
             echo "::error::FIXTURE_RUN_ID must be numeric (got '$FIXTURE_RUN_ID')"; exit 1
           fi
@@ -96,10 +99,11 @@ jobs:
             echo "CORES=$CORES"
             echo "FIXTURE_RUN_ID=$FIXTURE_RUN_ID"
             echo "DIAGNOSTIC=$DIAGNOSTIC"
+            echo "CAP_SECONDS=$CAP_SECONDS"
             echo "BUILD_FIXTURE=$BUILD_FIXTURE"
           } >> "$GITHUB_ENV"
           echo "build_fixture=$BUILD_FIXTURE" >> "$GITHUB_OUTPUT"
-          echo "::notice::configs='$CONFIGS' cores='${CORES:-nproc}' build_fixture=$BUILD_FIXTURE fixture_run_id='${FIXTURE_RUN_ID:-none}' diagnostic=$DIAGNOSTIC"
+          echo "::notice::configs='$CONFIGS' cores='${CORES:-nproc}' cap=${CAP_SECONDS}s build_fixture=$BUILD_FIXTURE fixture_run_id='${FIXTURE_RUN_ID:-none}' diagnostic=$DIAGNOSTIC"
 
       - name: Show machine
         run: |
@@ -112,9 +116,9 @@ jobs:
         run: |
           export DEBIAN_FRONTEND=noninteractive
           sudo apt-get update
-          sudo apt-get install -y time strace libjemalloc2 cmake g++ git \
+          sudo apt-get install -y time strace libjemalloc2 cmake g++ git curl ca-certificates \
             linux-tools-common linux-tools-generic "linux-tools-$(uname -r)" || \
-            sudo apt-get install -y time strace libjemalloc2 cmake g++ git linux-tools-common linux-tools-generic
+            sudo apt-get install -y time strace libjemalloc2 cmake g++ git curl ca-certificates linux-tools-common linux-tools-generic
           sudo apt-get install -y libmimalloc2.0 || sudo apt-get install -y libmimalloc-dev || true
           if ! ls /usr/lib/$(uname -m)-linux-gnu/libmimalloc.so* >/dev/null 2>&1; then
             echo "mimalloc not packaged — building from source"
@@ -171,7 +175,7 @@ jobs:
           FIX="output/eeschema.asyncified.wasm"
           [ -f "$FIX" ] || FIX="output/eeschema.wasm"
           ls -lh "$FIX"
-          CONFIGS="${CONFIGS}" CORES="${CORES}" DIAGNOSTIC="${DIAGNOSTIC}" \
+          CONFIGS="${CONFIGS}" CORES="${CORES}" DIAGNOSTIC="${DIAGNOSTIC}" CAP_SECONDS="${CAP_SECONDS}" \
             ./scripts/bench/o2-config-sweep.sh "$FIX"
 
       - name: Upload bench results

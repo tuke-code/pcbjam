@@ -7,7 +7,38 @@
 > work, environment only moves it ±15%" conclusion was **wrong**. See
 > "Correction log" at the bottom for what changed and why.
 
-## TL;DR (revised)
+## ⚠️ VERDICT (measured on-box, bench run 27197360957) — supersedes the memory theory
+**The `-O2` cost is ~90% FUTEX LOCK CONTENTION inside wasm-opt, not memory
+management.** `perf` on the live ccx53 shows ~92% of CPU in
+`do_futex → _raw_spin_lock → native_queued_spin_lock_slowpath` — threads spinning
+in the kernel on a contended lock — **identical under glibc (92%) and mimalloc
+(90%)**. The lock is Binaryen's own global type mutex (`wasm::Type`), hit by every
+worker thread; more threads → worse contention (a lock convoy). Hard evidence it is
+**not** the allocator/THP/madvise theory below:
+- `madvise` calls = **0** (perf syscall count). The "purge storm" does not exist here.
+- THP `compact_stall` Δ = **0**, `thp_fault_alloc` Δ = **0**. No compaction. (THP=madvise mode.)
+- `mimalloc-retain` (`MIMALLOC_PURGE_DELAY=-1`) vs baseline: **1:12:52 → 1:06:51,
+  only 8% faster**, both ~88.7% system, both ~90% futex-spinlock. Allocator is irrelevant.
+
+So **jemalloc / mimalloc / retain-configs / THP=never are all DEAD ENDS** (now proven
+on-box, not just argued). The levers that can actually move wall-clock:
+1. **Newer Binaryen** — the devs cut this exact `wasm::Type` contention after our
+   pinned **v121** (latest is v130). Highest-value; coupled to the emsdk Binaryen,
+   needs Chrome e2e. **The #1 thing to test.**
+2. **Fewer threads** (`BINARYEN_CORES=4–8`) — fewer threads on the one lock = far
+   less contention + far less wasted CPU. But `-O2` only does ~2.6 cores of *real*
+   work at any cores (true at 8 and 32), so this is mostly an **efficiency/cost win,
+   probably not a big wall-clock win** — the ~2.6× parallelism is the wall floor.
+3. **Less `-O2` work** — the fixture is **188 MB** of asyncify bloat and `-O2` runs
+   every pass over all of it (~11,500 CPU-s of real work = the wall floor). A lighter
+   pass set (`-O1`/targeted) or a bigger asyncify removelist cuts that floor; needed
+   to get toward ~30 min. Validate output in Chrome (it exists for V8's locals limit).
+
+Everything below this section about "madvise TLB-shootdowns" and "THP compaction"
+was the pre-measurement hypothesis and is **WRONG for this workload** — kept only as
+the reasoning trail. Trust this section.
+
+## (superseded hypothesis) The memory-storm theory
 The `-O2` pass is **not** CPU-bound on optimization work. It is bound by a
 **kernel page-management storm** on glibc Linux: the allocator constantly returns
 freed pages to the OS (`madvise(MADV_DONTNEED)`/`munmap`), and each return forces
@@ -15,10 +46,9 @@ freed pages to the OS (`madvise(MADV_DONTNEED)`/`munmap`), and each return force
 Transparent-Huge-Page compaction). That work is **system (kernel) time**, it
 **scales super-linearly with thread count**, and it is **largely allocator-choice
 independent** — which is exactly why swapping in *default* jemalloc only helped
-~15%. The real levers (all **untested** before this doc, all now wired into a
-bench harness) are: **(1) configure the allocator to never purge**, **(2) disable
-THP**, **(3) use fewer threads**. Primary-source precedent on this exact workload
-class shows the win is **multiplicative (2×–15×), not marginal**.
+~15%. [SUPERSEDED: on-box perf shows the system time is futex spinlock, not
+TLB-shootdowns; madvise=0, compaction=0. The "futex" the prior strace saw was
+lock contention, not allocator arenas. See the VERDICT above.]
 
 ## The measurements that settle it
 Per-pass `/usr/bin/time -v`, pulled from the real CI runs
