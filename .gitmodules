@@ -6,3 +6,7 @@
 	path = wxwidgets
 	url = git@github.com:emergence-engineering/wxWidgets.git
 	branch = wasm-port
+[submodule "web/pcbjam-shared"]
+	path = web/pcbjam-shared
+	url = git@github.com:emergence-engineering/pcbjam-shared.git
+	branch = main
