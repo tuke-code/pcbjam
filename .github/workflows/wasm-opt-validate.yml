@@ -41,10 +41,10 @@ jobs:
           image: ubuntu-24.04
 
   validate:
-    name: Build (Binaryen v130) + KiCad e2e
+    name: Build all tools (Binaryen v130) + KiCad e2e
     needs: create-runner
     runs-on: ${{ needs.create-runner.outputs.label }}
-    timeout-minutes: 180
+    timeout-minutes: 300
     env:
       KICAD_LOG_NESTED: "1"
       BINARYEN_VERSION: ${{ inputs.binaryen_version || '130' }}
@@ -69,14 +69,16 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
 
-      # Full KiCad WASM build, but the host-side asyncify + -O2 use Binaryen v130
-      # (BINARYEN_VERSION in env → get-wasm-opt.sh forces that standalone release).
-      - name: Build KiCad WASM with Binaryen ${{ env.BINARYEN_VERSION }}
+      # Full KiCad WASM build of ALL 6 tools, but the host-side asyncify + -O2 use
+      # Binaryen v130 (BINARYEN_VERSION in env → get-wasm-opt.sh forces that
+      # standalone release). 'all' = pcbnew eeschema calculator pl_editor
+      # symbol_editor gerbview, built in sequence.
+      - name: Build all KiCad tools WASM with Binaryen ${{ env.BINARYEN_VERSION }}
         run: |
-          echo "Building with BINARYEN_VERSION=${BINARYEN_VERSION}, compile -j $(nproc)"
-          ./docker/build.sh eeschema --build-deps -j "$(nproc)"
+          echo "Building ALL tools with BINARYEN_VERSION=${BINARYEN_VERSION}, compile -j $(nproc)"
+          ./docker/build.sh all --build-deps -j "$(nproc)"
           echo "wasm-opt used:"; ./scripts/common/get-wasm-opt.sh --version 2>/dev/null || true
-          ls -lh output/eeschema.wasm
+          ls -lh output/*.wasm
 
       - name: Install test deps
         working-directory: tests
