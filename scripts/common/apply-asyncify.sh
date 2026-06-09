@@ -30,7 +30,15 @@ export BINARYEN_CORES="${BINARYEN_CORES:-8}"
 # roughly halving wall-clock. macOS already ships a scalable allocator
 # (libmalloc/nano-zone), so only Linux needs this. Honor an externally-set
 # WASM_OPT_PRELOAD; otherwise auto-detect a system jemalloc/mimalloc.
-if [[ -z "${WASM_OPT_PRELOAD:-}" && "$(uname -s)" == "Linux" ]]; then
+#
+# WASM_OPT_PRELOAD=none (or 0) forces NO preload — a clean glibc baseline for
+# benchmarking the allocator A/B (see scripts/bench/).
+if [[ "${WASM_OPT_PRELOAD:-}" == "none" || "${WASM_OPT_PRELOAD:-}" == "0" ]]; then
+    WASM_OPT_PRELOAD=""
+    _PRELOAD_FORCED_OFF=1
+fi
+
+if [[ -z "${WASM_OPT_PRELOAD:-}" && -z "${_PRELOAD_FORCED_OFF:-}" && "$(uname -s)" == "Linux" ]]; then
     for _alloc in \
         "/usr/lib/$(uname -m)-linux-gnu/libjemalloc.so.2" \
         "/usr/lib/$(uname -m)-linux-gnu/libmimalloc.so.2" \

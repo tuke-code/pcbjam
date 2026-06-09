@@ -1,0 +1,22 @@
+#cloud-config
+# NoCloud seed for the wasm-opt benchmark VM. setup-vm.sh substitutes
+# __SSH_PUBKEY__ with your ~/.ssh/id_ed25519.pub before building the seed ISO.
+hostname: kicad-bench
+users:
+  - name: bench
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    shell: /bin/bash
+    lock_passwd: false
+    # Fallback console/SSH password (key auth is preferred). Change if you care.
+    plain_text_passwd: bench
+    ssh_authorized_keys:
+      - __SSH_PUBKEY__
+ssh_pwauth: true
+package_update: true
+packages:
+  - git
+  - curl
+  - ca-certificates
+  - time
+  - libjemalloc2
+  - strace
