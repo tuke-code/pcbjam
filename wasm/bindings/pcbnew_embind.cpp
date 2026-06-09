@@ -33,6 +33,7 @@
 #include <kiway.h>
 #include <kiid.h>
 #include <layer_ids.h>
+#include <lset.h>
 #include <tool/coroutine.h>
 #include <nlohmann/json.hpp>
 #include <map>
@@ -107,6 +108,20 @@ bool isTrackType( KICAD_T t )
     return t == PCB_TRACE_T || t == PCB_ARC_T || t == PCB_VIA_T;
 }
 
+// Read an item's layer WITHOUT the virtual GetLayer(). That virtual mis-dispatches in the
+// non-coroutine emit/snapshot context — it returns 0 (F_Cu) for EVERY item (the same asyncify
+// call_indirect class as eeschema's Move()), which silently put every collab-added item/track/
+// text on the top copper layer on the peer. A class-qualified `BOARD_ITEM::GetLayer()` is a
+// statically-bound (direct) call that just reads m_layer, bypassing call_indirect. Zones keep
+// their layer in m_layerSet (not m_layer), so use their non-virtual GetFirstLayer().
+int itemLayer( BOARD_ITEM* aItem )
+{
+    if( aItem->Type() == PCB_ZONE_T )
+        return (int) static_cast<ZONE*>( aItem )->GetFirstLayer();
+
+    return (int) aItem->BOARD_ITEM::GetLayer();
+}
+
 // Iterate every board item the bridge syncs: the top-level items (tracks, footprints, drawings,
 // zones, groups) PLUS each footprint's TEXT children (fields = reference/value/user, and graphic
 // PCB_TEXT). The text children are visited by their OWN uuid because a silkscreen reference/value
@@ -155,7 +170,7 @@ json itemToJson( BOARD_ITEM* aItem )
         { "type", toUtf8( aItem->GetClass() ) },
         { "x", p.x },   // internal units (nm); integral, no quantization needed
         { "y", p.y },
-        { "layer", (int) aItem->GetLayer() },
+        { "layer", itemLayer( aItem ) },   // devirtualized — aItem->GetLayer() mis-dispatches here
     };
 
     if( isTrackType( aItem->Type() ) )
@@ -313,7 +328,9 @@ BOARD_ITEM* makeItem( BOARD& aBoard, const json& j )
         tr->SetStart( VECTOR2I( j.value( "sx", 0 ), j.value( "sy", 0 ) ) );
         tr->SetEnd( VECTOR2I( j.value( "ex", 0 ), j.value( "ey", 0 ) ) );
         tr->SetWidth( j.value( "width", 0 ) );
-        tr->SetLayer( (PCB_LAYER_ID) j.value( "layer", (int) F_Cu ) );
+        // SetLayer is virtual and (like GetLayer) mis-dispatches in this apply context → it no-ops,
+        // leaving the item on the default layer. Class-qualify to a direct m_layer write.
+        tr->BOARD_ITEM::SetLayer( (PCB_LAYER_ID) j.value( "layer", (int) F_Cu ) );
         item = tr;
     }
     // Via / zone: reconstruct natively from emitted geometry (the envelope-blob parse is
@@ -340,7 +357,9 @@ BOARD_ITEM* makeItem( BOARD& aBoard, const json& j )
                 outline.emplace_back( p[0].get<int>(), p[1].get<int>() );
         }
 
-        zone->SetLayer( (PCB_LAYER_ID) j.value( "layer", (int) F_Cu ) );
+        // Zones keep their layer in m_layerSet via SetLayer→SetLayerSet (both virtual, both no-op
+        // here). Class-qualify ZONE::SetLayerSet to set it directly (else GetFirstLayer == -1).
+        zone->ZONE::SetLayerSet( LSET( { (PCB_LAYER_ID) j.value( "layer", (int) F_Cu ) } ) );
 
         if( outline.size() >= 3 )
             zone->AddPolygon( outline );
@@ -352,7 +371,7 @@ BOARD_ITEM* makeItem( BOARD& aBoard, const json& j )
         auto* txt = new PCB_TEXT( &aBoard );
         txt->SetText( wxString::FromUTF8( j.value( "text", "" ).c_str() ) );
         txt->SetPosition( VECTOR2I( j.value( "x", 0 ), j.value( "y", 0 ) ) );
-        txt->SetLayer( (PCB_LAYER_ID) j.value( "layer", (int) F_SilkS ) );
+        txt->BOARD_ITEM::SetLayer( (PCB_LAYER_ID) j.value( "layer", (int) F_SilkS ) ); // devirt
 
         if( j.contains( "tw" ) )
             txt->SetTextSize( VECTOR2I( j.value( "tw", 0 ), j.value( "th", 0 ) ) );

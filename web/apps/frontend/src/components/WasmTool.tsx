@@ -12,11 +12,12 @@ import { clog, cwarn } from "@/wasm/collab/debug";
 const COLLAB_TOOLS = new Set<Tool>(["pl_editor", "eeschema", "pcbnew"]);
 
 /**
- * Opt-in collaborative editing (features/yjs-bridge). Enabled when the URL carries
- * `?collab=1` and the tool has the collab bridge. Open the same project URL in two tabs
- * with `?collab=1` to edit together: the channel is keyed to project+file, so both tabs
- * share one Y.Doc over BroadcastChannel. Editor edits (add/move items) fire the tool's
- * change hook → the bridge → the peer tab.
+ * Collaborative editing (features/yjs-bridge), ON BY DEFAULT for any tool that has the
+ * collab bridge. Open the same project URL in two tabs to edit together: the channel is
+ * keyed to project+file, so both tabs share one Y.Doc over BroadcastChannel. Editor edits
+ * (add/move items) fire the tool's change hook → the bridge → the peer tab.
+ *
+ * Opt OUT with `?collab=0` (or `collab=false`). Tools without a bridge are skipped anyway.
  */
 async function maybeStartCollab(
   win: ToolWindow,
@@ -28,10 +29,10 @@ async function maybeStartCollab(
     onStatus: (t: string) => void;
   },
 ): Promise<void> {
-  const enabled = new URLSearchParams(win.location.search).get("collab");
+  const collabParam = new URLSearchParams(win.location.search).get("collab");
   const mod = win.Module;
   clog("maybeStartCollab gate:", {
-    collabParam: enabled,
+    collabParam,
     tool: opts.tool,
     hasModule: !!mod,
     hasSnapshot: typeof mod?.kicadCollabSnapshot,
@@ -39,8 +40,9 @@ async function maybeStartCollab(
     url: win.location.href,
   });
 
-  if (!enabled || enabled === "0" || enabled === "false") {
-    clog("disabled (no ?collab=1) — skipping");
+  // On by default; only an explicit opt-out disables it.
+  if (collabParam === "0" || collabParam === "false") {
+    clog("disabled (?collab=0) — skipping");
     return;
   }
   if (!COLLAB_TOOLS.has(opts.tool)) {

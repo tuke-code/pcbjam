@@ -191,6 +191,11 @@ test.describe("pcbnew collab bridge — single page", () => {
     expect((byId.get(TEXT1) as { text?: string }).text, "board text string emitted").toBe(
       "BOARDTEXT",
     );
+    // The text is on F.SilkS (=5). Asserting the ACTUAL layer (not just "round-trips") catches the
+    // GetLayer() emit bug, where every item reported layer 0 (F.Cu) and added items landed on the
+    // wrong copper layer on the peer.
+    expect((byId.get(TEXT1) as { layer?: number }).layer, "board text on F.SilkS (not stuck at 0)").toBe(5);
+    expect((byId.get(SEG1) as { layer?: number }).layer, "segment on F.Cu").toBe(0);
     expect(hasAbort(testLogger), "no WASM abort").toBe(false);
   });
 
