@@ -14,6 +14,7 @@
 #include <emscripten/bind.h>
 #include <board.h>
 #include <board_commit.h>
+#include <pcb_io/kicad_sexpr/pcb_io_kicad_sexpr.h>
 #include <board_item.h>
 #include <footprint.h>
 #include <pad.h>
@@ -743,6 +744,36 @@ std::string kicadCollabSnapshot()
 }
 
 
+// Programmatically save the in-memory board to a .kicad_pcb file, without driving
+// the Save As dialog — pcbnew's analogue of pl_editor's kicadSaveDrawingSheet.
+// Serializes exactly what the editor has loaded via the same writer eeschema/pcbnew
+// use, so a test can read the file back from MEMFS and assert the file ⇄ Y.Doc
+// round trip (README §A; feature 0004). Uses only public PCB_IO_KICAD_SEXPR API.
+void kicadSaveBoard( std::string path )
+{
+    PCB_EDIT_FRAME* fr = pcbFrame();
+
+    if( !fr )
+        return;
+
+    BOARD* board = fr->GetBoard();
+
+    if( !board )
+        return;
+
+    try
+    {
+        PCB_IO_KICAD_SEXPR io;
+        io.SaveBoard( wxString::FromUTF8( path.c_str() ), board );
+    }
+    catch( ... )
+    {
+        // Don't abort the wasm runtime on a save failure; the JS caller detects it
+        // by the file being absent / empty.
+    }
+}
+
+
 // Test/PoC helper: move the first top-level board item by (dx,dy) IU via a real BOARD_COMMIT,
 // firing the listener — a deterministic local edit for the two-tab demo / e2e. Returns the
 // moved item's uuid.
@@ -885,6 +916,8 @@ EMSCRIPTEN_BINDINGS(pcbnew) {
 
     // Programmatic file open (preferred over UI automation from the web app).
     function("kicadOpenFile", &kicadOpenFile);
+    // Programmatic save of the in-memory board (round-trip tests, README §A).
+    function("kicadSaveBoard", &kicadSaveBoard);
 
     // Yjs collaborative bridge entry points (same contract as pl_editor / eeschema).
     function("kicadCollabApply", &kicadCollabApply);

@@ -23,6 +23,8 @@
 #include <layer_ids.h>
 #include <schematic.h>
 #include <sch_edit_frame.h>
+#include <sch_io/kicad_sexpr/sch_io_kicad_sexpr.h>
+#include <sch_sheet.h>
 #include <sch_commit.h>
 #include <sch_item.h>
 #include <sch_line.h>
@@ -682,9 +684,49 @@ std::string kicadCollabGetPos( std::string aId )
 }
 
 
+// Programmatically save the in-memory schematic to a .kicad_sch file, without
+// driving the Save As dialog — eeschema's analogue of pl_editor's
+// kicadSaveDrawingSheet. Serializes the root sheet via the same SCH_IO_KICAD_SEXPR
+// writer eeschema uses, so a test can read the file back from MEMFS and assert the
+// file ⇄ Y.Doc round trip (README §A; feature 0004). Single-sheet scope: the round-
+// trip fixtures are flat schematics; saving the root sheet writes the whole model.
+void kicadSaveSchematic( std::string path )
+{
+    SCH_EDIT_FRAME* fr = schFrame();
+
+    if( !fr )
+        return;
+
+    SCHEMATIC& sch = fr->Schematic();
+
+    // Save the CURRENT sheet, not Schematic().Root(): in the wasm open flow the
+    // opened document is displayed as the current sheet but can sit under an
+    // auto-created project root, so Root()'s own screen holds only a child-sheet
+    // symbol (not the loaded items). GetCurrentSheet() is the screen the editor is
+    // actually showing — the one whose items the snapshot/round-trip care about.
+    SCH_SHEET* sheet = fr->GetCurrentSheet().Last();
+
+    if( !sheet )
+        sheet = &sch.Root();
+
+    try
+    {
+        SCH_IO_KICAD_SEXPR io;
+        io.SaveSchematicFile( wxString::FromUTF8( path.c_str() ), sheet, &sch );
+    }
+    catch( ... )
+    {
+        // Don't abort the wasm runtime on a save failure; the JS caller detects it
+        // by the file being absent / empty.
+    }
+}
+
+
 EMSCRIPTEN_BINDINGS(eeschema) {
     // Programmatic file open (preferred over UI automation from the web app).
     function("kicadOpenFile", &kicadOpenFile);
+    // Programmatic save of the in-memory schematic (round-trip tests, README §A).
+    function("kicadSaveSchematic", &kicadSaveSchematic);
     // Yjs collaborative bridge entry points (same contract as pl_editor).
     function("kicadCollabApply", &kicadCollabApply);
     function("kicadCollabSnapshot", &kicadCollabSnapshot);
