@@ -115,10 +115,14 @@ LDFLAGS_RACES = $(DEBUG_LDFLAGS) $(COROUTINE_BASE_LDFLAGS) -sASSERTIONS=0 $(WX_L
 
 # In dom mode a second pre-js carries the DOM-control shim ("--pre-js A --pre-js B"
 # after expansion — emcc accepts repeated --pre-js).
+# JS_FILES lists the actual pre-js paths (no flags) so the link targets can
+# depend on them — otherwise editing a shim wouldn't trigger a relink.
 ifeq ($(PORT),dom)
     JS = $(TOOLS_ROOT)/wx.js --pre-js $(TOOLS_ROOT)/wx-dom.js
+    JS_FILES = $(TOOLS_ROOT)/wx.js $(TOOLS_ROOT)/wx-dom.js
 else
     JS = $(TOOLS_ROOT)/wx.js
+    JS_FILES = $(TOOLS_ROOT)/wx.js
 endif
 HTML = $(TOOLS_ROOT)/template.html
 
@@ -199,301 +203,301 @@ all: minimal_test.html \
 minimal_test.o: minimal_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-minimal_test.html: minimal_test.o $(WX_CORE_LIB)
+minimal_test.html: minimal_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Menu test (no GL)
 $(S)/menu/menu_test.o: $(S)/menu/menu_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/menu/menu_test.html: $(S)/menu/menu_test.o $(WX_CORE_LIB)
+$(S)/menu/menu_test.html: $(S)/menu/menu_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Clipboard test (no GL)
 $(S)/clipboard/clipboard_test.o: $(S)/clipboard/clipboard_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/clipboard/clipboard_test.html: $(S)/clipboard/clipboard_test.o $(WX_CORE_LIB)
+$(S)/clipboard/clipboard_test.html: $(S)/clipboard/clipboard_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # FileDialog test (no GL)
 $(S)/filedialog/filedialog_test.o: $(S)/filedialog/filedialog_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/filedialog/filedialog_test.html: $(S)/filedialog/filedialog_test.o $(WX_CORE_LIB)
+$(S)/filedialog/filedialog_test.html: $(S)/filedialog/filedialog_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Layout test (no GL)
 $(S)/layout/layout_test.o: $(S)/layout/layout_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/layout/layout_test.html: $(S)/layout/layout_test.o $(WX_CORE_LIB)
+$(S)/layout/layout_test.html: $(S)/layout/layout_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # AUI test (no GL)
 $(S)/aui/aui_test.o: $(S)/aui/aui_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/aui/aui_test.html: $(S)/aui/aui_test.o $(WX_CORE_LIB)
+$(S)/aui/aui_test.html: $(S)/aui/aui_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Toolbar test (no GL)
 $(S)/toolbar/toolbar_test.o: $(S)/toolbar/toolbar_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/toolbar/toolbar_test.html: $(S)/toolbar/toolbar_test.o $(WX_CORE_LIB)
+$(S)/toolbar/toolbar_test.html: $(S)/toolbar/toolbar_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Grid test (no GL)
 $(S)/grid/grid_test.o: $(S)/grid/grid_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/grid/grid_test.html: $(S)/grid/grid_test.o $(WX_CORE_LIB)
+$(S)/grid/grid_test.html: $(S)/grid/grid_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Dialog test (no GL)
 $(S)/dialog/dialog_test.o: $(S)/dialog/dialog_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/dialog/dialog_test.html: $(S)/dialog/dialog_test.o $(WX_CORE_LIB)
+$(S)/dialog/dialog_test.html: $(S)/dialog/dialog_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Timer test (no GL)
 $(S)/timer/timer_test.o: $(S)/timer/timer_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/timer/timer_test.html: $(S)/timer/timer_test.o $(WX_CORE_LIB)
+$(S)/timer/timer_test.html: $(S)/timer/timer_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Tree test (no GL)
 $(S)/tree/tree_test.o: $(S)/tree/tree_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/tree/tree_test.html: $(S)/tree/tree_test.o $(WX_CORE_LIB)
+$(S)/tree/tree_test.html: $(S)/tree/tree_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # DataView test (no GL)
 $(S)/dataview/dataview_test.o: $(S)/dataview/dataview_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/dataview/dataview_test.html: $(S)/dataview/dataview_test.o $(WX_CORE_LIB)
+$(S)/dataview/dataview_test.html: $(S)/dataview/dataview_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # HtmlWindow test (needs HTML library)
 $(S)/htmlwin/htmlwin_test.o: $(S)/htmlwin/htmlwin_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/htmlwin/htmlwin_test.html: $(S)/htmlwin/htmlwin_test.o $(WX_CORE_LIB)
+$(S)/htmlwin/htmlwin_test.html: $(S)/htmlwin/htmlwin_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_HTML) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # StyledTextCtrl test (needs STC library)
 $(S)/stc/stc_test.o: $(S)/stc/stc_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/stc/stc_test.html: $(S)/stc/stc_test.o $(WX_CORE_LIB)
+$(S)/stc/stc_test.html: $(S)/stc/stc_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_STC) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Print test (no GL)
 $(S)/print/print_test.o: $(S)/print/print_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/print/print_test.html: $(S)/print/print_test.o $(WX_CORE_LIB)
+$(S)/print/print_test.html: $(S)/print/print_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # DragDrop test (no GL)
 $(S)/dnd/dnd_test.o: $(S)/dnd/dnd_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/dnd/dnd_test.html: $(S)/dnd/dnd_test.o $(WX_CORE_LIB)
+$(S)/dnd/dnd_test.html: $(S)/dnd/dnd_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # PropertyGrid test (needs propgrid library)
 $(S)/propgrid/propgrid_test.o: $(S)/propgrid/propgrid_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/propgrid/propgrid_test.html: $(S)/propgrid/propgrid_test.o $(WX_CORE_LIB)
+$(S)/propgrid/propgrid_test.html: $(S)/propgrid/propgrid_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_PROPGRID) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Pickers test (colour/font pickers, no GL)
 $(S)/pickers/pickers_test.o: $(S)/pickers/pickers_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/pickers/pickers_test.html: $(S)/pickers/pickers_test.o $(WX_CORE_LIB)
+$(S)/pickers/pickers_test.html: $(S)/pickers/pickers_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Collapsible pane test (no GL)
 $(S)/collapsible/collapsible_test.o: $(S)/collapsible/collapsible_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/collapsible/collapsible_test.html: $(S)/collapsible/collapsible_test.o $(WX_CORE_LIB)
+$(S)/collapsible/collapsible_test.html: $(S)/collapsible/collapsible_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # ListCtrl virtual mode test (no GL)
 $(S)/listctrl/listctrl_test.o: $(S)/listctrl/listctrl_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/listctrl/listctrl_test.html: $(S)/listctrl/listctrl_test.o $(WX_CORE_LIB)
+$(S)/listctrl/listctrl_test.html: $(S)/listctrl/listctrl_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # InfoBar test (no GL)
 $(S)/infobar/infobar_test.o: $(S)/infobar/infobar_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/infobar/infobar_test.html: $(S)/infobar/infobar_test.o $(WX_CORE_LIB)
+$(S)/infobar/infobar_test.html: $(S)/infobar/infobar_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # DataViewCtrl Virtual Mode test (no GL, uses base dataview)
 $(S)/dataviewvirtual/dataviewvirtual_test.o: $(S)/dataviewvirtual/dataviewvirtual_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/dataviewvirtual/dataviewvirtual_test.html: $(S)/dataviewvirtual/dataviewvirtual_test.o $(WX_CORE_LIB)
+$(S)/dataviewvirtual/dataviewvirtual_test.html: $(S)/dataviewvirtual/dataviewvirtual_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # AuiNotebook test (needs aui)
 $(S)/auinotebook/auinotebook_test.o: $(S)/auinotebook/auinotebook_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/auinotebook/auinotebook_test.html: $(S)/auinotebook/auinotebook_test.o $(WX_CORE_LIB)
+$(S)/auinotebook/auinotebook_test.html: $(S)/auinotebook/auinotebook_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_AUI) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Wizard test (needs adv)
 $(S)/wizard/wizard_test.o: $(S)/wizard/wizard_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/wizard/wizard_test.html: $(S)/wizard/wizard_test.o $(WX_CORE_LIB)
+$(S)/wizard/wizard_test.html: $(S)/wizard/wizard_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_ADV) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Grid Edit test (cell editing, no GL)
 $(S)/gridedit/gridedit_test.o: $(S)/gridedit/gridedit_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/gridedit/gridedit_test.html: $(S)/gridedit/gridedit_test.o $(WX_CORE_LIB)
+$(S)/gridedit/gridedit_test.html: $(S)/gridedit/gridedit_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Calendar test (needs adv)
 $(S)/calendar/calendar_test.o: $(S)/calendar/calendar_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/calendar/calendar_test.html: $(S)/calendar/calendar_test.o $(WX_CORE_LIB)
+$(S)/calendar/calendar_test.html: $(S)/calendar/calendar_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_ADV) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Grid Renderers test (no GL)
 $(S)/gridrenderers/gridrenderers_test.o: $(S)/gridrenderers/gridrenderers_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/gridrenderers/gridrenderers_test.html: $(S)/gridrenderers/gridrenderers_test.o $(WX_CORE_LIB)
+$(S)/gridrenderers/gridrenderers_test.html: $(S)/gridrenderers/gridrenderers_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Print Preview test (no GL)
 $(S)/printpreview/printpreview_test.o: $(S)/printpreview/printpreview_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/printpreview/printpreview_test.html: $(S)/printpreview/printpreview_test.o $(WX_CORE_LIB)
+$(S)/printpreview/printpreview_test.html: $(S)/printpreview/printpreview_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Bitmap Buttons test (no GL)
 $(S)/bitmapbuttons/bitmapbuttons_test.o: $(S)/bitmapbuttons/bitmapbuttons_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/bitmapbuttons/bitmapbuttons_test.html: $(S)/bitmapbuttons/bitmapbuttons_test.o $(WX_CORE_LIB)
+$(S)/bitmapbuttons/bitmapbuttons_test.html: $(S)/bitmapbuttons/bitmapbuttons_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Specialized Controls test (needs adv for treebook)
 $(S)/specialized/specialized_test.o: $(S)/specialized/specialized_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/specialized/specialized_test.html: $(S)/specialized/specialized_test.o $(WX_CORE_LIB)
+$(S)/specialized/specialized_test.html: $(S)/specialized/specialized_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_ADV) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Validators test (no GL)
 $(S)/validators/validators_test.o: $(S)/validators/validators_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/validators/validators_test.html: $(S)/validators/validators_test.o $(WX_CORE_LIB)
+$(S)/validators/validators_test.html: $(S)/validators/validators_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Owner-drawn ComboBox test (no GL)
 $(S)/ownerdrawn/ownerdrawn_test.o: $(S)/ownerdrawn/ownerdrawn_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/ownerdrawn/ownerdrawn_test.html: $(S)/ownerdrawn/ownerdrawn_test.o $(WX_CORE_LIB)
+$(S)/ownerdrawn/ownerdrawn_test.html: $(S)/ownerdrawn/ownerdrawn_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Popup Window test (no GL)
 $(S)/popup/popup_test.o: $(S)/popup/popup_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/popup/popup_test.html: $(S)/popup/popup_test.o $(WX_CORE_LIB)
+$(S)/popup/popup_test.html: $(S)/popup/popup_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # XML Document test (needs xml library)
 $(S)/xml/xml_test.o: $(S)/xml/xml_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/xml/xml_test.html: $(S)/xml/xml_test.o $(WX_CORE_LIB)
+$(S)/xml/xml_test.html: $(S)/xml/xml_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_XML) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # WASM Edge Cases test (no GL)
 $(S)/wasmedge/wasmedge_test.o: $(S)/wasmedge/wasmedge_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/wasmedge/wasmedge_test.html: $(S)/wasmedge/wasmedge_test.o $(WX_CORE_LIB)
+$(S)/wasmedge/wasmedge_test.html: $(S)/wasmedge/wasmedge_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Font Enumeration test (no GL)
 $(S)/fontenum/fontenum_test.o: $(S)/fontenum/fontenum_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/fontenum/fontenum_test.html: $(S)/fontenum/fontenum_test.o $(WX_CORE_LIB)
+$(S)/fontenum/fontenum_test.html: $(S)/fontenum/fontenum_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Text Decorations test (no GL)
 $(S)/textdecor/textdecor_test.o: $(S)/textdecor/textdecor_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/textdecor/textdecor_test.html: $(S)/textdecor/textdecor_test.o $(WX_CORE_LIB)
+$(S)/textdecor/textdecor_test.html: $(S)/textdecor/textdecor_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Bitmask test (no GL)
 $(S)/bitmask/bitmask_test.o: $(S)/bitmask/bitmask_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/bitmask/bitmask_test.html: $(S)/bitmask/bitmask_test.o $(WX_CORE_LIB)
+$(S)/bitmask/bitmask_test.html: $(S)/bitmask/bitmask_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Regions test (no GL)
 $(S)/regions/regions_test.o: $(S)/regions/regions_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/regions/regions_test.html: $(S)/regions/regions_test.o $(WX_CORE_LIB)
+$(S)/regions/regions_test.html: $(S)/regions/regions_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Maximize test (no GL) - reproduces KiCad startup maximize issue
 $(S)/maximize/maximize_test.o: $(S)/maximize/maximize_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/maximize/maximize_test.html: $(S)/maximize/maximize_test.o $(WX_CORE_LIB)
+$(S)/maximize/maximize_test.html: $(S)/maximize/maximize_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Early size test (no GL) - tests GetClientSize() before Show()
 $(S)/earlysize/earlysize_test.o: $(S)/earlysize/earlysize_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/earlysize/earlysize_test.html: $(S)/earlysize/earlysize_test.o $(WX_CORE_LIB)
+$(S)/earlysize/earlysize_test.html: $(S)/earlysize/earlysize_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Thread Pool test (pthread) - reproduces KiCad deadlock when hardware_concurrency() > PTHREAD_POOL_SIZE
 $(S)/threadpool/threadpool_test.o: $(S)/threadpool/threadpool_test.cpp
 	$(CXX) -c $(CXXFLAGS) -pthread $< -o $@
 
-$(S)/threadpool/threadpool_test.html: $(S)/threadpool/threadpool_test.o $(WX_CORE_LIB)
+$(S)/threadpool/threadpool_test.html: $(S)/threadpool/threadpool_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_PTHREAD) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Log Error test (no GL) - reproduces KiCad's kiface error dialog
 $(S)/logerror/logerror_test.o: $(S)/logerror/logerror_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/logerror/logerror_test.html: $(S)/logerror/logerror_test.o $(WX_CORE_LIB)
+$(S)/logerror/logerror_test.html: $(S)/logerror/logerror_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Coroutine stress harness - mirrors KiCad coroutine semantics against real libcontext
@@ -503,8 +507,8 @@ $(S)/coroutine/coroutine_test.o: $(S)/coroutine/coroutine_test.cpp $(S)/coroutin
 $(S)/coroutine/libcontext.o: $(KICAD_ROOT)/thirdparty/libcontext/libcontext.cpp $(KICAD_ROOT)/thirdparty/libcontext/libcontext.h
 	$(CXX) -c $(CXXFLAGS) -I$(KICAD_ROOT)/thirdparty/libcontext $< -o $@
 
-$(S)/coroutine/coroutine_test.html: $(S)/coroutine/coroutine_test.o $(S)/coroutine/libcontext.o $(WX_CORE_LIB)
-	$(CXX) $^ $(LDFLAGS_COROUTINE) --pre-js $(JS) --shell-file $(HTML) -o $@
+$(S)/coroutine/coroutine_test.html: $(S)/coroutine/coroutine_test.o $(S)/coroutine/libcontext.o $(WX_CORE_LIB) $(JS_FILES)
+	$(CXX) $(filter %.o %.a,$^) $(LDFLAGS_COROUTINE) --pre-js $(JS) --shell-file $(HTML) -o $@
 	../../scripts/common/inject-dyncall-shims.sh $(basename $@).js
 
 # Nested coroutine+modal interaction harness - reproduces Asyncify rewind corruption
@@ -512,8 +516,8 @@ $(S)/coroutine/coroutine_test.html: $(S)/coroutine/coroutine_test.o $(S)/corouti
 $(S)/coroutine-nested/nested_test.o: $(S)/coroutine-nested/nested_test.cpp $(S)/coroutine/kicad_coroutine_harness.h
 	$(CXX) -c $(CXXFLAGS) -I$(KICAD_ROOT)/thirdparty/libcontext -I$(S)/coroutine $< -o $@
 
-$(S)/coroutine-nested/nested_test.html: $(S)/coroutine-nested/nested_test.o $(S)/coroutine/libcontext.o $(WX_CORE_LIB)
-	$(CXX) $^ $(LDFLAGS_COROUTINE) --pre-js $(JS) --shell-file $(HTML) -o $@
+$(S)/coroutine-nested/nested_test.html: $(S)/coroutine-nested/nested_test.o $(S)/coroutine/libcontext.o $(WX_CORE_LIB) $(JS_FILES)
+	$(CXX) $(filter %.o %.a,$^) $(LDFLAGS_COROUTINE) --pre-js $(JS) --shell-file $(HTML) -o $@
 	../../scripts/common/inject-dyncall-shims.sh $(basename $@).js
 
 # Asyncify race-condition red-green harness (tests/asyncify/). Three variants of
@@ -583,7 +587,7 @@ logerror: $(S)/logerror/logerror_test.html
 $(S)/retinascale/retinascale_test.o: $(S)/retinascale/retinascale_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
-$(S)/retinascale/retinascale_test.html: $(S)/retinascale/retinascale_test.o $(WX_CORE_LIB)
+$(S)/retinascale/retinascale_test.html: $(S)/retinascale/retinascale_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 retinascale: $(S)/retinascale/retinascale_test.html
@@ -617,8 +621,8 @@ $(S)/coroutine-pthread/libcontext_pt.o: $(KICAD_ROOT)/thirdparty/libcontext/libc
 	@mkdir -p $(S)/coroutine-pthread
 	$(CXX) -c $(CXXFLAGS) -pthread -I$(KICAD_ROOT)/thirdparty/libcontext $< -o $@
 
-$(S)/coroutine-pthread/coroutine_test.html: $(S)/coroutine-pthread/coroutine_test_pt.o $(S)/coroutine-pthread/libcontext_pt.o $(WX_CORE_LIB)
-	$(CXX) $^ $(LDFLAGS_COROUTINE_PTHREAD) --pre-js $(JS) --shell-file $(HTML) -o $@
+$(S)/coroutine-pthread/coroutine_test.html: $(S)/coroutine-pthread/coroutine_test_pt.o $(S)/coroutine-pthread/libcontext_pt.o $(WX_CORE_LIB) $(JS_FILES)
+	$(CXX) $(filter %.o %.a,$^) $(LDFLAGS_COROUTINE_PTHREAD) --pre-js $(JS) --shell-file $(HTML) -o $@
 	../../scripts/common/inject-dyncall-shims.sh $(basename $@).js
 
 coroutine-pthread: $(S)/coroutine-pthread/coroutine_test.html
@@ -635,7 +639,7 @@ $(S)/coroutine-pthread/main_repro.o: $(S)/coroutine-pthread/main_repro.cpp $(S)/
 	$(CXX) -c $(CXXFLAGS) -pthread -I$(KICAD_ROOT)/thirdparty/libcontext -I$(S)/coroutine $< -o $@
 
 $(S)/coroutine-pthread/main_repro.html: $(S)/coroutine-pthread/main_repro.o $(S)/coroutine-pthread/libcontext_pt.o
-	$(CXX) $^ $(LDFLAGS_COROUTINE_PTHREAD_NOWX) -o $@
+	$(CXX) $(filter %.o %.a,$^) $(LDFLAGS_COROUTINE_PTHREAD_NOWX) -o $@
 	../../scripts/common/inject-dyncall-shims.sh $(basename $@).js
 
 coroutine-pthread-main: $(S)/coroutine-pthread/main_repro.html
@@ -647,7 +651,7 @@ $(S)/coroutine-pthread/nested_repro.o: $(S)/coroutine-pthread/nested_repro.cpp $
 	$(CXX) -c $(CXXFLAGS) -pthread -I$(KICAD_ROOT)/thirdparty/libcontext -I$(S)/coroutine $< -o $@
 
 $(S)/coroutine-pthread/nested_repro.html: $(S)/coroutine-pthread/nested_repro.o $(S)/coroutine-pthread/libcontext_pt.o
-	$(CXX) $^ $(LDFLAGS_COROUTINE_PTHREAD_NOWX) -o $@
+	$(CXX) $(filter %.o %.a,$^) $(LDFLAGS_COROUTINE_PTHREAD_NOWX) -o $@
 	../../scripts/common/inject-dyncall-shims.sh $(basename $@).js
 
 coroutine-pthread-nested: $(S)/coroutine-pthread/nested_repro.html
@@ -669,7 +673,7 @@ $(S)/coroutine-pthread/libcontext_ex.o: $(KICAD_ROOT)/thirdparty/libcontext/libc
 	$(CXX) -c $(CXXFLAGS) -pthread -fexceptions -I$(KICAD_ROOT)/thirdparty/libcontext $< -o $@
 
 $(S)/coroutine-pthread/nested_repro_ex.html: $(S)/coroutine-pthread/nested_repro_ex.o $(S)/coroutine-pthread/libcontext_ex.o
-	$(CXX) $^ $(LDFLAGS_COROUTINE_INVOKE) -o $@
+	$(CXX) $(filter %.o %.a,$^) $(LDFLAGS_COROUTINE_INVOKE) -o $@
 	../../scripts/common/inject-dyncall-shims.sh $(basename $@).js
 
 coroutine-pthread-nested-ex: $(S)/coroutine-pthread/nested_repro_ex.html
@@ -677,8 +681,8 @@ coroutine-pthread-nested-ex: $(S)/coroutine-pthread/nested_repro_ex.html
 
 # wx event loop + pthreads (KiCad's 13-scenario harness) with a worker DOM stub so the
 # pthread workers don't crash on wx's module-eval document access.
-$(S)/coroutine-pthread/coroutine_test_wxpt.html: $(S)/coroutine-pthread/coroutine_test_pt.o $(S)/coroutine-pthread/libcontext_pt.o $(WX_CORE_LIB)
-	$(CXX) $^ $(LDFLAGS_COROUTINE_PTHREAD) --pre-js $(S)/coroutine-pthread/worker_dom_stub.js --pre-js $(JS) --shell-file $(HTML) -o $@
+$(S)/coroutine-pthread/coroutine_test_wxpt.html: $(S)/coroutine-pthread/coroutine_test_pt.o $(S)/coroutine-pthread/libcontext_pt.o $(WX_CORE_LIB) $(JS_FILES)
+	$(CXX) $(filter %.o %.a,$^) $(LDFLAGS_COROUTINE_PTHREAD) --pre-js $(S)/coroutine-pthread/worker_dom_stub.js --pre-js $(JS) --shell-file $(HTML) -o $@
 	../../scripts/common/inject-dyncall-shims.sh $(basename $@).js
 
 coroutine-pthread-wx: $(S)/coroutine-pthread/coroutine_test_wxpt.html
@@ -692,7 +696,7 @@ $(S)/coroutine-pthread/embind_repro.o: $(S)/coroutine-pthread/embind_repro.cpp $
 	$(CXX) -c $(CXXFLAGS) -pthread -fexceptions -I$(KICAD_ROOT)/thirdparty/libcontext -I$(S)/coroutine $< -o $@
 
 $(S)/coroutine-pthread/embind_repro.html: $(S)/coroutine-pthread/embind_repro.o $(S)/coroutine-pthread/libcontext_ex.o
-	$(CXX) $^ $(LDFLAGS_COROUTINE_EMBIND) -o $@
+	$(CXX) $(filter %.o %.a,$^) $(LDFLAGS_COROUTINE_EMBIND) -o $@
 	../../scripts/common/inject-dyncall-shims.sh $(basename $@).js
 
 coroutine-pthread-embind: $(S)/coroutine-pthread/embind_repro.html
@@ -704,7 +708,7 @@ $(S)/coroutine-pthread/mainloop_repro.o: $(S)/coroutine-pthread/mainloop_repro.c
 	$(CXX) -c $(CXXFLAGS) -pthread -I$(KICAD_ROOT)/thirdparty/libcontext -I$(S)/coroutine $< -o $@
 
 $(S)/coroutine-pthread/mainloop_repro.html: $(S)/coroutine-pthread/mainloop_repro.o $(S)/coroutine-pthread/libcontext_pt.o
-	$(CXX) $^ $(LDFLAGS_COROUTINE_PTHREAD_NOWX) -o $@
+	$(CXX) $(filter %.o %.a,$^) $(LDFLAGS_COROUTINE_PTHREAD_NOWX) -o $@
 	../../scripts/common/inject-dyncall-shims.sh $(basename $@).js
 
 coroutine-pthread-mainloop: $(S)/coroutine-pthread/mainloop_repro.html
@@ -720,7 +724,7 @@ $(S)/coroutine-pthread/gl_repro.o: $(S)/coroutine-pthread/gl_repro.cpp $(S)/coro
 	$(CXX) -c $(CXXFLAGS) -I$(KICAD_ROOT)/thirdparty/libcontext -I$(S)/coroutine $< -o $@
 
 $(S)/coroutine-pthread/gl_repro.html: $(S)/coroutine-pthread/gl_repro.o $(S)/coroutine/libcontext.o
-	$(CXX) $^ $(LDFLAGS_COROUTINE_GL) -o $@
+	$(CXX) $(filter %.o %.a,$^) $(LDFLAGS_COROUTINE_GL) -o $@
 	../../scripts/common/inject-dyncall-shims.sh $(basename $@).js
 
 coroutine-pthread-gl: $(S)/coroutine-pthread/gl_repro.html
@@ -735,7 +739,7 @@ $(S)/coroutine-pthread/gl_repro_pt.o: $(S)/coroutine-pthread/gl_repro.cpp $(S)/c
 	$(CXX) -c $(CXXFLAGS) -pthread -I$(KICAD_ROOT)/thirdparty/libcontext -I$(S)/coroutine $< -o $@
 
 $(S)/coroutine-pthread/gl_repro_pt.html: $(S)/coroutine-pthread/gl_repro_pt.o $(S)/coroutine-pthread/libcontext_pt.o
-	$(CXX) $^ $(LDFLAGS_COROUTINE_GL_PTHREAD) -o $@
+	$(CXX) $(filter %.o %.a,$^) $(LDFLAGS_COROUTINE_GL_PTHREAD) -o $@
 	../../scripts/common/inject-dyncall-shims.sh $(basename $@).js
 
 coroutine-pthread-gl-pt: $(S)/coroutine-pthread/gl_repro_pt.html
@@ -746,7 +750,7 @@ $(S)/coroutine-pthread/vcall_repro.o: $(S)/coroutine-pthread/vcall_repro.cpp $(S
 	$(CXX) -c $(CXXFLAGS) -pthread -I$(KICAD_ROOT)/thirdparty/libcontext -I$(S)/coroutine $< -o $@
 
 $(S)/coroutine-pthread/vcall_repro.html: $(S)/coroutine-pthread/vcall_repro.o $(S)/coroutine-pthread/libcontext_pt.o
-	$(CXX) $^ $(LDFLAGS_COROUTINE_PTHREAD_NOWX) -o $@
+	$(CXX) $(filter %.o %.a,$^) $(LDFLAGS_COROUTINE_PTHREAD_NOWX) -o $@
 	../../scripts/common/inject-dyncall-shims.sh $(basename $@).js
 
 coroutine-pthread-vcall: $(S)/coroutine-pthread/vcall_repro.html
