@@ -73,10 +73,19 @@ source "${SCRIPT_DIR}/../common/functions.sh"
 source "${SCRIPT_DIR}/../common/stages.sh"
 
 KICAD_DIR="${PROJECT_ROOT}/kicad"
-KICAD_BUILD="${BUILD_ROOT}/kicad-${APP_NAME}"
-KICAD_STAMP="${BUILD_ROOT}/stamps/kicad-${APP_NAME}.stamp"
 WASM_LAYER="${PROJECT_ROOT}/wasm"
-WX_BUILD="${BUILD_ROOT}/wxwidgets-universal"
+
+# WX_PORT=dom links against the DOM (non-universal) wxWidgets build and
+# keeps its KiCad build tree separate from the canvas one.
+if [ "${WX_PORT:-}" = "dom" ]; then
+    KICAD_BUILD="${BUILD_ROOT}/kicad-${APP_NAME}-dom"
+    KICAD_STAMP="${BUILD_ROOT}/stamps/kicad-${APP_NAME}-dom.stamp"
+    WX_BUILD="${BUILD_ROOT}/wxwidgets-dom"
+else
+    KICAD_BUILD="${BUILD_ROOT}/kicad-${APP_NAME}"
+    KICAD_STAMP="${BUILD_ROOT}/stamps/kicad-${APP_NAME}.stamp"
+    WX_BUILD="${BUILD_ROOT}/wxwidgets-universal"
+fi
 
 # Parse arguments - incremental build by default (optimized for development)
 NO_CLEAN=1

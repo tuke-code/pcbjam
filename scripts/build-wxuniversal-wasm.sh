@@ -31,13 +31,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 WX_SOURCE="$PROJECT_ROOT/wxwidgets"
 
-# Parse arguments: --clean and/or --dom, in any order
+# Parse arguments: --clean, --no-clean (default; kept for the kicad
+# pipeline's explicit call) and/or --dom, in any order. WX_PORT=dom env is
+# equivalent to --dom so the flavor can flow through the docker pipeline.
 CLEAN_BUILD=0
 DOM_BUILD=0
+[ "${WX_PORT:-}" = "dom" ] && DOM_BUILD=1
 for arg in "$@"; do
     case "$arg" in
-        --clean) CLEAN_BUILD=1 ;;
-        --dom)   DOM_BUILD=1 ;;
+        --clean)    CLEAN_BUILD=1 ;;
+        --no-clean) CLEAN_BUILD=0 ;;
+        --dom)      DOM_BUILD=1 ;;
         *) echo "Unknown argument: $arg"; exit 1 ;;
     esac
 done

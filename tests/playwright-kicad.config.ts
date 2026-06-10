@@ -74,6 +74,10 @@ const PCBNEW_FAMILY_SPECS = [
   '**/load-pcb-probe.spec.ts',
 ];
 
+// WX_PORT=dom runs against the DOM-port bundles (setup-kicad-wasm.sh syncs
+// them into tests/apps-dom/kicad).
+const appsDir = process.env.WX_PORT === 'dom' ? 'apps-dom' : 'apps';
+
 export default defineConfig({
   globalSetup: './global-setup.ts',
   testDir: './kicad',
@@ -158,7 +162,7 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: `npx serve apps -p ${port} -c ../serve.json`,
+    command: `npx serve ${appsDir} -p ${port} -c ../serve.json`,
     port: port,
     reuseExistingServer: !process.env.CI,
   },

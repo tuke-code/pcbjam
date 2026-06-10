@@ -178,23 +178,34 @@ compile_app() {
     echo ""
     echo "=== Building ${app} (${index}/${total}) ==="
 
+    # WX_PORT=dom builds against the DOM wxWidgets into separate build and
+    # output trees (kicad-<app>-dom, output-dom/).
+    local out_dir="output"
+    local kicad_build="kicad-${app}"
+    if [[ "${WX_PORT:-}" == "dom" ]]; then
+        out_dir="output-dom"
+        kicad_build="kicad-${app}-dom"
+    fi
+
     # Run build inside the container.
     # -e EMSDK=/emsdk: `docker compose exec` bypasses the entrypoint that sources
     # emsdk_env.sh, so the build shell would lack emcc/embuilder on PATH. Setting
     # EMSDK lets scripts/common/env.sh source /emsdk/emsdk_env.sh and activate the toolchain.
-    docker compose -f docker/docker-compose.yml exec -e EMSDK=/emsdk kicad-wasm-builder \
+    docker compose -f docker/docker-compose.yml exec -e EMSDK=/emsdk -e WX_PORT="${WX_PORT:-}" \
+        kicad-wasm-builder \
         "/workspace/scripts/kicad/build-${app}.sh" "${ARGS[@]}"
 
     # Copy output to host-accessible directory.
     # ${app}.wasm.debug.wasm contains DWARF debug info (when built with -gseparate-dwarf).
     kw_stage copy-output
-    echo "Copying ${app} build output to ./output/..."
+    echo "Copying ${app} build output to ./${out_dir}/..."
     docker compose -f docker/docker-compose.yml exec kicad-wasm-builder \
-        bash -c "mkdir -p /workspace/output && \
-            cp /workspace/build-wasm/kicad-${app}/${subdir}/${app}.{js,wasm,wasm.debug.wasm,wasm.map,worker.js} /workspace/output/ 2>/dev/null || \
-            cp /workspace/build-wasm/kicad-${app}/${subdir}/${app}.{js,wasm} /workspace/output/; \
-            cp /workspace/build-wasm/kicad-${app}/resources/images.tar.gz /workspace/output/ 2>/dev/null || true; \
-            cp /workspace/build-wasm/wxwidgets/build/wasm/wx.js /workspace/output/ 2>/dev/null || true"
+        bash -c "mkdir -p /workspace/${out_dir} && \
+            cp /workspace/build-wasm/${kicad_build}/${subdir}/${app}.{js,wasm,wasm.debug.wasm,wasm.map,worker.js} /workspace/${out_dir}/ 2>/dev/null || \
+            cp /workspace/build-wasm/${kicad_build}/${subdir}/${app}.{js,wasm} /workspace/${out_dir}/; \
+            cp /workspace/build-wasm/${kicad_build}/resources/images.tar.gz /workspace/${out_dir}/ 2>/dev/null || true; \
+            cp /workspace/build-wasm/wxwidgets/build/wasm/wx.js /workspace/${out_dir}/ 2>/dev/null || true; \
+            if [ -n \"${WX_PORT:-}\" ]; then cp /workspace/build-wasm/wxwidgets/build/wasm/wx-dom.js /workspace/${out_dir}/ 2>/dev/null || true; fi"
 
     # The container runs as root, so files in the bind-mounted ./output land
     # root-owned on the host. macOS Docker Desktop remaps ownership to the host
@@ -213,15 +224,15 @@ postprocess_app() {
 
     # Inject dynCall shims (fixes "dynCall_* is not defined" errors in Emscripten 4.x)
     kw_stage dyncall-shims
-    ./scripts/common/inject-dyncall-shims.sh "output/${app}.js"
+    ./scripts/common/inject-dyncall-shims.sh "${out_dir}/${app}.js"
 
     # Apply wasm-emscripten-finalize on host (skipped in Docker due to memory limits)
     kw_stage finalize
-    ./scripts/common/apply-finalize.sh "output/${app}.wasm" "output/${app}.wasm"
+    ./scripts/common/apply-finalize.sh "${out_dir}/${app}.wasm" "${out_dir}/${app}.wasm"
 
     # Apply asyncify transformation on host
     kw_stage asyncify
-    ./scripts/common/apply-asyncify.sh "output/${app}.wasm" "output/${app}.wasm"
+    ./scripts/common/apply-asyncify.sh "${out_dir}/${app}.wasm" "${out_dir}/${app}.wasm"
 }
 
 # --- Pipelined driver state (KICAD_PIPELINE=1) ---

@@ -10,8 +10,18 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-KICAD_TEST="$PROJECT_ROOT/tests/apps/kicad"
-OUTPUT_DIR="$PROJECT_ROOT/output"
+
+# WX_PORT=dom serves the DOM-flavor bundles (built by docker/build.sh with
+# WX_PORT=dom into output-dom/) from tests/apps-dom/kicad.
+if [ "${WX_PORT:-}" = "dom" ]; then
+    KICAD_TEST="$PROJECT_ROOT/tests/apps-dom/kicad"
+    OUTPUT_DIR="$PROJECT_ROOT/output-dom"
+    KICAD_BUILD_SUFFIX="-dom"
+else
+    KICAD_TEST="$PROJECT_ROOT/tests/apps/kicad"
+    OUTPUT_DIR="$PROJECT_ROOT/output"
+    KICAD_BUILD_SUFFIX=""
+fi
 
 mkdir -p "$KICAD_TEST"
 
@@ -62,15 +72,15 @@ copy_app() {
 
     echo "Output ${app} not found locally, trying Docker volume..."
     if docker compose -f "$PROJECT_ROOT/docker/docker-compose.yml" cp \
-         kicad-wasm-builder:/workspace/build-wasm/kicad-${app}/${subdir}/${app}.js "$KICAD_TEST/" 2>/dev/null \
+         kicad-wasm-builder:/workspace/build-wasm/kicad-${app}${KICAD_BUILD_SUFFIX}/${subdir}/${app}.js "$KICAD_TEST/" 2>/dev/null \
        && docker compose -f "$PROJECT_ROOT/docker/docker-compose.yml" cp \
-         kicad-wasm-builder:/workspace/build-wasm/kicad-${app}/${subdir}/${app}.wasm "$KICAD_TEST/" 2>/dev/null; then
+         kicad-wasm-builder:/workspace/build-wasm/kicad-${app}${KICAD_BUILD_SUFFIX}/${subdir}/${app}.wasm "$KICAD_TEST/" 2>/dev/null; then
         docker compose -f "$PROJECT_ROOT/docker/docker-compose.yml" cp \
-            kicad-wasm-builder:/workspace/build-wasm/kicad-${app}/${subdir}/${app}.wasm.map "$KICAD_TEST/" 2>/dev/null || true
+            kicad-wasm-builder:/workspace/build-wasm/kicad-${app}${KICAD_BUILD_SUFFIX}/${subdir}/${app}.wasm.map "$KICAD_TEST/" 2>/dev/null || true
         docker compose -f "$PROJECT_ROOT/docker/docker-compose.yml" cp \
-            kicad-wasm-builder:/workspace/build-wasm/kicad-${app}/${subdir}/${app}.worker.js "$KICAD_TEST/" 2>/dev/null || true
+            kicad-wasm-builder:/workspace/build-wasm/kicad-${app}${KICAD_BUILD_SUFFIX}/${subdir}/${app}.worker.js "$KICAD_TEST/" 2>/dev/null || true
         docker compose -f "$PROJECT_ROOT/docker/docker-compose.yml" cp \
-            kicad-wasm-builder:/workspace/build-wasm/kicad-${app}/resources/images.tar.gz "$KICAD_TEST/" 2>/dev/null || true
+            kicad-wasm-builder:/workspace/build-wasm/kicad-${app}${KICAD_BUILD_SUFFIX}/resources/images.tar.gz "$KICAD_TEST/" 2>/dev/null || true
         return 0
     fi
 
@@ -102,6 +112,28 @@ else
     else
         smart_cp "$PROJECT_ROOT/wxwidgets/build/wasm/wx.js" "$KICAD_TEST"
     fi
+fi
+
+if [ "${WX_PORT:-}" = "dom" ]; then
+    # DOM port: the control-layer shim loads after wx.js.
+    if [ -f "$OUTPUT_DIR/wx-dom.js" ]; then
+        smart_cp "$OUTPUT_DIR/wx-dom.js" "$KICAD_TEST"
+    else
+        smart_cp "$PROJECT_ROOT/wxwidgets/build/wasm/wx-dom.js" "$KICAD_TEST"
+    fi
+
+    # The checked-in kicad pages load wx.js via a <script> tag; the DOM
+    # flavor needs wx-dom.js right after it. Sync the pages and inject the
+    # tag (idempotent).
+    for page in "$PROJECT_ROOT"/tests/apps/kicad/*.html; do
+        [ -f "$page" ] || continue
+        dest="$KICAD_TEST/$(basename "$page")"
+        cp "$page" "$dest"
+        if ! grep -q 'wx-dom.js' "$dest"; then
+            perl -i -pe 's{(<script src="wx.js"></script>)}{$1\n    <script src="wx-dom.js"></script>}' "$dest"
+        fi
+    done
+    echo "  + kicad pages with wx-dom.js injected"
 fi
 
 echo "KiCad WASM files synced to $KICAD_TEST"
