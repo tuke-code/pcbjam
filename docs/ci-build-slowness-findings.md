@@ -50,6 +50,19 @@ Correction: the "all 6 tools rc=0 in ~1h04m" local claim below was wrong — the
 actual log (`logs/build/20260609-191138.log`) spans 19:11→21:15 ≈ **2h04m**
 (`-j 3`, BINARYEN_CORES=6). The conclusion (v130 builds a working KiCad) stands.
 
+## ✅ FINAL VALIDATION (run 27280051992, 2026-06-10): all 6 tools in **1h14m41s** (was 4h05m, 3.3x)
+Full cold `all` build on the ccx53 with everything adopted (compose caps lifted,
+KICAD_PIPELINE=1, BINARYEN_CORES=16, self-built wasm-opt v130):
+- pcbnew: asyncify **5:12** (was 24:07 — the self-built binary at pcbnew scale),
+  `-O2` **52:09** (was 1:06:13). Its 58-min postprocess fully overlapped ALL
+  five other tools' compiles + postprocesses (eeschema asyncify 1:00 — was 7:22).
+- Critical path is now ≈ deps + pcbnew compile + pcbnew asyncify+`-O2` ≈ the
+  whole 1h15. Going below ~1h10 requires shrinking pcbnew's `-O2` input —
+  see the wasm-EH (-fwasm-exceptions / KICAD_WASM_EH) experiment.
+- e2e: 16 passed / 14 failed — the failures are the SAME 14 Firefox-only
+  environmental tests as run #4 (Chromium 100% green). No regression; Firefox
+  headless-GL on the Hetzner VM remains a separate open issue.
+
 ## 🆕 2026-06-10 EXPERIMENT DAY: orchestration verified on-box + the release-tarball discovery
 
 **Repro run 27273412419** (calculator,pl_editor, pipelined, no e2e, ccx53): all
