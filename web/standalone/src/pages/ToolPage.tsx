@@ -2,6 +2,7 @@ import { useParams } from "react-router-dom";
 import { toolSchema } from "@pcbjam/shared";
 import { fetchFileBytes, useProject } from "@/lib/api";
 import { WasmTool } from "@/components/WasmTool";
+import { PreflightGate } from "@/preflight/PreflightGate";
 
 export function ToolPage() {
   const params = useParams();
@@ -30,14 +31,18 @@ export function ToolPage() {
     );
   }
 
+  // PreflightGate runs the device-capability check; on a fatal mismatch it blocks
+  // here (before WasmTool mounts) so the expensive WASM asset fetch is skipped.
   return (
-    <WasmTool
-      tool={parsedTool.data}
-      slug={slug}
-      projectId={data.project.id}
-      files={data.files}
-      targetPath={targetPath}
-      fetchBytes={(relPath) => fetchFileBytes(slug, relPath)}
-    />
+    <PreflightGate>
+      <WasmTool
+        tool={parsedTool.data}
+        slug={slug}
+        projectId={data.project.id}
+        files={data.files}
+        targetPath={targetPath}
+        fetchBytes={(relPath) => fetchFileBytes(slug, relPath)}
+      />
+    </PreflightGate>
   );
 }
