@@ -1,7 +1,7 @@
 ---
 title: Cookie Policy
 description: How PCBJam uses cookies and similar technologies, and the choices you have.
-updated: 2026-06-09
+updated: 2026-06-10
 ---
 
 This Cookie Policy explains how **PCBJam** ("PCBJam", "we", "us", "our") uses cookies and similar technologies — such as browser local storage, IndexedDB and cache storage — when you visit **pcbjam.com** or use the PCBJam application (the "Service"), and the choices you have.
@@ -48,7 +48,7 @@ We deliberately keep what we put on your device to a minimum. Everything we plac
 |---|---|---|---|
 | **Strictly necessary** | Signing in, keeping your session secure, loading the application, and not losing your in-progress work. The Service cannot work without these. | Yes | **No** — exempt (but disclosed in Section 4). |
 | **Functional / preferences** | Remembering choices such as theme, layout or last view. | **No** — saved with your account on our servers, or kept only for the current session. | n/a — not a device cookie. |
-| **Analytics / performance** | Understanding, in aggregate, how the Service is used. Done **without cookies** and without identifying you (see Section 5). | No | n/a — outside the cookie-consent rules. |
+| **Analytics / performance** | Understanding, in aggregate, how the Service is used. Done **without cookies** and without identifying you (see Section 5). | No storage — the script runs in your browser but keeps nothing on your device. | Not requested — we consider none is required (see Section 5). |
 | **Advertising / targeting** | **We do not use advertising or cross-site tracking cookies.** | No | n/a |
 
 Because we currently place **nothing on your device that requires consent**, **we do not show a cookie consent banner — there is nothing non-essential to accept or reject.** The Service works the same whether or not you would have "accepted". If we ever introduce a technology that does require consent, we will ask for your consent before setting it.
@@ -71,7 +71,7 @@ Everything the application stores on your device is **strictly necessary** to de
 |---|---|---|---|---|---|
 | `pcbjam_session` | Cookie / token | PCBJam (first party) | Keeps you signed in so you can reach the designs saved to your account. | Strictly necessary | Session / short-lived, renewed on use |
 | `pcbjam_csrf` | Cookie | PCBJam (first party) | Protects against cross-site request forgery and abuse. | Strictly necessary | Session |
-| *App asset cache* | Cache Storage / IndexedDB | PCBJam (first party) | Stores the (large) KiCad/WebAssembly application files on your device so the editor doesn't re-download on every visit. | Strictly necessary (performance)¹ | Persistent until cleared/updated |
+| *App asset cache* | Cache Storage / IndexedDB | PCBJam (first party) | Stores the (large) KiCad/WebAssembly application files on your device. The editor is too large to re-download on every visit and cannot practically be delivered without caching its own program files. | Strictly necessary¹ | Persistent until cleared/updated |
 | *Autosave / offline buffer* | IndexedDB | PCBJam (first party) | Keeps a local copy of your in-progress edits for crash recovery and offline editing. Your saved design is always stored on our servers; this is a working copy on your device. | Strictly necessary | Persistent until synced/cleared |
 
 ¹ We treat the application cache as necessary to deliver the editor you asked to open. If we determine that consent is required for it, we will ask for your consent before caching.
@@ -84,13 +84,13 @@ If you buy a paid plan, checkout is handled by **Paddle** as our **Merchant of R
 
 ## 5. Analytics: how we measure usage without cookies
 
-We want to understand how PCBJam is used so we can improve it, **without tracking you.** We use **Vercel Web Analytics**, which according to Vercel's documentation:
+We want to understand how PCBJam is used so we can improve it, **without tracking you.** We use **Vercel Web Analytics**. According to Vercel's documentation (as revised 18 March 2026), and confirmed by our own inspection of the analytics script as currently shipped on this site, it:
 
-- works **"without using any third-party cookies"** — instead, visitors are counted using a **hash created from the incoming request**, not a stored identifier on your device;
-- **does not store that visitor hash permanently** — it is **automatically discarded after 24 hours**;
+- sets **no cookie** and stores **no identifier** on your device — visitors are counted using a **hash created from the incoming request**, and the script uses no cookies, local storage, or other device storage;
+- does **not** keep that visitor hash — it is **automatically discarded after 24 hours**;
 - records **anonymous, aggregated** data points (such as page URL, referrer, approximate location, browser and device type) that are **not** used to build a profile of you or to follow you across other sites.
 
-Because this analytics **sets no cookie, stores no identifier on your device, and processes only anonymous, aggregated data**, it falls outside the scope of the cookie-consent rules — there is no cookie to accept or reject, so it is not part of any consent banner.
+Because it stores nothing on your device and the data it records cannot identify you, **we consider that this measurement does not require your prior consent**, and it is not part of any consent banner.
 
 We do **not** use Google Analytics, advertising pixels, or any cross-site tracking technology.
 
@@ -101,7 +101,7 @@ We do **not** use Google Analytics, advertising pixels, or any cross-site tracki
 | **Paddle** (Paddle.com Market Limited and affiliates) | Merchant of Record / payments | Checkout, security and fraud-prevention cookies; their own non-essential cookies (with consent where required, via Paddle's own controls). Independent controller. | [Paddle Privacy Policy](https://www.paddle.com/legal/privacy); Paddle's cookie controls appear within its checkout. |
 | **Vercel** (Vercel Inc.) | Hosting and cookieless analytics | No analytics cookies (cookieless, see Section 5); at most strictly-necessary hosting cookies. | [Vercel Analytics privacy](https://vercel.com/docs/analytics/privacy-policy) · [Vercel Privacy](https://vercel.com/legal/privacy-policy) |
 
-We are not responsible for the privacy practices of these third parties; please review their notices. We will keep this list current as our integrations change.
+We are not responsible for the privacy practices of these third parties; please review their notices. We update this list as our integrations change.
 
 ## 7. How to control cookies and storage in your browser
 
@@ -118,19 +118,19 @@ Please note that blocking **strictly-necessary** cookies and storage may stop yo
 
 ### 8a. EU / EEA (including Hungary)
 
-Cookies and similar technologies are governed by the **ePrivacy Directive (Article 5(3))** together with the **GDPR**. Non-essential technologies may be used only with your **consent** — freely given, specific, informed and unambiguous, and **withdrawable at any time as easily as you gave it**. As explained above, **we currently use no such technologies**, so no consent is requested; if that changes, we will ask for your consent first.
+Cookies and similar technologies are governed by the **ePrivacy Directive (Article 5(3))** together with the **GDPR**. Non-essential technologies may be used only with your **consent** — freely given, specific, informed and unambiguous, and **withdrawable at any time as easily as you gave it**. As explained above, **we do not currently use any technology that we consider requires consent**, so none is requested; if that changes, we will ask for your consent first.
 
 Because we are established in Hungary, our lead supervisory authority is the **Hungarian National Authority for Data Protection and Freedom of Information (NAIH)** — [naih.hu](https://naih.hu). You also have the right to lodge a complaint with the authority in your own EU/EEA country.
 
 ### 8b. United Kingdom
 
-Cookies are governed by the **Privacy and Electronic Communications Regulations (PECR)** alongside the **UK GDPR**. As in the EU, non-essential technologies require consent (with a strictly-necessary exemption), and **we currently use none**. You can complain to the **Information Commissioner's Office (ICO)** — [ico.org.uk](https://ico.org.uk).
+Cookies are governed by the **Privacy and Electronic Communications Regulations (PECR)** alongside the **UK GDPR**. As in the EU, non-essential technologies require consent (with a strictly-necessary exemption), and **we consider that we currently use none that requires consent**. You can complain to the **Information Commissioner's Office (ICO)** — [ico.org.uk](https://ico.org.uk).
 
 ### 8c. California / United States
 
 We **do not sell** your personal information, and we **do not share** it for cross-context behavioural advertising, as those terms are used under the California Consumer Privacy Act (CCPA/CPRA). Because we neither sell nor share, no "Do Not Sell or Share My Personal Information" action is required of you today.
 
-Should we ever introduce any technology that constitutes a "sale" or "share," we will add a **"Do Not Sell or Share My Personal Information"** (or **"Your Privacy Choices"**) link as the law requires, and we will **honour browser opt-out preference signals**, including the **Global Privacy Control (GPC)**.
+Should we ever introduce any technology that constitutes a "sale" or "share," we will add the **"Do Not Sell or Share My Personal Information"** (or **"Your Privacy Choices"**) link and **honour browser opt-out preference signals** such as the **Global Privacy Control (GPC)**, in each case as required by law.
 
 ## 9. Changes to this Cookie Policy
 
