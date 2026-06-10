@@ -77,6 +77,8 @@ jobs:
           # All of this runs on the bare host (not in Docker), and the Hetzner
           # ubuntu-24.04 cloud image is minimal, so these must be installed here.
           sudo apt-get install -y ca-certificates curl git libjemalloc2 autoconf automake make
+          # toolchain for BINARYEN_BUILD_FROM_SOURCE (get-wasm-opt.sh)
+          sudo apt-get install -y cmake ninja-build g++
           sudo install -m 0755 -d /etc/apt/keyrings
           curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
             | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
@@ -115,6 +117,9 @@ jobs:
           # Lift the docker-compose dev-Mac resource caps (10 CPUs / 32G) so the
           # container compile actually uses the ccx53's 32 cores / 128 GB.
           export KICAD_DOCKER_CPUS="$(nproc)" KICAD_DOCKER_MEM=110G
+          # Self-built wasm-opt: official Linux tarball runs asyncify 4x slower
+          # (see get-wasm-opt.sh / run 27276830256). Identical output, sha256-verified.
+          export BINARYEN_BUILD_FROM_SOURCE=1
           echo "Build parallelism: compile -j $(nproc) on ${KICAD_DOCKER_CPUS} CPUs, BINARYEN_CORES=${CORES}"
           BINARYEN_CORES="${CORES}" ./docker/build.sh eeschema --build-deps -j "$(nproc)"
 

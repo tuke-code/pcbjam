@@ -39,6 +39,46 @@ echo "emsdk Binaryen not found at ${EMSDK_WASM_OPT}, falling back to standalone 
 # many-core Linux (docs/ci-build-slowness-findings.md). v130 output validated by
 # the full e2e suite locally (31/31) and Chromium-green on CI run 27226030304.
 BINARYEN_VERSION="${BINARYEN_VERSION:-130}"
+
+# BINARYEN_BUILD_FROM_SOURCE=1: compile wasm-opt ourselves instead of using the
+# official Linux release tarballs, which are badly built — measured on the
+# calculator fixture, identical output sha256: asyncify 4x faster on x86
+# (CI run 27276830256: 3:50 -> 0:58) and 13x on aarch64; -O2 equal. The macOS
+# tarball is well-built (self-build is ~12% SLOWER there), so this is only
+# worth enabling on Linux CI. Needs cmake, ninja, g++, git. ~5 min on 32 cores,
+# cached in build-wasm/tools after the first call.
+if [[ "${BINARYEN_BUILD_FROM_SOURCE:-0}" == "1" ]]; then
+    SELF_DIR="${PROJECT_ROOT}/build-wasm/tools/binaryen-${BINARYEN_VERSION}-selfbuilt"
+    SELF_WASM_OPT="${SELF_DIR}/bin/wasm-opt"
+    if [ ! -x "${SELF_WASM_OPT}" ]; then
+        SRC_DIR="${PROJECT_ROOT}/build-wasm/tools/binaryen-src-${BINARYEN_VERSION}"
+        BUILD_DIR="${PROJECT_ROOT}/build-wasm/tools/binaryen-build-${BINARYEN_VERSION}"
+        echo "Building Binaryen v${BINARYEN_VERSION} from source (one-time, ~5 min)..." >&2
+        if [ ! -d "${SRC_DIR}" ]; then
+            git clone -q --depth 1 --branch "version_${BINARYEN_VERSION}" \
+                --recurse-submodules --shallow-submodules \
+                https://github.com/WebAssembly/binaryen.git "${SRC_DIR}" >&2
+        fi
+        cmake -S "${SRC_DIR}" -B "${BUILD_DIR}" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_FLAGS="-Wno-maybe-uninitialized" \
+            -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON -DBUILD_TESTS=OFF >&2
+        ninja -C "${BUILD_DIR}" wasm-opt wasm-emscripten-finalize >&2
+        # wasm-opt links lib/libbinaryen.so via rpath $ORIGIN/../lib.
+        mkdir -p "${SELF_DIR}/bin" "${SELF_DIR}/lib"
+        cp "${BUILD_DIR}/bin/wasm-opt" "${BUILD_DIR}/bin/wasm-emscripten-finalize" "${SELF_DIR}/bin/"
+        cp "${BUILD_DIR}"/lib/libbinaryen.* "${SELF_DIR}/lib/" 2>/dev/null || true
+        echo "Self-built Binaryen installed to ${SELF_DIR}" >&2
+    fi
+    SELF_VERSION=$("${SELF_WASM_OPT}" --version 2>&1 | grep -o '[0-9]\+' | head -1)
+    if [ "${SELF_VERSION}" != "${BINARYEN_VERSION}" ]; then
+        echo "ERROR: self-built wasm-opt version mismatch (got ${SELF_VERSION}, expected ${BINARYEN_VERSION})" >&2
+        exit 1
+    fi
+    echo "Using self-built Binaryen v${BINARYEN_VERSION} (${SELF_WASM_OPT})" >&2
+    echo "${SELF_WASM_OPT}"
+    exit 0
+fi
 BINARYEN_DIR="${PROJECT_ROOT}/build-wasm/tools/binaryen-${BINARYEN_VERSION}"
 WASM_OPT="${BINARYEN_DIR}/bin/wasm-opt"
 

@@ -50,6 +50,39 @@ Correction: the "all 6 tools rc=0 in ~1h04m" local claim below was wrong — the
 actual log (`logs/build/20260609-191138.log`) spans 19:11→21:15 ≈ **2h04m**
 (`-j 3`, BINARYEN_CORES=6). The conclusion (v130 builds a working KiCad) stands.
 
+## 🆕 2026-06-10 EXPERIMENT DAY: orchestration verified on-box + the release-tarball discovery
+
+**Repro run 27273412419** (calculator,pl_editor, pipelined, no e2e, ccx53): all
+orchestration fixes confirmed on the real runner — deps 14 min (was 28 at the
+10-CPU cap), pipeline overlap engaged (calculator's wasm-opt ran during
+pl_editor's -j32 compile), whole step **32 min**.
+
+**The official Linux Binaryen release tarballs are badly built.** Measured on
+identical fixtures with sha256-identical outputs:
+- x86_64 (ccx53, run 27276830256, BINARYEN_CORES=16): asyncify 3:50 → **0:58
+  (4x)** with a stock gcc -O3+LTO self-build; -O2 equal (4:22 vs 4:20).
+- aarch64 (M-chip QEMU VM): asyncify **13x** faster self-built; clang -O3+LTO
+  also beats the tarball's -O2 by 3.5%. With a good binary, Linux ≈ macOS on
+  the same silicon (2:59 vs 2:53) — the "Linux is slow" gap was binary quality.
+- macOS arm64: the official tarball is *well*-built (self-build 12% slower) —
+  keep the tarball on dev Macs; self-build is a Linux-CI-only fix.
+→ Adopted: `BINARYEN_BUILD_FROM_SOURCE=1` in get-wasm-opt.sh (one-time ~5-min
+build per ephemeral runner, cached in build-wasm/tools, builds wasm-opt +
+wasm-emscripten-finalize). Good upstream-issue material (WebAssembly/binaryen).
+
+**Allocator: dead lever on v130** (VM sweep, calculator fixture): glibc 5:37,
+jemalloc 5:47, mimalloc 6:59. The jemalloc preload is harmless legacy now.
+
+**arm64 cloud runners: ruled out** (run 27273412432, ubicloud-standard-8-arm):
+calculator asyncify 10:42 / -O2 8:40 — Ampere burns ~1.6x the EPYC cycles and
+~2x the M-chip's on the Amdahl-bound wasm-opt. Per-core speed is what matters.
+
+**Projection for `all`** with everything adopted: setup 3 + deps 14 + pcbnew
+compile ~10 + binaryen build 5 + pcbnew asyncify ~6 + pcbnew -O2 ~60, other 5
+tools fully overlapped ≈ **~1h35-40m** (from 4h05m). Next levers beyond that:
+Lever E on pcbnew's -O2 (user ruled out -O1; pass-subset/removelist remain) and
+deps caching across runners.
+
 ## ✅ THE FIX (bench run 27210317273): upgrade Binaryen 121 → 130
 Measured on the cached 188 MB fixture, same `-O2`, identical output size:
 

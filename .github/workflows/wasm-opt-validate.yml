@@ -62,6 +62,8 @@ jobs:
             | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
           sudo apt-get update
           sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+          # toolchain for BINARYEN_BUILD_FROM_SOURCE (get-wasm-opt.sh)
+          sudo apt-get install -y cmake ninja-build g++
 
       - uses: actions/checkout@v4
         with: { submodules: recursive }
@@ -83,6 +85,10 @@ jobs:
           # two postprocesses run concurrently next to the compile.
           export KICAD_DOCKER_CPUS="$(nproc)" KICAD_DOCKER_MEM=110G
           export KICAD_PIPELINE=1 BINARYEN_CORES=16
+          # Self-built wasm-opt: the official x86_64-linux tarball runs asyncify
+          # 4x slower than a stock gcc -O3+LTO build, identical output
+          # (A/B on this runner, run 27276830256). ~5 min build, instantly repaid.
+          export BINARYEN_BUILD_FROM_SOURCE=1
           echo "Building ALL tools with BINARYEN_VERSION=${BINARYEN_VERSION}, compile -j $(nproc) on ${KICAD_DOCKER_CPUS} CPUs, pipelined wasm-opt"
           ./docker/build.sh all --build-deps -j "$(nproc)"
           echo "wasm-opt used:"; ./scripts/common/get-wasm-opt.sh --version 2>/dev/null || true
