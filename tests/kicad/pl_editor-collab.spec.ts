@@ -13,7 +13,7 @@ import { test, expect } from "./fixtures";
  *  2. two-tab — the full loop through the generic reconciler + Yjs + BroadcastChannel:
  *     a local text insert in tab A appears in tab B, and vice-versa.
  *
- * The collab reconciler/transport are bundled from web/apps/frontend/src/wasm/collab via
+ * The collab reconciler/transport are bundled from web/standalone/src/wasm/collab via
  * esbuild into apps/kicad/collab-bundle.js (rebuilt in beforeAll for freshness).
  */
 

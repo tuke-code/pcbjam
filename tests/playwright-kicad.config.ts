@@ -67,7 +67,10 @@ export default defineConfig({
   testDir: './kicad',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
+  // 1 local retry absorbs the known under-parallel-load flakes (same rationale
+  // as playwright.config.ts): the load-pcb post-load clipboard crash that can
+  // close the page on Firefox, and the calculator first-run-wizard timing race.
+  retries: process.env.CI ? 2 : 1,
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
   timeout: 180000,  // KiCad WASM needs more time to load (3 minutes)

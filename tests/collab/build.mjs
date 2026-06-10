@@ -14,6 +14,10 @@ await build({
   format: "iife",
   outfile: path.join(testsDir, "apps/kicad/collab-bundle.js"),
   nodePaths: [path.join(testsDir, "node_modules")],
+  // The e2e harness only exercises the BroadcastChannel transport; the server
+  // providers are reached via dynamic import() that never runs in tests, and
+  // their packages are only installed in the web/ pnpm workspace.
+  external: ["y-partyserver/provider", "@hocuspocus/provider"],
   logLevel: "info",
   target: "es2020",
 });
