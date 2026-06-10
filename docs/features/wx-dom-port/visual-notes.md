@@ -74,3 +74,24 @@ slider/statline/statbox wired:
   generic notebook/tabg canvas island doesn't paint label text/background
   (Phase 4 sweep); wxRadioBox "Options" group absent (composite control,
   Phase 3 B2); File/Help menubar absent (Phase 5).
+
+## Phase 3 B2+B3 (2026-06-10) — lists, spin, bitmaps, combo, checklist
+
+- **Working as native DOM:** choice `<select>` (color dropdown matches),
+  listbox `<select multiple>` with items, radiobox fieldset with radio
+  rows, spinbutton ▲▼ pair (drives the generic wxSpinCtrl composite),
+  bitmap buttons with real PNG icons (toolbar rows, art-provider icons,
+  shapes), statbmp `<img>` (dialog info icon restored), editable combobox
+  as `<input>`+`<datalist>` autocomplete, checklistbox checkbox rows.
+- **Bugs found by comparison/probing this round:**
+  11. "No image handler for type 15" warning dialog — test apps don't call
+      wxInitAllImageHandlers; lazy wxPNGHandler registration + wxLogNull
+      in wxDomBitmapToDataURL.
+  12. Bitmaps set but invisible: images load asynchronously, so the
+      measurement clone saw 0x0 — explicit img width/height from the wx
+      bitmap dimensions (+ flex-shrink:0 against squish).
+  13. wxDomSetIntValue would have written the selection INDEX into the
+      combobox text input — datalist branch maps selection↔option text.
+- **Polish items (open):** bitmap-button vertical centering; checklistbox
+  selection highlight (only checked state is wired); wxLB_SINGLE uses the
+  multiple select.
