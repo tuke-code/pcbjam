@@ -46,9 +46,8 @@ if [ "$DOM_BUILD" = "1" ]; then
     BUILD_DIR="$PROJECT_ROOT/build-wasm/wxwidgets-dom"
     # Native (non-universal) widget set: controls are real DOM elements.
     UNIVERSAL_FLAG=""
-    # Tooltips will be DOM title attributes (dom-phase-5); no wxToolTip yet.
-    # (Universal mode auto-disables them; native mode must do it explicitly.)
-    PORT_EXTRA_FLAGS="--disable-tooltips"
+    # Tooltips are DOM title attributes (wx/wasm/tooltip.h).
+    PORT_EXTRA_FLAGS=""
     WXLIB_PREFIX="libwx_wasmu"
 else
     BUILD_DIR="$PROJECT_ROOT/build-wasm/wxwidgets-universal"

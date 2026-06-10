@@ -113,3 +113,21 @@ slider/statline/statbox wired:
 - **Polish items (open):** generic wxSpinCtrl's text field collapses
   beside the spin pair; Event Log textarea lacks the univ scrollbar
   gutter (native scrollbars appear on overflow instead).
+
+## Phase 5 (2026-06-10) — menus, toolbars, tooltips
+
+- **Working as native DOM:** menubar strip (File/Edit/View/Tools/Help) with
+  popup menus — items, separators, check marks, submenu expansion, hover
+  highlight, outside-click dismissal, drop shadow (`menu-03-file-clicked`
+  is a close twin of the canvas popup); toolbar strips with PNG icon
+  buttons, toggle state, separators; tooltips as native `title`
+  attributes (wxUSE_TOOLTIPS re-enabled for the DOM build).
+- **Compatibility:** menu titles register as rendered elements
+  (`menuitem`/`menubar`), popup items as `menuitem`, tools as `tool` —
+  `clickMenuBarItem`/`findRenderedByType`-based specs pass unchanged
+  (menu.spec 7/7, toolbar.spec 6/6).
+- **Architecture note:** menu structures serialize C++→JS as JSON
+  (wxDomMenuSetStructure); activation routes back via
+  wxDomGetLastCommandId + wxDOM_EVENT_MENU → wxMenu::SendEvent. Toolbar
+  identical shape (wxDomToolbarSetTools / wxDOM_EVENT_TOOL →
+  wxToolBarBase::OnLeftClick with radio-group + veto handling).
