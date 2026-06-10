@@ -7,6 +7,49 @@
 > work, environment only moves it ±15%" conclusion was **wrong**. See
 > "Correction log" at the bottom for what changed and why.
 
+## 🆕 RUN #4 VERDICT (CI run 27226030304, 2026-06-09): v130 works; the remaining 4h is ORCHESTRATION
+Run #4 built **all 6 tools** on v130 on the ccx53 in **4h05m** (18:10→22:15 UTC).
+The v121 lock convoy is confirmed dead on-box: pcbnew's `-O2` ran with **system
+time 81 s / 1,495 voluntary ctx-switches** (v121: 114,075 s / 180 M). The 4h has
+three *new*, measured causes — all orchestration, none of them wasm-opt pathology:
+
+| Phase | Wall | Cause |
+|---|---|---|
+| setup | 4 min | fine |
+| deps + wx + pcbnew compile | 50 min (18:12→19:02) | **docker-compose capped the container at `cpus: '10'`** (dev-Mac default) on the 32-core box, with `-j 32` oversubscribed on top |
+| pcbnew asyncify 24 min + `-O2` 66 min | 90 min (19:02→20:32) | pcbnew is **338 MB** pre-O2 (eeschema: 188 MB). `-O2` = 13,993 s user @ **354% CPU** (BINARYEN_CORES=8) — *real* compute, Amdahl-capped at ~4 effective cores. This is the irreducible critical path. |
+| 5 remaining tools, strictly sequential | 103 min (20:32→22:15) | each tool's host-side wasm-opt **blocked** the next tool's container compile; wasm-opt uses ~4 of 32 cores while the container idles |
+
+eeschema's `-O2` was 10:38 — exactly the bench prediction, so the bench fixture
+generalizes. The Mac does pcbnew's asyncify+O2 in ~35 min @ 6 cores (arm64
+per-core advantage); the CI gap beyond that is orchestration, fixed by:
+1. **Lift the compose caps in CI** — `KICAD_DOCKER_CPUS`/`KICAD_DOCKER_MEM` env
+   interpolation in docker-compose.yml; CI sets nproc/110G (was 10/32G).
+2. **Pipeline host-side wasm-opt with the next tool's compile** —
+   `KICAD_PIPELINE=1` in docker/build.sh backgrounds dyncall+finalize+asyncify+O2
+   (max `KICAD_PIPELINE_JOBS=2` concurrent; pcbnew `-O2` peaks 33.6 GB RSS).
+   CI-only: a 32 GB dev Mac can't stack two postprocesses.
+3. **BINARYEN_CORES=16** in the validate workflow (bench: 32c=8:02 vs 8c≈10:00
+   on the eeschema fixture — mild win, and two concurrent postprocesses share
+   the box with the compile).
+4. **Binaryen default bumped 121→130** in get-wasm-opt.sh (validated: local
+   31/31 e2e; CI run #4 Chromium fully green).
+
+Expected: ~2h–2h20m (floor = deps + pcbnew compile + pcbnew's 90-min wasm-opt
+chain). Below that needs Lever E (shrink pcbnew's `-O2` work) and/or caching
+deps across runs (the ephemeral runner rebuilds deps+wx every time, ~30–50 min).
+
+**Run #4 e2e: 16 passed / 14 failed — ALL 14 Firefox-only**, across every tool
+("GL canvas has zero dimensions", wizard never appears), while Chromium passed
+everything. Headless-Firefox/WebGL environment problem on the Hetzner VM, not a
+v130 regression (locally Firefox passes; and `-O2` exists for V8's locals limit,
+i.e. Chromium is the engine that matters for the corruption check). Open issue,
+tracked separately from build time.
+
+Correction: the "all 6 tools rc=0 in ~1h04m" local claim below was wrong — the
+actual log (`logs/build/20260609-191138.log`) spans 19:11→21:15 ≈ **2h04m**
+(`-j 3`, BINARYEN_CORES=6). The conclusion (v130 builds a working KiCad) stands.
+
 ## ✅ THE FIX (bench run 27210317273): upgrade Binaryen 121 → 130
 Measured on the cached 188 MB fixture, same `-O2`, identical output size:
 
@@ -30,6 +73,28 @@ Binaryen/emsdk skew can corrupt asyncify metadata, so the real change is to buil
 run the **Chrome e2e suite** to confirm the app still loads. If e2e passes, bump the
 default in `get-wasm-opt.sh` (and check the emsdk-bundled Binaryen matches). If it hits
 "func is not a function", the emsdk Binaryen also needs bumping.
+
+## ✅ VALIDATED (local cold build, 2026-06-09): v130 builds a WORKING KiCad
+Full from-source cold build of **all 6 tools** with `BINARYEN_VERSION=130` (no
+artifacts/fixture reuse), then the KiCad e2e suite in Firefox + Chromium:
+
+- **Build:** `BINARYEN_VERSION=130 ./docker/build.sh all --build-deps -j 3` → all 6
+  tools rc=0 in ~1h04m. Each used the standalone **binaryen-130** wasm-opt for the
+  asyncify+`-O2` step (confirmed in logs). pcbnew `-O2` shrank it 338 MB → 187 MB, so
+  the optimizer ran correctly — **no asyncify-metadata corruption, no "func is not a
+  function".** Sizes: pcbnew 187M, eeschema 99M, symbol_editor 99M, pl_editor 53M,
+  gerbview 50M, calculator 38M.
+- **kicad e2e (`npm run test:kicad`): 31 passed / 1 skipped / 0 failed** across
+  Firefox + Chromium. Every tool renders and passes in-browser on v130.
+- `-j 3` (not the default `-j 10`) is required **locally only** — Docker Desktop's
+  15.6 GB VM OOM-kills the OpenCASCADE compile at `-j 10` on a fresh `--build-deps`.
+  The 128 GB Hetzner CI box has no such limit and uses `-j $(nproc)`.
+
+CI cross-check (run #4, validate workflow, `build all`) is the on-box confirmation.
+NB: run #3 (eeschema-only build) showed 26 e2e failures — those were the 5 **unbuilt**
+tools' missing wasm + Firefox flake, **not** a v130 regression: the identical eeschema
+Firefox tests that failed there (`eeschema-ui` Delete/Backspace, text-tool dialog) all
+**pass** in this full-build run. → Safe to bump the `get-wasm-opt.sh` default to 130.
 
 ## ⚠️ VERDICT (measured on-box, bench run 27197360957) — supersedes the memory theory
 **The `-O2` cost is ~90% FUTEX LOCK CONTENTION inside wasm-opt, not memory

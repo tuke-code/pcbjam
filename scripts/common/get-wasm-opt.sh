@@ -10,7 +10,7 @@
 # (e.g. v121+72 dev) and a standalone release (v121) corrupts asyncify
 # metadata, causing "func is not a function" errors at runtime.
 #
-# Falls back to downloading standalone Binaryen v121 if emsdk is not installed
+# Falls back to downloading standalone Binaryen v130 if emsdk is not installed
 # locally (e.g. CI environments that only use Docker).
 
 set -e
@@ -35,7 +35,10 @@ fi
 # --- Fallback: download standalone Binaryen (for CI or environments without local emsdk) ---
 echo "emsdk Binaryen not found at ${EMSDK_WASM_OPT}, falling back to standalone download..." >&2
 
-BINARYEN_VERSION="${BINARYEN_VERSION:-121}"
+# Default v130: v121 has a wasm::Type lock convoy that makes -O2 ~9x slower on
+# many-core Linux (docs/ci-build-slowness-findings.md). v130 output validated by
+# the full e2e suite locally (31/31) and Chromium-green on CI run 27226030304.
+BINARYEN_VERSION="${BINARYEN_VERSION:-130}"
 BINARYEN_DIR="${PROJECT_ROOT}/build-wasm/tools/binaryen-${BINARYEN_VERSION}"
 WASM_OPT="${BINARYEN_DIR}/bin/wasm-opt"
 

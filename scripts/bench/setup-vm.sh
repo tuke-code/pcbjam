@@ -8,7 +8,9 @@
 #   ssh       ssh into the running VM
 #   (none)    = prepare (if needed) then run
 #
-# Env overrides: VM_CORES (default 10), VM_MEM (default 20G), SSH_PORT (2222).
+# Env overrides: VM_CORES (default 10), VM_MEM (default 20G), SSH_PORT (2222),
+# VM_DISK (default +30G grow; use VM_DISK=80G for full Docker builds via
+# scripts/bench/vm-build.sh — emsdk image + deps + build tree need ~50 GB).
 
 set -euo pipefail
 
@@ -18,6 +20,7 @@ CLOUD_INIT="${SCRIPT_DIR}/cloud-init"
 
 VM_CORES="${VM_CORES:-10}"          # Mac has 10 cores; this caps the local sweep
 VM_MEM="${VM_MEM:-20G}"             # asyncify peaks ~10-15 GB; leave headroom for macOS
+VM_DISK="${VM_DISK:-30G}"           # disk grow beyond the ~3.5 GB cloud image
 SSH_PORT="${SSH_PORT:-2222}"
 IMG_URL="https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-arm64.img"
 
@@ -43,9 +46,9 @@ prepare() {
 
     # Fresh working disk each prepare: copy the cloud image and grow it (the
     # cloud image is ~3.5 GB; binaryen + fixture + scratch need more headroom).
-    echo "Creating working disk (${DISK}, +30G)..."
+    echo "Creating working disk (${DISK}, +${VM_DISK})..."
     cp "${BASE_IMG}" "${DISK}"
-    qemu-img resize "${DISK}" +30G
+    qemu-img resize "${DISK}" "+${VM_DISK}"
 
     # Writable UEFI vars store (copy of the template).
     cp "${FW_VARS_SRC}" "${FW_VARS}"

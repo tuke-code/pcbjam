@@ -75,7 +75,15 @@ jobs:
       # symbol_editor gerbview, built in sequence.
       - name: Build all KiCad tools WASM with Binaryen ${{ env.BINARYEN_VERSION }}
         run: |
-          echo "Building ALL tools with BINARYEN_VERSION=${BINARYEN_VERSION}, compile -j $(nproc)"
+          # Lift the docker-compose dev-Mac caps (10 CPUs / 32G): run 27226030304
+          # compiled on 10 of 32 cores with -j 32. Pipeline the host-side
+          # asyncify+-O2 with the next tool's container compile (KICAD_PIPELINE=1;
+          # wasm-opt only reaches ~350% CPU, the container is idle meanwhile).
+          # BINARYEN_CORES=16: -O2 is Amdahl-capped ~4 effective cores, and up to
+          # two postprocesses run concurrently next to the compile.
+          export KICAD_DOCKER_CPUS="$(nproc)" KICAD_DOCKER_MEM=110G
+          export KICAD_PIPELINE=1 BINARYEN_CORES=16
+          echo "Building ALL tools with BINARYEN_VERSION=${BINARYEN_VERSION}, compile -j $(nproc) on ${KICAD_DOCKER_CPUS} CPUs, pipelined wasm-opt"
           ./docker/build.sh all --build-deps -j "$(nproc)"
           echo "wasm-opt used:"; ./scripts/common/get-wasm-opt.sh --version 2>/dev/null || true
           ls -lh output/*.wasm

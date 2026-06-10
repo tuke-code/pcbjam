@@ -82,3 +82,23 @@ glibc, far lower with jemalloc). Override the sweep with e.g. `CORES="8 10"`.
   confirmation) to choose CI's `BINARYEN_CORES`.
 
 Artifacts (`bench/*.wasm`, `bench/results*`, `scripts/bench/vm/`) are gitignored.
+
+## 5. Full Docker build in the VM (CI dry-run) — vm-build.sh
+
+Verifies CI orchestration changes (docker/build.sh, compose limits, pipelining)
+on Linux+Docker without burning a Hetzner slot. The guest is aarch64/HVF:
+a *functional* CI proxy, not an x86 performance proxy.
+
+```bash
+# one-time: bigger disk + Docker-enabled cloud-init, then boot
+VM_DISK=80G ./scripts/bench/setup-vm.sh prepare
+./scripts/bench/setup-vm.sh run            # leave running in its own terminal
+
+# from the Mac: cold calculator build inside the guest (deps + docker image)
+./scripts/bench/vm-build.sh                # = calculator --build-deps
+
+# pipeline smoke test (deps already in the guest volume from the previous run)
+KICAD_PIPELINE=1 ./scripts/bench/vm-build.sh calculator,pl_editor
+```
+
+Prints the guest build wall time at the end; build logs stream through ssh.

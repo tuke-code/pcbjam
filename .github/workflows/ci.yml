@@ -70,7 +70,13 @@ jobs:
           # passes (scripts/common/apply-asyncify.sh) to avoid glibc malloc
           # arena-lock contention, which otherwise burns ~half of wasm-opt's CPU
           # in futex lock-spin under many threads.
-          sudo apt-get install -y ca-certificates curl git libjemalloc2
+          # autoconf/automake: build-wxuniversal-wasm.sh regenerates wxWidgets'
+          # ./configure from configure.in on a fresh checkout (git doesn't
+          # preserve mtimes, so configure.in looks newer). make: the host-side
+          # wxWidgets + wasm-test builds drive emconfigure/emmake/make directly.
+          # All of this runs on the bare host (not in Docker), and the Hetzner
+          # ubuntu-24.04 cloud image is minimal, so these must be installed here.
+          sudo apt-get install -y ca-certificates curl git libjemalloc2 autoconf automake make
           sudo install -m 0755 -d /etc/apt/keyrings
           curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
             | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
@@ -106,7 +112,10 @@ jobs:
           BINARYEN_CORES_INPUT: ${{ github.event.inputs.binaryen_cores }}
         run: |
           CORES="${BINARYEN_CORES_INPUT:-$(nproc)}"
-          echo "Build parallelism: compile -j $(nproc), BINARYEN_CORES=${CORES}"
+          # Lift the docker-compose dev-Mac resource caps (10 CPUs / 32G) so the
+          # container compile actually uses the ccx53's 32 cores / 128 GB.
+          export KICAD_DOCKER_CPUS="$(nproc)" KICAD_DOCKER_MEM=110G
+          echo "Build parallelism: compile -j $(nproc) on ${KICAD_DOCKER_CPUS} CPUs, BINARYEN_CORES=${CORES}"
           BINARYEN_CORES="${CORES}" ./docker/build.sh eeschema --build-deps -j "$(nproc)"
 
       # 2) Host-side wxWidgets build that produces the wxWidgets test apps consumed

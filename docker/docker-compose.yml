@@ -5,12 +5,15 @@ services:
       dockerfile: docker/Dockerfile
     # Container name is auto-generated with project prefix (set in build.sh)
 
-    # Resource limits (adjust based on your machine)
+    # Resource limits. Defaults are sized for a dev Mac (Docker Desktop VM).
+    # CI overrides via env: the 32-core Hetzner runner sets KICAD_DOCKER_CPUS=$(nproc)
+    # and KICAD_DOCKER_MEM=110G — with the 10-CPU default, run 27226030304 compiled
+    # everything on 10 of 32 cores while passing -j 32 (3x oversubscribed).
     deploy:
       resources:
         limits:
-          cpus: '10'
-          memory: 32G
+          cpus: '${KICAD_DOCKER_CPUS:-10}'
+          memory: ${KICAD_DOCKER_MEM:-32G}
 
     volumes:
       # Host source mounted read-only at staging location
