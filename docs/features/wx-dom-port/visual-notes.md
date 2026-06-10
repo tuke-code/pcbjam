@@ -95,3 +95,21 @@ slider/statline/statbox wired:
 - **Polish items (open):** bitmap-button vertical centering; checklistbox
   selection highlight (only checked state is wired); wxLB_SINGLE uses the
   multiple select.
+
+## Phase 4 (2026-06-10) — canvas-island sweep
+
+- **Near-pixel twins:** AUI (dock panels, title glyphs, tints), calendar
+  (month grid, weekend/selection colours, month select + year spinner),
+  listctrl (virtual 10k rows, striped, headers), grid tab, dialogs.
+- **Upstream-grade generic-notebook bugs found & fixed:**
+  14. wxTabView::Init never initialized its background pen/brush (the
+      init line is commented out upstream) — tabs drew as black boxes.
+      Fixed in src/generic/tabg.cpp with wxSYS_COLOUR_BTNFACE.
+  15. wxNotebook::InsertPage's ChangePage(-1, 0) fallback never synced the
+      tab view's m_tabSelection, so the FIRST tab switch reported old
+      selection -1 and never hid the initial page — its DOM controls
+      ghosted over every later page. Fixed in src/generic/notebook.cpp by
+      SetTabSelection(..., false) after the fallback.
+- **Polish items (open):** generic wxSpinCtrl's text field collapses
+  beside the spin pair; Event Log textarea lacks the univ scrollbar
+  gutter (native scrollbars appear on overflow instead).
