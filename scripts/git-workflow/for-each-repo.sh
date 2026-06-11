@@ -1,5 +1,5 @@
 #!/bin/bash
-# Run a git command in each of the 3 repos. Echoes before each run.
+# Run a git command in each repo of the 4-repo tree. Echoes before each run.
 # Usage: ./for-each-repo.sh <git-subcommand-and-args>
 #   e.g. ./for-each-repo.sh status --short
 #        ./for-each-repo.sh fetch origin

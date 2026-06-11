@@ -1,13 +1,13 @@
 ---
 name: git-feature-sync
-description: Rebase the current feature branch onto main in all 3 repos (root + kicad + wxwidgets). Naturally re-runnable - after the user resolves a conflict manually and runs `git rebase --continue`, re-invoke the skill and it picks up where it stopped. Usage - "/git-feature-sync".
+description: Rebase the current feature branch onto main in all 4 repos (root + kicad + wxwidgets + pcbjam-shared). Naturally re-runnable - after the user resolves a conflict manually and runs `git rebase --continue`, re-invoke the skill and it picks up where it stopped. Usage - "/git-feature-sync".
 ---
 
 # git-feature-sync
 
-Rebase the current feature branch onto each repo's main, across root, kicad, and wxwidgets.
+Rebase the current feature branch onto each repo's main, across root, kicad, wxwidgets, and pcbjam-shared.
 
-Per-repo main mapping is in `scripts/git-workflow/repos.sh` (root=`main`, subs=`wasm-port`).
+Per-repo main mapping is in `scripts/git-workflow/repos.sh` (root=`main`, kicad/wxwidgets=`wasm-port`, pcbjam-shared=`main`).
 
 ## How "resume after conflict" works
 
@@ -30,15 +30,15 @@ So after the user resolves a conflict manually + runs `git rebase --continue` in
      - If branch is empty (detached), prose-ask: "wxwidgets is at detached HEAD `<sha>`. Want me to `git -C wxwidgets checkout <feature-branch>` first? (y/N)". On yes, run it (auto-allowed). On no, STOP.
      - If branch is some other name, STOP and tell the user which repo is on which branch. Don't auto-switch.
 
-4. **Determine work plan.** For each repo, mark "needs rebase" if `up_to_date_with_main: false`. If all three are up-to-date, print "all 3 repos already up to date with their mains" and stop cleanly.
+4. **Determine work plan.** For each repo, mark "needs rebase" if `up_to_date_with_main: false`. If all repos are up-to-date, print "all repos already up to date with their mains" and stop cleanly.
 
-5. **Execute per repo** in order [root, kicad, wxwidgets]. Skip any repo with `up_to_date_with_main: true`. For each repo that needs rebase:
+5. **Execute per repo** in order [root, kicad, wxwidgets, pcbjam-shared]. Skip any repo with `up_to_date_with_main: true`. For each repo that needs rebase:
    - Prose-announce: "About to rebase <repo> (`<feature>`) onto `origin/<main>` — proceed?"
    - `git -C <path> rebase origin/<main>` (origins were already fetched in step 1; this hits the `ask` permission — user confirms again at tool layer)
    - If the rebase command exits non-zero (conflict), STOP and emit the handoff message (see below).
    - On success, continue to the next repo.
 
-6. **After all 3 succeed:** check `git -C <root> status --short` for staged or unstaged changes to the `kicad` / `wxwidgets` submodule entries. If present, suggest:
+6. **After all repos succeed:** check `git -C <root> status --short` for staged or unstaged changes to the `kicad` / `wxwidgets` / `web/pcbjam-shared` submodule entries. If present, suggest:
    > Submodule SHAs changed during rebase. When ready: `/git-feature-commit "sync: bump submodule pointers after rebase"`.
    Do NOT auto-commit.
 

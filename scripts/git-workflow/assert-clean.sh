@@ -1,5 +1,5 @@
 #!/bin/bash
-# Exit 0 if all 3 repos are clean (no staged, no unstaged, no untracked files).
+# Exit 0 if all repos are clean (no staged, no unstaged, no untracked files).
 # Exit 1 with a readable message listing the dirty repos otherwise.
 # Untracked files count as dirty - this is intentional: starting a new feature
 # while you have uncommitted new files is almost always a mistake.
@@ -20,7 +20,7 @@ for repo in "${REPOS[@]}"; do
 done
 
 if [ ${#dirty[@]} -eq 0 ]; then
-    echo "All 3 repos clean."
+    echo "All ${#REPOS[@]} repos clean."
     exit 0
 fi
 
