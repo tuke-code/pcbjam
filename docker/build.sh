@@ -179,11 +179,11 @@ compile_app() {
     echo "=== Building ${app} (${index}/${total}) ==="
 
     # WX_PORT=dom builds against the DOM wxWidgets into separate build and
-    # output trees (kicad-<app>-dom, output-dom/).
-    local out_dir="output"
+    # output trees (kicad-<app>-dom, output/dom/).
+    local out_dir
+    out_dir=$(out_dir_for)
     local kicad_build="kicad-${app}"
     if [[ "${WX_PORT:-}" == "dom" ]]; then
-        out_dir="output/dom"
         kicad_build="kicad-${app}-dom"
     fi
 
@@ -215,12 +215,24 @@ compile_app() {
         chown -R "$(id -u):$(id -g)" /workspace/output || true
 }
 
+# Output dir for the current flavor: the DOM port (WX_PORT=dom) keeps its
+# bundles in output/dom/ so the canvas bundles are never clobbered.
+out_dir_for() {
+    if [[ "${WX_PORT:-}" == "dom" ]]; then
+        echo "output/dom"
+    else
+        echo "output"
+    fi
+}
+
 # Phase 2 of one app: host-side post-processing (dyncall shims, finalize,
 # asyncify + -O2). Pure host work on output/${app}.* — independent of the
 # container, which is what makes it safe to run in the background while the
 # next app compiles.
 postprocess_app() {
     local app="$1"
+    local out_dir
+    out_dir=$(out_dir_for)
 
     # Inject dynCall shims (fixes "dynCall_* is not defined" errors in Emscripten 4.x)
     kw_stage dyncall-shims
