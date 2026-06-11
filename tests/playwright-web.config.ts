@@ -1,21 +1,20 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * E2E config for the React WEB APP (apps/frontend at :3048 + apps/server :3050),
- * as opposed to playwright-kicad.config.ts which drives the standalone tool
- * harness HTMLs under tests/apps/kicad.
+ * E2E config for the React WEB APP (web/standalone editor at :3048 + the
+ * @pcbjam/backend-example reference backend at :3060), as opposed to
+ * playwright-kicad.config.ts which drives the standalone tool harness HTMLs
+ * under tests/apps/kicad.
  *
  * These tests exercise the real web open paths: navigate to /p/<project>/<tool>/<file>,
  * let WasmTool boot the tool in-document (boot.ts), drive the project into MEMFS
  * and auto-open the file (open-flow.ts via Module.kicadOpenFile), and assert the
  * editor loaded wizard-free.
  *
- * PREREQUISITE: the web stack must be running. From web/:
- *   pnpm db:up && pnpm db:migrate && pnpm dev
- * (db:migrate seeds the "demo" project; global-setup-web.ts re-seeds it through
- * the API if missing.) The webServer block below reuses an already-running stack
- * and, if absent, best-effort starts `turbo dev` — but that still needs Postgres
- * up (pnpm db:up) and migrated first.
+ * The backend serves a single project off the local filesystem — no DB, no
+ * seeding. The webServer block reuses an already-running stack (`pnpm dev` from
+ * web/) or cold-starts it with the env below, pointing PROJECT_DIR at the
+ * committed tests/fixtures/demo project (slug "demo").
  *
  * Firefox is the reliable headless target on ARM Mac (Chromium SwiftShader WebGL
  * bug); use --project=chromium (system Chrome) for headed debugging.
@@ -54,11 +53,18 @@ export default defineConfig({
 
   webServer: {
     // Best-effort: reuse the dev stack if it's already up (the common case);
-    // otherwise start turbo dev. Postgres (pnpm db:up) + db:migrate must already
-    // have run — turbo dev does not provision the database.
+    // otherwise cold-start turbo dev with the env a fresh checkout needs
+    // (turbo passes these through, so no hand-copied .env files required).
     command: 'pnpm --dir ../web dev',
     url: FRONTEND_URL,
     reuseExistingServer: true,
     timeout: 120000,
+    env: {
+      ...process.env,
+      // resolved against web/backend/ (the backend's cwd)
+      PROJECT_DIR: '../../tests/fixtures/demo',
+      VITE_API_BASE_URL: 'http://localhost:3060',
+      CORS_ORIGIN: 'http://localhost:3048',
+    },
   },
 });

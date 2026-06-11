@@ -44,6 +44,7 @@ declare global {
     Module?: any;
     FS?: EmscriptenFS;
     wxElementRegistry?: WxElementRegistry;
+    kicadWebOpenTool?: (toolName: string, fileName: string) => boolean;
   }
 
   // The browsing-context window the tool runs in — now the top-level `window`

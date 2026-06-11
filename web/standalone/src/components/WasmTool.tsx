@@ -1,14 +1,171 @@
 import * as React from "react";
-import { collabRoomId, type Tool } from "@pcbjam/shared";
+import {
+  collabRoomId,
+  EXTENSION_TOOL,
+  FILELESS_TOOLS,
+  toolSchema,
+  type Tool,
+} from "@pcbjam/shared";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { WASM_ASSET_BASE_URL, yjsProviderConfig } from "@/lib/config";
 import { bootKicadTool } from "@/wasm/boot";
+import { memfsProjectDir } from "@/wasm/constants";
 import { driveProjectIntoTool, type ToolFile } from "@/wasm/kicad-runner";
 import type { CollabWindow } from "@/wasm/collab";
 import { clog, cwarn } from "@/wasm/collab/debug";
 
 // Tools with a working collab bridge (kicadCollabSnapshot/Apply embind exports).
 const COLLAB_TOOLS = new Set<Tool>(["pl_editor", "eeschema", "pcbnew"]);
+const LEGACY_EXTENSION_TOOL: Record<string, Tool> = {
+  ".sch": "eeschema",
+  ".brd": "pcbnew",
+};
+
+let activeToolNavigationHook:
+  | ((toolName: string, fileName: string) => boolean)
+  | undefined;
+
+const toolNavigationDispatcher = (toolName: string, fileName: string) =>
+  activeToolNavigationHook?.(toolName, fileName) ?? false;
+
+function ensureToolNavigationDispatcher(win: ToolWindow): boolean {
+  if (win.kicadWebOpenTool === toolNavigationDispatcher) return true;
+
+  try {
+    Object.defineProperty(win, "kicadWebOpenTool", {
+      configurable: true,
+      value: toolNavigationDispatcher,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+if (typeof window !== "undefined") {
+  ensureToolNavigationDispatcher(window as ToolWindow);
+}
+
+function normalizeToolName(rawName: string): Tool | null {
+  const basename = rawName.replace(/\\/g, "/").split("/").pop() ?? rawName;
+  const withoutExe = basename.replace(/\.exe$/i, "");
+  const toolName = withoutExe === "pcb_calculator" ? "calculator" : withoutExe;
+  const parsed = toolSchema.safeParse(toolName);
+  return parsed.success ? parsed.data : null;
+}
+
+function relativeProjectPath(slug: string, path: string): string | undefined {
+  if (!path) return undefined;
+
+  const normalized = path.replace(/\\/g, "/");
+  const prefix = `${memfsProjectDir(slug)}/`;
+
+  if (normalized.startsWith(prefix)) return normalized.slice(prefix.length);
+
+  const marker = `/projects/${slug}/`;
+  const markerIndex = normalized.indexOf(marker);
+
+  if (markerIndex >= 0) return normalized.slice(markerIndex + marker.length);
+
+  return normalized.startsWith("/") ? undefined : normalized;
+}
+
+function fileStem(path: string): string {
+  const name = path.replace(/\\/g, "/").split("/").pop() ?? path;
+  return name.replace(/\.[^.]+$/, "");
+}
+
+function fileTool(path: string): Tool | undefined {
+  const lower = path.toLowerCase();
+
+  for (const [extension, mappedTool] of Object.entries({
+    ...EXTENSION_TOOL,
+    ...LEGACY_EXTENSION_TOOL,
+  })) {
+    if (lower.endsWith(extension)) return mappedTool;
+  }
+
+  return undefined;
+}
+
+function chooseToolFile(
+  files: ToolFile[],
+  nextTool: Tool,
+  requestedPath?: string,
+  currentPath?: string,
+): string | undefined {
+  if (requestedPath && files.some((file) => file.path === requestedPath)) {
+    return requestedPath;
+  }
+
+  const candidates = files.filter((file) => fileTool(file.path) === nextTool);
+  const preferredStem = requestedPath
+    ? fileStem(requestedPath)
+    : currentPath
+      ? fileStem(currentPath)
+      : undefined;
+
+  if (preferredStem) {
+    const matchingStem = candidates.find(
+      (file) => fileStem(file.path) === preferredStem,
+    );
+    if (matchingStem) return matchingStem.path;
+  }
+
+  return candidates[0]?.path;
+}
+
+function encodeRelPath(path: string): string {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+
+function installToolNavigationHook(
+  win: ToolWindow,
+  opts: {
+    slug: string;
+    files: ToolFile[];
+    targetPath?: string;
+    log: (m: string) => void;
+  },
+): () => void {
+  const hook = (rawToolName: string, rawFileName: string): boolean => {
+    const nextTool = normalizeToolName(rawToolName);
+
+    if (!nextTool) {
+      opts.log(`[nav] unsupported KiCad tool: ${rawToolName}`);
+      return false;
+    }
+
+    const requestedPath = relativeProjectPath(opts.slug, rawFileName);
+    const nextPath = FILELESS_TOOLS.has(nextTool)
+      ? undefined
+      : chooseToolFile(opts.files, nextTool, requestedPath, opts.targetPath);
+
+    if (!FILELESS_TOOLS.has(nextTool) && !nextPath) {
+      opts.log(`[nav] no project file found for ${nextTool}: ${rawFileName}`);
+      return false;
+    }
+
+    const url =
+      `/p/${encodeURIComponent(opts.slug)}/${nextTool}` +
+      (nextPath ? `/${encodeRelPath(nextPath)}` : "") +
+      win.location.search;
+
+    opts.log(`[nav] ${rawToolName} ${rawFileName || "(no file)"} -> ${url}`);
+    win.location.assign(url);
+    return true;
+  };
+
+  if (!ensureToolNavigationDispatcher(win)) {
+    opts.log("[nav] unable to install KiCad tool navigation hook");
+  }
+
+  activeToolNavigationHook = hook;
+
+  return () => {
+    if (activeToolNavigationHook === hook) activeToolNavigationHook = undefined;
+  };
+}
 
 /**
  * Collaborative editing (features/yjs-bridge), ON BY DEFAULT for any tool that has the
@@ -104,6 +261,21 @@ export function WasmTool({
   const [showLog, setShowLog] = React.useState(false);
 
   const base = (assetBaseUrl ?? WASM_ASSET_BASE_URL).replace(/\/$/, "");
+  const append = React.useCallback(
+    (msg: string) => setLogs((prev) => [...prev.slice(-800), msg]),
+    [],
+  );
+
+  React.useEffect(() => {
+    const removeNavigationHook = installToolNavigationHook(window as ToolWindow, {
+      slug,
+      files,
+      targetPath,
+      log: append,
+    });
+
+    return () => removeNavigationHook();
+  }, [slug, files, targetPath, append]);
 
   React.useEffect(() => {
     // Guard re-entry: the WASM runtime is process-global and must boot exactly
@@ -117,8 +289,6 @@ export function WasmTool({
       return;
     }
 
-    const append = (msg: string) =>
-      setLogs((prev) => [...prev.slice(-800), msg]);
     const win = window as ToolWindow;
 
     void (async () => {
@@ -142,7 +312,7 @@ export function WasmTool({
     // Boot is one-shot per mount; deps intentionally exclude files/targetPath so
     // they don't retrigger a (rejected) second boot.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tool, slug, base]);
+  }, [tool, slug, base, append]);
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-[#1a1a2e]">
