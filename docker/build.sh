@@ -183,7 +183,7 @@ compile_app() {
     local out_dir="output"
     local kicad_build="kicad-${app}"
     if [[ "${WX_PORT:-}" == "dom" ]]; then
-        out_dir="output-dom"
+        out_dir="output/dom"
         kicad_build="kicad-${app}-dom"
     fi
 

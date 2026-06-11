@@ -15,7 +15,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # WX_PORT=dom into output-dom/) from tests/apps-dom/kicad.
 if [ "${WX_PORT:-}" = "dom" ]; then
     KICAD_TEST="$PROJECT_ROOT/tests/apps-dom/kicad"
-    OUTPUT_DIR="$PROJECT_ROOT/output-dom"
+    OUTPUT_DIR="$PROJECT_ROOT/output/dom"
     KICAD_BUILD_SUFFIX="-dom"
 else
     KICAD_TEST="$PROJECT_ROOT/tests/apps/kicad"

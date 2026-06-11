@@ -396,6 +396,20 @@ emcmake cmake "${KICAD_DIR}" \
     -DHAVE_STRCASECMP=1 \
     -DHAVE_STRNCASECMP=1
 
+# Step 7.05: Generated lexer headers (pcb_lexer.h & co) are emitted by
+# make_lexer custom commands attached to the consuming library target. The
+# embind compile below includes them via -I${KICAD_BUILD}/common, so on a
+# FRESH build tree that library must build first (step 8 depends on it
+# anyway — this only reorders work, it doesn't add any).
+case "${APP_NAME}" in
+    pcbnew)
+        if [ ! -f "${KICAD_BUILD}/common/pcb_lexer.h" ]; then
+            log_info "Generating lexers (building pcbcommon before embind)..."
+            ( cd "${KICAD_BUILD}" && emmake make -j${JOBS} pcbcommon )
+        fi
+        ;;
+esac
+
 # Step 7.1: Compile Embind bindings (after CMake so config.h exists)
 # Exposes KiCad objects to JavaScript for future Pyodide integration.
 # When no app-specific source exists, build an empty object so the linker line
