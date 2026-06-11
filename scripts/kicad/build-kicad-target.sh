@@ -392,6 +392,15 @@ emcmake cmake "${KICAD_DIR}" \
 # When no app-specific source exists, build an empty object so the linker line
 # referencing ${APP_NAME}_embind.o doesn't break.
 if [ -f "${EMBIND_SRC}" ]; then
+    # pcbnew's embind TU transitively includes generated lexer headers
+    # (kicad_clipboard.h → pcb_io_kicad_sexpr_parser.h → pcb_lexer.h, emitted into
+    # ${KICAD_BUILD}/common by make_lexer custom commands on the pcbcommon target).
+    # On a fresh build dir they don't exist until make runs — build pcbcommon first.
+    # No wasted work: the app target depends on pcbcommon anyway; incremental no-op.
+    if [ "${APP_NAME}" = "pcbnew" ]; then
+        log_info "Pre-building pcbcommon so generated lexer headers exist for the embind compile..."
+        emmake make -j${JOBS} pcbcommon
+    fi
     log_info "Compiling Embind bindings (${APP_NAME})..."
     # Use the same includes and flags that KiCad uses
     KICAD_INCLUDES="-I${KICAD_BUILD} -I${KICAD_DIR}/include -I${KICAD_DIR}/${KICAD_SUBDIR} -I${KICAD_DIR}/common"
