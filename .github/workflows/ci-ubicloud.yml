@@ -81,6 +81,12 @@ jobs:
       - name: Build wxWidgets test apps
         run: ./scripts/build-wasm-test.sh
 
+      # gal_webgl_test.{js,wasm} are gitignored build artifacts with their own
+      # build script — without this, all 29 gal-webgl scenarios time out on
+      # galTest.isReady() because the page 404s the wasm (run 27359020746).
+      - name: Build GAL WebGL test app
+        run: ./scripts/build-gal-webgl-test.sh
+
       - name: Install test deps
         working-directory: tests
         run: npm ci
