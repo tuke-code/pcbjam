@@ -3,7 +3,7 @@
 # asyncify and friends on the host.
 #
 # Usage:
-#   ./docker/build.sh <app> [args...]
+#   ./docker/build.sh <app>[,<app>...] [args...]
 #
 # Apps:
 #   pcbnew         PCB editor
@@ -12,14 +12,26 @@
 #   pl_editor      drawing-sheet editor
 #   symbol_editor  symbol editor (eeschema kiface, FRAME_SCH_SYMBOL_EDITOR)
 #   gerbview       Gerber viewer
-#   all            build all of the above sequentially
+#   all            build all of the above
+#
+# A comma-separated list builds just those apps in order (e.g.
+# "calculator,pl_editor" — used to exercise the multi-app pipeline cheaply).
 #
 # Any extra args are forwarded to scripts/kicad/build-<app>.sh (e.g. -j 8,
 # --full, --release, --diag=gal).
 #
 # The build is split into two phases:
 # 1. Docker: Compile KiCad to WASM (without asyncify)
-# 2. Host: Apply asyncify transformation (uses Binaryen v121)
+# 2. Host: dyncall shims + finalize + asyncify + -O2 (Binaryen via get-wasm-opt.sh)
+#
+# KICAD_PIPELINE=1 (multi-app builds only): run phase 2 of each app in the
+# background while the next app compiles in the container. wasm-opt is
+# Amdahl-capped at ~4 effective cores, so on a many-core CI box the container
+# would otherwise sit idle for the 1-2h of host-side wasm-opt (run 27226030304:
+# 103 min of the 4h was tools serialized behind each other's wasm-opt). At most
+# KICAD_PIPELINE_JOBS (default 2) postprocesses run concurrently — pcbnew's -O2
+# peaks ~34 GB RSS, so 2 fits the 128 GB CI box but NOT a dev Mac: leave
+# KICAD_PIPELINE unset locally.
 #
 # Binaryen is downloaded automatically - no prerequisites needed.
 
@@ -52,7 +64,7 @@ cd "$(dirname "$0")/.."
 VALID_APPS="pcbnew | eeschema | calculator | pl_editor | symbol_editor | gerbview | all"
 
 usage() {
-    echo "Usage: ./docker/build.sh <app> [args...]" >&2
+    echo "Usage: ./docker/build.sh <app>[,<app>...] [args...]" >&2
     echo "  <app>: ${VALID_APPS}" >&2
     echo "  args:  forwarded to scripts/kicad/build-<app>.sh (e.g. -j 8, --release)" >&2
 }
@@ -71,14 +83,24 @@ fi
 APP_NAME="$1"
 shift
 
-case "$APP_NAME" in
-    pcbnew|eeschema|calculator|pl_editor|symbol_editor|gerbview|all) ;;
-    *)
-        echo "Error: unknown app '$APP_NAME' (expected: ${VALID_APPS})" >&2
-        usage
-        exit 1
-        ;;
-esac
+# Expand the app argument into APPS[]: "all", a single app, or a comma list.
+# pcbnew first in "all" — its 90-min host-side wasm-opt chain is the critical
+# path, so it must start as early as possible (especially with KICAD_PIPELINE=1).
+if [[ "$APP_NAME" == "all" ]]; then
+    APPS=(pcbnew eeschema calculator pl_editor symbol_editor gerbview)
+else
+    IFS=',' read -r -a APPS <<< "$APP_NAME"
+    for app in "${APPS[@]}"; do
+        case "$app" in
+            pcbnew|eeschema|calculator|pl_editor|symbol_editor|gerbview) ;;
+            *)
+                echo "Error: unknown app '$app' (expected: ${VALID_APPS})" >&2
+                usage
+                exit 1
+                ;;
+        esac
+    done
+fi
 
 # Use branch name as Docker Compose project name for isolated containers/volumes.
 # Honor a pre-set COMPOSE_PROJECT_NAME so a build can target an existing volume
@@ -144,9 +166,9 @@ kicad_subdir_for() {
     esac
 }
 
-# Build one app: compile in container, then run host-side post-processing.
+# Phase 1 of one app: compile in the container and copy the output to ./output.
 # Args: <app> [index] [total] — index/total drive the monitor's app counter.
-build_app() {
+compile_app() {
     local app="$1"
     local index="${2:-1}"
     local total="${3:-1}"
@@ -174,6 +196,21 @@ build_app() {
             cp /workspace/build-wasm/kicad-${app}/resources/images.tar.gz /workspace/output/ 2>/dev/null || true; \
             cp /workspace/build-wasm/wxwidgets/build/wasm/wx.js /workspace/output/ 2>/dev/null || true"
 
+    # The container runs as root, so files in the bind-mounted ./output land
+    # root-owned on the host. macOS Docker Desktop remaps ownership to the host
+    # user, but on a Linux CI runner the following host-side steps (dyncall,
+    # finalize, asyncify) can't write into ./output. Hand ownership back.
+    docker compose -f docker/docker-compose.yml exec kicad-wasm-builder \
+        chown -R "$(id -u):$(id -g)" /workspace/output || true
+}
+
+# Phase 2 of one app: host-side post-processing (dyncall shims, finalize,
+# asyncify + -O2). Pure host work on output/${app}.* — independent of the
+# container, which is what makes it safe to run in the background while the
+# next app compiles.
+postprocess_app() {
+    local app="$1"
+
     # Inject dynCall shims (fixes "dynCall_* is not defined" errors in Emscripten 4.x)
     kw_stage dyncall-shims
     ./scripts/common/inject-dyncall-shims.sh "output/${app}.js"
@@ -187,15 +224,88 @@ build_app() {
     ./scripts/common/apply-asyncify.sh "output/${app}.wasm" "output/${app}.wasm"
 }
 
-if [[ "${APP_NAME}" == "all" ]]; then
-    build_app pcbnew 1 6
-    build_app eeschema 2 6
-    build_app calculator 3 6
-    build_app pl_editor 4 6
-    build_app symbol_editor 5 6
-    build_app gerbview 6 6
+# --- Pipelined driver state (KICAD_PIPELINE=1) ---
+# One background postprocess per app; logs + rc files land in logs/build/ so the
+# interleaved output stays readable and failures survive until the final wait.
+PIPELINE_PIDS=()
+PIPELINE_APPS_BG=()
+PIPELINE_LOG_DIR="logs/build"
+PIPELINE_TS="$(date +%Y%m%d-%H%M%S)"
+
+pipeline_running_count() {
+    local n=0 pid
+    for pid in "${PIPELINE_PIDS[@]}"; do
+        kill -0 "$pid" 2>/dev/null && n=$((n + 1))
+    done
+    echo "$n"
+}
+
+# Launch postprocess_app in the background, capped at KICAD_PIPELINE_JOBS
+# concurrent jobs (default 2: pcbnew's -O2 peaks ~34 GB RSS; two postprocesses
+# plus the container compile fit the 128 GB CI box). Portable poll loop instead
+# of `wait -n` (absent in macOS bash 3.2).
+pipeline_postprocess() {
+    local app="$1"
+    local max_jobs="${KICAD_PIPELINE_JOBS:-2}"
+    while [ "$(pipeline_running_count)" -ge "$max_jobs" ]; do
+        sleep 10
+    done
+    local log_file="${PIPELINE_LOG_DIR}/postprocess-${app}-${PIPELINE_TS}.log"
+    echo "Pipelining host-side postprocess of ${app} (log: ${log_file})"
+    (
+        postprocess_app "$app" >"$log_file" 2>&1
+        echo $? >"${log_file}.rc"
+    ) &
+    PIPELINE_PIDS+=($!)
+    PIPELINE_APPS_BG+=("$app")
+}
+
+# Wait for all background postprocesses, replay their logs into the main log,
+# and fail if any of them failed.
+pipeline_wait_all() {
+    local failed=0 i pid app log_file rc
+    for i in "${!PIPELINE_PIDS[@]}"; do
+        pid="${PIPELINE_PIDS[$i]}"
+        app="${PIPELINE_APPS_BG[$i]}"
+        log_file="${PIPELINE_LOG_DIR}/postprocess-${app}-${PIPELINE_TS}.log"
+        wait "$pid" || true
+        rc="$(cat "${log_file}.rc" 2>/dev/null || echo 1)"
+        echo ""
+        echo "=== Postprocess ${app} (rc=${rc}) — ${log_file} ==="
+        cat "$log_file" 2>/dev/null || true
+        if [ "$rc" != "0" ]; then
+            echo "ERROR: postprocess of ${app} failed (rc=${rc})"
+            failed=1
+        fi
+    done
+    return "$failed"
+}
+
+TOTAL_APPS="${#APPS[@]}"
+if [[ "${KICAD_PIPELINE:-0}" == "1" ]] && [ "$TOTAL_APPS" -gt 1 ]; then
+    mkdir -p "$PIPELINE_LOG_DIR"
+    # Pre-warm the Binaryen download once — two concurrent postprocesses racing
+    # the first download would collide on the extract/mv.
+    ./scripts/common/get-wasm-opt.sh >/dev/null
+    # If a compile fails, set -e aborts the script — don't leave orphaned
+    # wasm-opt jobs chewing 30 GB in the background. Keep the monitor's
+    # done/fail marker from the original EXIT trap (killing finished pids is a
+    # no-op, so this trap is safe on the success path too).
+    trap '_rc=$?; for p in "${PIPELINE_PIDS[@]}"; do kill "$p" 2>/dev/null || true; done; if [ $_rc -eq 0 ]; then kw_done; else kw_fail $_rc; fi' EXIT
+    idx=1
+    for app in "${APPS[@]}"; do
+        compile_app "$app" "$idx" "$TOTAL_APPS"
+        pipeline_postprocess "$app"
+        idx=$((idx + 1))
+    done
+    pipeline_wait_all
 else
-    build_app "${APP_NAME}" 1 1
+    idx=1
+    for app in "${APPS[@]}"; do
+        compile_app "$app" "$idx" "$TOTAL_APPS"
+        postprocess_app "$app"
+        idx=$((idx + 1))
+    done
 fi
 
 echo ""

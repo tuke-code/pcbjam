@@ -105,7 +105,8 @@ TOTAL_FIXED=0
 apply_fix() { # <grep/sed pattern> <sed replacement> <label>
     local before; before=$(grep -c "$1" "$JS_FILE" || true)
     if [ "$before" -gt 0 ]; then
-        sed -i '' "s/$1/$2/g" "$JS_FILE"
+        # Portable in-place edit (BSD `sed -i ''` and GNU `sed -i` differ; temp+mv works on both).
+        sed "s/$1/$2/g" "$JS_FILE" > "${JS_FILE}.sedtmp" && mv "${JS_FILE}.sedtmp" "$JS_FILE"
         local after; after=$(grep -c "$1" "$JS_FILE" || true)
         echo "  Fixed $((before - after)) $3"
         TOTAL_FIXED=$((TOTAL_FIXED + before - after))
