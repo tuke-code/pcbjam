@@ -44,7 +44,12 @@ if [ "$DOM_BUILD" = "1" ]; then
     # coexist; relative ../../ paths in Makefile.wasm resolve identically.
     WASM_APP_DIR="$TESTS_DIR/apps-dom"
     echo "Mirroring test app sources into apps-dom..."
+    # kicad/ is excluded: apps-dom/kicad is owned by
+    # tests/scripts/setup-kicad-wasm.sh (DOM bundles + injected pages) and
+    # apps/kicad only has the checked-in HTML — mirroring with --delete
+    # would wipe the synced multi-hundred-MB kicad artifacts.
     rsync -a --delete \
+        --exclude 'kicad/' \
         --exclude '*.o' --exclude '*.d' \
         --exclude '*_test.html' --exclude '*_test.js' --exclude '*_test.wasm' \
         --exclude '*_repro.html' --exclude '*_repro.js' --exclude '*_repro.wasm' \
