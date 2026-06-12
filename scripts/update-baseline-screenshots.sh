@@ -7,30 +7,22 @@
 # Usage:
 #   ./update-baseline-screenshots.sh             # Only copy NEW screenshots
 #   ./update-baseline-screenshots.sh --all       # Copy new + significantly different
-#   ./update-baseline-screenshots.sh --port dom  # Same, for the DOM-port baseline set
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TESTS_DIR="$SCRIPT_DIR/../tests"
 
 COPY_ALL=0
-PORT=""
 THRESHOLD=5  # Percent threshold for "significant" difference
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --all) COPY_ALL=1; shift ;;
-        --port) PORT="$2"; shift 2 ;;
         *) shift ;;
     esac
 done
 
-if [ "$PORT" = "dom" ]; then
-    SOURCE_DIR="$TESTS_DIR/test-results/dom"
-    DEST_DIR="$TESTS_DIR/baseline-screenshots-dom"
-else
-    SOURCE_DIR="$TESTS_DIR/test-results"
-    DEST_DIR="$TESTS_DIR/baseline-screenshots"
-fi
+SOURCE_DIR="$TESTS_DIR/test-results"
+DEST_DIR="$TESTS_DIR/baseline-screenshots"
 
 if [ $COPY_ALL -eq 1 ]; then
     echo "Mode: Copy NEW + SIGNIFICANTLY DIFFERENT screenshots"

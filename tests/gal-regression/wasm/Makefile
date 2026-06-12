@@ -13,7 +13,7 @@ CXX = em++
 # Paths relative to this Makefile
 PROJECT_ROOT = ../../..
 KICAD_ROOT = $(PROJECT_ROOT)/kicad
-WX_BUILD = $(PROJECT_ROOT)/build-wasm/wxwidgets-universal
+WX_BUILD = $(PROJECT_ROOT)/build-wasm/wxwidgets
 TOOLS_ROOT = $(PROJECT_ROOT)/wxwidgets/build/wasm
 
 # Output directory
@@ -85,7 +85,9 @@ LEGACY_GL_STUBS = --js-library=$(MAKEFILE_DIR)legacy_gl_stubs.js
 LDFLAGS = $(DEBUG_LDFLAGS) $(BASE_LDFLAGS) $(EM_GL_FLAGS) $(LEGACY_GL_STUBS) $(WX_LDFLAGS)
 
 # Templates
-JS = $(TOOLS_ROOT)/wx.js
+# wx-dom.js rides as a second pre-js ("--pre-js A --pre-js B" after
+# expansion) — the WASM port's DOM layer is required at runtime.
+JS = $(TOOLS_ROOT)/wx.js --pre-js $(TOOLS_ROOT)/wx-dom.js
 HTML_TEMPLATE = $(TOOLS_ROOT)/template.html
 
 # Source files

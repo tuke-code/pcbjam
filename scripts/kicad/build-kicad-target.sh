@@ -75,17 +75,9 @@ source "${SCRIPT_DIR}/../common/stages.sh"
 KICAD_DIR="${PROJECT_ROOT}/kicad"
 WASM_LAYER="${PROJECT_ROOT}/wasm"
 
-# WX_PORT=dom links against the DOM (non-universal) wxWidgets build and
-# keeps its KiCad build tree separate from the canvas one.
-if [ "${WX_PORT:-}" = "dom" ]; then
-    KICAD_BUILD="${BUILD_ROOT}/kicad-${APP_NAME}-dom"
-    KICAD_STAMP="${BUILD_ROOT}/stamps/kicad-${APP_NAME}-dom.stamp"
-    WX_BUILD="${BUILD_ROOT}/wxwidgets-dom"
-else
-    KICAD_BUILD="${BUILD_ROOT}/kicad-${APP_NAME}"
-    KICAD_STAMP="${BUILD_ROOT}/stamps/kicad-${APP_NAME}.stamp"
-    WX_BUILD="${BUILD_ROOT}/wxwidgets-universal"
-fi
+KICAD_BUILD="${BUILD_ROOT}/kicad-${APP_NAME}"
+KICAD_STAMP="${BUILD_ROOT}/stamps/kicad-${APP_NAME}.stamp"
+WX_BUILD="${BUILD_ROOT}/wxwidgets"
 
 # Parse arguments - incremental build by default (optimized for development)
 NO_CLEAN=1
@@ -167,7 +159,7 @@ if [ $FULL_CLEAN -eq 1 ]; then
     log_info "Full clean: removing all stamps and build directories..."
     rm -rf "${STAMPS_DIR}"/*
     rm -rf "${BUILD_ROOT}/deps"/*
-    rm -rf "${BUILD_ROOT}/wxwidgets-universal"
+    rm -rf "${BUILD_ROOT}/wxwidgets"
     rm -rf "${BUILD_ROOT}/stubs"
     rm -rf "${KICAD_BUILD}"
     rm -rf "${SYSROOT}"/*
@@ -196,7 +188,7 @@ fi
 # Step 4: Build wxWidgets (incremental - only recompiles changed files)
 kw_stage wxwidgets
 log_info "Building wxWidgets..."
-"${SCRIPT_DIR}/../build-wxuniversal-wasm.sh" --no-clean
+"${SCRIPT_DIR}/../build-wx-wasm.sh" --no-clean
 
 log_info "Building KiCad ${APP_NAME} ${KICAD_VERSION} for WASM..."
 

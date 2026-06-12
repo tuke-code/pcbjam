@@ -71,7 +71,7 @@ if(EMSCRIPTEN AND wxWidgets_CONFIG_EXECUTABLE)
 
     # Set the wx configuration for port detection
     # For WASM, we use our own port implementation
-    set(_wx_selected_config "wasm-wasmuniv-unicode-static-3.2" CACHE INTERNAL "")
+    set(_wx_selected_config "wasm-unicode-static-3.2" CACHE INTERNAL "")
     set(wxWidgets_FIND_STYLE "unix" CACHE INTERNAL "")
 
     # Set KICAD_WX_PORT to "wasm" - kiplatform will need our custom source files

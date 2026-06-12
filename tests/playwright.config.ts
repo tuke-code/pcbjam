@@ -62,9 +62,7 @@ function findFreePort(): number {
 
 const port = resolvePort();
 
-// WX_PORT=dom runs the suite against the DOM-port bundles (built by
-// scripts/build-wasm-test.sh --dom into tests/apps-dom with identical layout).
-const appsDir = process.env.WX_PORT === 'dom' ? 'apps-dom' : 'apps';
+const appsDir = 'apps';
 
 export default defineConfig({
   globalSetup: './global-setup.ts',

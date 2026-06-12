@@ -31,7 +31,7 @@ export STUBS_DIR="$PROJECT_ROOT/stubs"
 export CMAKE_MODULES="$PROJECT_ROOT/cmake"
 
 # wxWidgets build location
-export WX_BUILD="$BUILD_ROOT/wxwidgets-universal"
+export WX_BUILD="$BUILD_ROOT/wxwidgets"
 
 # Emscripten settings
 export EMSDK_QUIET=1

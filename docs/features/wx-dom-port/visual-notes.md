@@ -184,3 +184,33 @@ User-reported pcbnew issues, all fixed and e2e-pinned
   25. Universal tooltip layer (#wx-tooltip div, 600 ms, hover hit-test
       driven) — island widgets (color swatches, visibility toggles) get
       KiCad's SetToolTip texts; title attrs replaced by aria-label.
+
+## DOM-only consolidation (2026-06-12)
+
+The canvas (wxUniversal) mode and dual-build plumbing were removed; the
+DOM port is THE WASM port. Rebuilding everything from clean surfaced
+three latent bugs (all pre-existing — verified by rebuilding the
+pre-consolidation tree, which failed identically):
+
+  26. The DOM projection treated GetScreenPosition() as the window's
+      top-left; it is ClientToScreen(0,0) — the CLIENT-AREA origin. The
+      first widget with a non-zero client origin (the DOM notebook's tab
+      strip) rendered its whole box a strip-height too low, overlapping
+      its own pages, and ComputeAncestorClip double-added the origin,
+      clipping page content (dataview/grid/minimal buttons cut to
+      slivers, clicks swallowed by the strip). This was bug-logged
+      earlier as "tab-strip/content slight overlap" and believed
+      cosmetic. Fixed in UpdateDomGeometryRecursive (+ eager strip
+      re-measure + re-projection in wxNotebook::WasmRebuildTabs).
+  27. The DOM port never mirrored spin arrows and text fields into the
+      e2e registry (the canvas port published them from univ paint
+      hooks, which died with univ). wx-dom.js now registers
+      'spinbutton' (up/down) and 'textctrl' (singleline/multiline)
+      rendered elements, and clears a control's mirrored entries on
+      destroy.
+  28. tests: clickCanvas() used locator.click(), whose actionability
+      check refuses points covered by DOM elements — in the DOM port
+      real widgets legitimately cover the canvas. It now dispatches via
+      page.mouse. The minimal-app comprehensive spec drives the wxChoice
+      through its native <select> (browsers own that popup; it cannot be
+      coordinate-clicked).

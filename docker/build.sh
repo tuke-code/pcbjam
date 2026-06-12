@@ -178,20 +178,14 @@ compile_app() {
     echo ""
     echo "=== Building ${app} (${index}/${total}) ==="
 
-    # WX_PORT=dom builds against the DOM wxWidgets into separate build and
-    # output trees (kicad-<app>-dom, output/dom/).
-    local out_dir
-    out_dir=$(out_dir_for)
+    local out_dir="output"
     local kicad_build="kicad-${app}"
-    if [[ "${WX_PORT:-}" == "dom" ]]; then
-        kicad_build="kicad-${app}-dom"
-    fi
 
     # Run build inside the container.
     # -e EMSDK=/emsdk: `docker compose exec` bypasses the entrypoint that sources
     # emsdk_env.sh, so the build shell would lack emcc/embuilder on PATH. Setting
     # EMSDK lets scripts/common/env.sh source /emsdk/emsdk_env.sh and activate the toolchain.
-    docker compose -f docker/docker-compose.yml exec -e EMSDK=/emsdk -e WX_PORT="${WX_PORT:-}" \
+    docker compose -f docker/docker-compose.yml exec -e EMSDK=/emsdk \
         kicad-wasm-builder \
         "/workspace/scripts/kicad/build-${app}.sh" "${ARGS[@]}"
 
@@ -204,8 +198,8 @@ compile_app() {
             cp /workspace/build-wasm/${kicad_build}/${subdir}/${app}.{js,wasm,wasm.debug.wasm,wasm.map,worker.js} /workspace/${out_dir}/ 2>/dev/null || \
             cp /workspace/build-wasm/${kicad_build}/${subdir}/${app}.{js,wasm} /workspace/${out_dir}/; \
             cp /workspace/build-wasm/${kicad_build}/resources/images.tar.gz /workspace/${out_dir}/ 2>/dev/null || true; \
-            cp /workspace/build-wasm/wxwidgets/build/wasm/wx.js /workspace/${out_dir}/ 2>/dev/null || true; \
-            if [ -n \"${WX_PORT:-}\" ]; then cp /workspace/build-wasm/wxwidgets/build/wasm/wx-dom.js /workspace/${out_dir}/ 2>/dev/null || true; fi"
+            cp /workspace/wxwidgets/build/wasm/wx.js /workspace/${out_dir}/ 2>/dev/null || true; \
+            cp /workspace/wxwidgets/build/wasm/wx-dom.js /workspace/${out_dir}/ 2>/dev/null || true"
 
     # The container runs as root, so files in the bind-mounted ./output land
     # root-owned on the host. macOS Docker Desktop remaps ownership to the host
@@ -215,24 +209,13 @@ compile_app() {
         chown -R "$(id -u):$(id -g)" /workspace/output || true
 }
 
-# Output dir for the current flavor: the DOM port (WX_PORT=dom) keeps its
-# bundles in output/dom/ so the canvas bundles are never clobbered.
-out_dir_for() {
-    if [[ "${WX_PORT:-}" == "dom" ]]; then
-        echo "output/dom"
-    else
-        echo "output"
-    fi
-}
-
 # Phase 2 of one app: host-side post-processing (dyncall shims, finalize,
 # asyncify + -O2). Pure host work on output/${app}.* — independent of the
 # container, which is what makes it safe to run in the background while the
 # next app compiles.
 postprocess_app() {
     local app="$1"
-    local out_dir
-    out_dir=$(out_dir_for)
+    local out_dir="output"
 
     # Inject dynCall shims (fixes "dynCall_* is not defined" errors in Emscripten 4.x)
     kw_stage dyncall-shims

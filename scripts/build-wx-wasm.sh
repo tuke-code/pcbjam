@@ -1,5 +1,6 @@
 #!/bin/bash
-# Build wxWidgets with wxUniversal for WebAssembly
+# Build wxWidgets for WebAssembly (the DOM port: widgets are real HTML
+# elements; owner-drawn widgets render into per-window canvas islands)
 
 # Redirect all output to a log file (re-execs script with redirection)
 source "$(dirname "$0")/common/logging.sh"
@@ -20,10 +21,8 @@ source "$(dirname "$0")/common/stages.sh"
 #     ghcr.io/vslavik/bakefile:0.2 bakefile_gen
 #
 # Usage:
-#   ./build-wxuniversal-wasm.sh          # Incremental build (default)
-#   ./build-wxuniversal-wasm.sh --clean  # Clean build from scratch
-#   ./build-wxuniversal-wasm.sh --dom    # Build the DOM port (native widgets,
-#                                        # no wxUniversal) into build-wasm/wxwidgets-dom
+#   ./build-wx-wasm.sh          # Incremental build (default)
+#   ./build-wx-wasm.sh --clean  # Clean build from scratch
 
 set -e
 
@@ -31,34 +30,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 WX_SOURCE="$PROJECT_ROOT/wxwidgets"
 
-# Parse arguments: --clean, --no-clean (default; kept for the kicad
-# pipeline's explicit call) and/or --dom, in any order. WX_PORT=dom env is
-# equivalent to --dom so the flavor can flow through the docker pipeline.
+# Parse arguments: --clean or --no-clean (default; kept for the kicad
+# pipeline's explicit call), in any order.
 CLEAN_BUILD=0
-DOM_BUILD=0
-[ "${WX_PORT:-}" = "dom" ] && DOM_BUILD=1
 for arg in "$@"; do
     case "$arg" in
         --clean)    CLEAN_BUILD=1 ;;
         --no-clean) CLEAN_BUILD=0 ;;
-        --dom)      DOM_BUILD=1 ;;
         *) echo "Unknown argument: $arg"; exit 1 ;;
     esac
 done
 
-if [ "$DOM_BUILD" = "1" ]; then
-    BUILD_DIR="$PROJECT_ROOT/build-wasm/wxwidgets-dom"
-    # Native (non-universal) widget set: controls are real DOM elements.
-    UNIVERSAL_FLAG=""
-    # Tooltips are DOM title attributes (wx/wasm/tooltip.h).
-    PORT_EXTRA_FLAGS=""
-    WXLIB_PREFIX="libwx_wasmu"
-else
-    BUILD_DIR="$PROJECT_ROOT/build-wasm/wxwidgets-universal"
-    UNIVERSAL_FLAG="--enable-universal"
-    PORT_EXTRA_FLAGS=""
-    WXLIB_PREFIX="libwx_wasmunivu"
-fi
+BUILD_DIR="$PROJECT_ROOT/build-wasm/wxwidgets"
+WXLIB_PREFIX="libwx_wasmu"
 
 # Use our config.sub wrapper for autoconf projects
 # CONFIG_SHELL is critical: nested configures (pcre, etc.) do SHELL=${CONFIG_SHELL-/bin/sh}
@@ -72,7 +56,7 @@ export AUTOM4TE="$SCRIPT_DIR/config/autom4te-wrapper.sh"
 # Use JOBS from env.sh if set, otherwise use all available cores
 JOBS="${JOBS:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}"
 
-echo "=== Building wxWidgets wxUniversal for WASM ==="
+echo "=== Building wxWidgets for WASM ==="
 echo "Project root: $PROJECT_ROOT"
 echo "Build dir: $BUILD_DIR"
 echo "wxWidgets source: $WX_SOURCE"
@@ -130,7 +114,6 @@ if [ $NEEDS_CONFIGURE -eq 1 ]; then
     # Configure with emconfigure
     # Key flags based on wxWidgets-wasm:
     # --host=emscripten          Host system (detected via config.sub)
-    # --enable-universal         Use wxUniversal (draws widgets directly)
     # --disable-shared           Build static libraries
     # --with-opengl              Enable OpenGL/WebGL support
     # --enable-exceptions        Enable C++ exceptions (needed for KiCad debug builds)
@@ -183,8 +166,6 @@ if [ $NEEDS_CONFIGURE -eq 1 ]; then
     emconfigure "$WX_SOURCE/configure" \
         --host=emscripten \
         --without-subdirs \
-        ${UNIVERSAL_FLAG} \
-        ${PORT_EXTRA_FLAGS} \
         --disable-shared \
         --with-opengl \
         --enable-exceptions \

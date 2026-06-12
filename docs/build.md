@@ -143,7 +143,7 @@ Import patterns used:
 **Full rebuild removes:**
 - `build-wasm/stamps/*` - All build stamps
 - `build-wasm/deps/*` - All dependency builds
-- `build-wasm/wxwidgets-universal` - wxWidgets build
+- `build-wasm/wxwidgets` - wxWidgets build
 - `build-wasm/sysroot/*` - Installed headers/libraries
 - `build-wasm/kicad-pcbnew` - KiCad build
 
@@ -208,7 +208,7 @@ After changing build flags (debug/release), use `--full` to force a complete reb
 |--------|---------|
 | `docker/build.sh` | Host entry point (starts Docker, runs build) |
 | `scripts/kicad/build-pcbnew.sh` | KiCad PCBnew build (runs inside Docker) |
-| `scripts/build-wxuniversal-wasm.sh` | wxWidgets build |
+| `scripts/build-wx-wasm.sh` | wxWidgets build |
 | `scripts/build-wasm-test.sh` | Build wxWidgets test apps |
 | `scripts/deps/build-all-deps.sh` | All dependencies |
 | `scripts/deps/build-*.sh` | Individual dependency builds |
@@ -240,7 +240,7 @@ OpenCASCADE is the longest dependency to build (~30 minutes).
 
 ### Incremental build not picking up changes
 - For KiCad: use `--clean-kicad` to force rebuild
-- For wxWidgets: delete `build-wasm/wxwidgets-universal/Makefile` to force reconfigure
+- For wxWidgets: delete `build-wasm/wxwidgets/Makefile` to force reconfigure
 
 ### WASM exception with numeric error (e.g., `3788888`)
 - Build with debug symbols (default): No `--release` flag

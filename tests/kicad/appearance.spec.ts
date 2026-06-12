@@ -107,13 +107,11 @@ test.describe('Appearance panel (Layers/Objects/Nets)', () => {
         await selectTab(page, 'Layers');
         await page.screenshot({ path: 'test-results/appearance-03-layers-again.png' });
 
-        // DOM port: layer rows must survive the tab round-trip (regression:
+        // Layer rows must survive the tab round-trip (regression:
         // pages came back blank after switching away and back)
-        if (await page.evaluate(() => !!window.wxDomPort)) {
-            const tops = await rowLabelTops(page, ['F.Cu', 'B.Cu']);
-            expect(tops['F.Cu'], 'F.Cu row visible after tab round-trip').not.toBeNull();
-            expect(tops['B.Cu'], 'B.Cu row visible after tab round-trip').not.toBeNull();
-        }
+        const tops = await rowLabelTops(page, ['F.Cu', 'B.Cu']);
+        expect(tops['F.Cu'], 'F.Cu row visible after tab round-trip').not.toBeNull();
+        expect(tops['B.Cu'], 'B.Cu row visible after tab round-trip').not.toBeNull();
     });
 
     test('layer list scrolls with the wheel and clips at the pane', async ({ page }) => {
@@ -123,37 +121,31 @@ test.describe('Appearance panel (Layers/Objects/Nets)', () => {
         const layersTab = tabs.find(t => t.label === 'Layers');
         expect(layersTab).toBeTruthy();
 
-        const isDom = await page.evaluate(() => !!window.wxDomPort);
-
         // hover INSIDE the layer list (just below the tab strip)
         const hoverX = layersTab!.centerX;
         const hoverY = layersTab!.centerY + 120;
         await page.mouse.move(hoverX, hoverY);
 
-        const before = isDom ? await rowLabelTops(page, ['B.Cu', 'F.Mask']) : null;
+        const before = await rowLabelTops(page, ['B.Cu', 'F.Mask']);
 
         await page.mouse.wheel(0, 240);
         await page.waitForTimeout(800);
         await page.screenshot({ path: 'test-results/appearance-10-layers-scrolled.png' });
 
-        if (isDom && before) {
-            const after = await rowLabelTops(page, ['B.Cu', 'F.Mask']);
-            expect(after['B.Cu'], 'B.Cu moved up after wheel scroll')
-                .toBeLessThan(before['B.Cu']!);
-            expect(after['F.Mask'], 'F.Mask moved up after wheel scroll')
-                .toBeLessThan(before['F.Mask']!);
-        }
+        const after = await rowLabelTops(page, ['B.Cu', 'F.Mask']);
+        expect(after['B.Cu'], 'B.Cu moved up after wheel scroll')
+            .toBeLessThan(before['B.Cu']!);
+        expect(after['F.Mask'], 'F.Mask moved up after wheel scroll')
+            .toBeLessThan(before['F.Mask']!);
 
         // scroll back up restores the start of the list
         await page.mouse.wheel(0, -480);
         await page.waitForTimeout(800);
         await page.screenshot({ path: 'test-results/appearance-11-layers-scrolled-back.png' });
 
-        if (isDom && before) {
-            const restored = await rowLabelTops(page, ['B.Cu']);
-            expect(restored['B.Cu'], 'B.Cu back at its original position')
-                .toBe(before['B.Cu']);
-        }
+        const restored = await rowLabelTops(page, ['B.Cu']);
+        expect(restored['B.Cu'], 'B.Cu back at its original position')
+            .toBe(before['B.Cu']);
     });
 
     test('objects page scrolls with the wheel', async ({ page }) => {
@@ -163,17 +155,16 @@ test.describe('Appearance panel (Layers/Objects/Nets)', () => {
 
         const tabs = await appearanceTabs(page);
         const objectsTab = tabs.find(t => t.label === 'Objects')!;
-        const isDom = await page.evaluate(() => !!window.wxDomPort);
 
         await page.mouse.move(objectsTab.centerX, objectsTab.centerY + 120);
 
-        const before = isDom ? await rowLabelTops(page, ['Ratsnest']) : null;
+        const before = await rowLabelTops(page, ['Ratsnest']);
 
         await page.mouse.wheel(0, 240);
         await page.waitForTimeout(800);
         await page.screenshot({ path: 'test-results/appearance-20-objects-scrolled.png' });
 
-        if (isDom && before && before['Ratsnest'] !== null) {
+        if (before['Ratsnest'] !== null) {
             const after = await rowLabelTops(page, ['Ratsnest']);
             expect(after['Ratsnest'], 'Ratsnest row moved after wheel scroll')
                 .toBeLessThan(before['Ratsnest']!);

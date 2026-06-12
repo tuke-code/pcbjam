@@ -8,16 +8,8 @@
 TOOLS_ROOT = ../../wxwidgets/build/wasm
 KICAD_ROOT = ../../kicad
 
-# PORT=dom links against the DOM (non-universal) wxWidgets build and adds the
-# wx-dom.js shim. Invoked by scripts/build-wasm-test.sh --dom from a mirrored
-# source tree in tests/apps-dom (so canvas and DOM bundles coexist).
-ifeq ($(PORT),dom)
-    WXCONFIG = ../../build-wasm/wxwidgets-dom/wx-config
-    WXLIB_PREFIX = libwx_wasmu
-else
-    WXCONFIG = ../../build-wasm/wxwidgets-universal/wx-config
-    WXLIB_PREFIX = libwx_wasmunivu
-endif
+WXCONFIG = ../../build-wasm/wxwidgets/wx-config
+WXLIB_PREFIX = libwx_wasmu
 
 CXX = em++
 WX_CXXFLAGS := $(shell $(WXCONFIG) --cxxflags)
@@ -113,25 +105,16 @@ LDFLAGS_COROUTINE = $(DEBUG_LDFLAGS) $(COROUTINE_BASE_LDFLAGS) $(WX_LDFLAGS_NOGL
 # forbids the very multi-parked-sleep states the harness exists to exercise.
 LDFLAGS_RACES = $(DEBUG_LDFLAGS) $(COROUTINE_BASE_LDFLAGS) -sASSERTIONS=0 $(WX_LDFLAGS_NOGL)
 
-# In dom mode a second pre-js carries the DOM-control shim ("--pre-js A --pre-js B"
+# A second pre-js carries the DOM-control shim ("--pre-js A --pre-js B"
 # after expansion — emcc accepts repeated --pre-js).
 # JS_FILES lists the actual pre-js paths (no flags) so the link targets can
 # depend on them — otherwise editing a shim wouldn't trigger a relink.
-ifeq ($(PORT),dom)
-    JS = $(TOOLS_ROOT)/wx.js --pre-js $(TOOLS_ROOT)/wx-dom.js
-    JS_FILES = $(TOOLS_ROOT)/wx.js $(TOOLS_ROOT)/wx-dom.js
-else
-    JS = $(TOOLS_ROOT)/wx.js
-    JS_FILES = $(TOOLS_ROOT)/wx.js
-endif
+JS = $(TOOLS_ROOT)/wx.js --pre-js $(TOOLS_ROOT)/wx-dom.js
+JS_FILES = $(TOOLS_ROOT)/wx.js $(TOOLS_ROOT)/wx-dom.js
 HTML = $(TOOLS_ROOT)/template.html
 
 # wxWidgets library directory - used as dependency to rebuild when libs change
-ifeq ($(PORT),dom)
-    WX_LIB_DIR = ../../build-wasm/wxwidgets-dom/lib
-else
-    WX_LIB_DIR = ../../build-wasm/wxwidgets-universal/lib
-endif
+WX_LIB_DIR = ../../build-wasm/wxwidgets/lib
 # Key library that changes when wxWidgets is rebuilt
 WX_CORE_LIB = $(WX_LIB_DIR)/$(WXLIB_PREFIX)_core-3.2-emscripten.a
 

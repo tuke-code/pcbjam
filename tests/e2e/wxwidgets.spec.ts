@@ -10,9 +10,6 @@ import {
   clickTextCtrl,
   findSingleLineTextCtrl,
   findMultiLineTextCtrl,
-  clickComboButton,
-  selectComboItem,
-  clickListboxItem,
   clickListboxItemByIndex
 } from './utils/element-tracker';
 
@@ -44,10 +41,14 @@ function isKnownWarning(error: string): boolean {
          error.includes('Debug:');  // wxWidgets debug prefix
 }
 
-// Click at specific canvas coordinates
+// Click at specific canvas coordinates. Uses page.mouse (no actionability
+// check): in the DOM port real elements legitimately cover the canvas, and
+// the click goes through the app's normal input routing either way.
 async function clickCanvas(page: Page, x: number, y: number) {
   const canvas = page.locator(MAIN_CANVAS);
-  await canvas.click({ position: { x, y } });
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error('Canvas not found');
+  await page.mouse.click(box.x + x, box.y + y);
 }
 
 // Drag on canvas from one point to another
@@ -183,34 +184,21 @@ test.describe('wxWidgets WASM - Diagnostics', () => {
 
     await page.screenshot({ path: 'test-results/10-lists-clicked.png', fullPage: true });
 
-    // Test wxChoice dropdown using element tracking
-    // Find the Choice dropdown by its current value ("Red") and click to open it
-    const { findAllComboButtons } = await import('./utils/element-tracker');
-    const comboButtons = await findAllComboButtons(page);
-    const choiceCombo = comboButtons.find(c => c.label === 'Red');
-    expect(choiceCombo, 'Should find Choice dropdown with "Red" value').not.toBeNull();
+    // Test the wxChoice dropdown. It renders as a native <select> (the
+    // browser owns the popup, so it cannot be driven by coordinate
+    // clicks) — drive it through the DOM and verify the value sticks.
+    const choice = page
+        .locator('select:not([multiple])')
+        .filter({ has: page.locator('option', { hasText: 'Red' }) })
+        .first();
+    expect(await choice.count(), 'Choice <select> should exist').toBe(1);
 
-    // Open the dropdown
-    await page.mouse.click(choiceCombo!.centerX, choiceCombo!.centerY);
-    await page.waitForTimeout(300);
-
-    // Select "Green" from the dropdown
-    const greenClicked = await clickListboxItem(page, 'Green');
-    expect(greenClicked, 'Should be able to click "Green" item').toBe(true);
+    await choice.selectOption({ label: 'Green' });
     await page.waitForTimeout(300);
 
     await page.screenshot({ path: 'test-results/10b-choice-selected.png', fullPage: true });
 
-    // Open the dropdown again to verify it works
-    const reopened = await clickComboButton(page);
-    expect(reopened, 'Should be able to open dropdown').toBe(true);
-    await page.waitForTimeout(500);
-
-    await page.screenshot({ path: 'test-results/10c-choice-dropdown-reopen.png', fullPage: true });
-
-    // Close the dropdown by pressing Escape
-    await page.keyboard.press('Escape');
-    await page.waitForTimeout(300);
+    expect(await choice.inputValue(), 'Choice should now be Green').toBe('Green');
 
     // === Menu interaction ===
     // Click File menu using element registry

@@ -14,7 +14,7 @@ git submodule update --init --recursive
 ./docker/build.sh
 
 # 3. Build wxWidgets for local testing
-./scripts/build-wxuniversal-wasm.sh
+./scripts/build-wx-wasm.sh
 
 # 4. Build wxWidgets test apps
 ./scripts/build-wasm-test.sh
@@ -29,7 +29,7 @@ npm run test:kicad    # KiCad tests (2 tests)
 
 ```bash
 # Requires: Node.js 18+ (Emscripten SDK auto-installed on first build)
-./scripts/build-wxuniversal-wasm.sh
+./scripts/build-wx-wasm.sh
 ./scripts/build-wasm-test.sh
 cd tests && npm install && npm test
 ```
@@ -48,7 +48,7 @@ kicad-wasm/
 │   ├── shims/              # Runtime JavaScript shims
 │   └── stubs/              # Stub implementations (libgit2, curl)
 ├── scripts/                # Build scripts
-│   ├── build-wxuniversal-wasm.sh   # Build wxWidgets for WASM
+│   ├── build-wx-wasm.sh   # Build wxWidgets for WASM
 │   ├── build-wasm-test.sh          # Build wxWidgets test apps
 │   ├── deps/               # Dependency build scripts
 │   ├── kicad/              # KiCad build scripts
@@ -98,7 +98,7 @@ Build standalone wxWidgets test apps for feature testing:
 
 ```bash
 # Build wxWidgets for WASM
-./scripts/build-wxuniversal-wasm.sh
+./scripts/build-wx-wasm.sh
 
 # Build test apps
 ./scripts/build-wasm-test.sh

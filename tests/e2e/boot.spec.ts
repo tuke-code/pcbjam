@@ -1,8 +1,7 @@
 import { test, expect, waitForApp } from './utils/fixtures';
 
-// Port-agnostic boot check: the app starts, the wx element registry fills,
-// and (in DOM mode) the wx-dom shim is present. Runs under both WX_PORT
-// values; intentionally takes no screenshots.
+// Boot check: the app starts, the wx element registry fills, and the
+// wx-dom shim is present. Intentionally takes no screenshots.
 test.describe('Application boot', () => {
   test('minimal app boots and registers elements', async ({ page, testLogger }) => {
     const fatal: string[] = [];
@@ -24,7 +23,7 @@ test.describe('Application boot', () => {
     expect(elementCount).toBeGreaterThan(0);
 
     const isDomPort = await page.evaluate(() => (window as any).wxDomPort === true);
-    expect(isDomPort).toBe(process.env.WX_PORT === 'dom');
+    expect(isDomPort, 'wx-dom.js shim should be loaded').toBe(true);
 
     expect(fatal, `page errors: ${fatal.join('\n')}`).toHaveLength(0);
   });

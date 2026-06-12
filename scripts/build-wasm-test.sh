@@ -10,7 +10,6 @@ source "$(dirname "$0")/common/env.sh"
 #   ./build-wasm-test.sh              # Incremental build (default)
 #   ./build-wasm-test.sh --clean      # Clean build from scratch
 #   ./build-wasm-test.sh --debug      # Build with debug symbols
-#   ./build-wasm-test.sh --dom        # Build against the DOM port into tests/apps-dom
 #   ./build-wasm-test.sh menu         # Build only the menu test
 #   ./build-wasm-test.sh --debug menu # Build menu test with debug symbols
 
@@ -18,7 +17,6 @@ set -e
 
 DEBUG_BUILD=0
 CLEAN_BUILD=0
-DOM_BUILD=0
 TARGET=""
 
 # Parse arguments
@@ -27,8 +25,6 @@ for arg in "$@"; do
         DEBUG_BUILD=1
     elif [ "$arg" = "--clean" ]; then
         CLEAN_BUILD=1
-    elif [ "$arg" = "--dom" ]; then
-        DOM_BUILD=1
     elif [ "$arg" != "" ]; then
         TARGET="$arg"
     fi
@@ -38,29 +34,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 TESTS_DIR="$PROJECT_ROOT/tests"
 
-if [ "$DOM_BUILD" = "1" ]; then
-    BUILD_DIR="$PROJECT_ROOT/build-wasm/wxwidgets-dom"
-    # DOM apps build in a mirrored source tree so canvas and DOM bundles
-    # coexist; relative ../../ paths in Makefile.wasm resolve identically.
-    WASM_APP_DIR="$TESTS_DIR/apps-dom"
-    echo "Mirroring test app sources into apps-dom..."
-    # kicad/ is excluded: apps-dom/kicad is owned by
-    # tests/scripts/setup-kicad-wasm.sh (DOM bundles + injected pages) and
-    # apps/kicad only has the checked-in HTML — mirroring with --delete
-    # would wipe the synced multi-hundred-MB kicad artifacts.
-    rsync -a --delete \
-        --exclude 'kicad/' \
-        --exclude '*.o' --exclude '*.d' \
-        --exclude '*_test.html' --exclude '*_test.js' --exclude '*_test.wasm' \
-        --exclude '*_repro.html' --exclude '*_repro.js' --exclude '*_repro.wasm' \
-        --exclude '*.wasm.map' \
-        "$TESTS_DIR/apps/" "$WASM_APP_DIR/"
-    MAKE_PORT_ARGS="PORT=dom"
-else
-    BUILD_DIR="$PROJECT_ROOT/build-wasm/wxwidgets-universal"
-    WASM_APP_DIR="$TESTS_DIR/apps"
-    MAKE_PORT_ARGS=""
-fi
+BUILD_DIR="$PROJECT_ROOT/build-wasm/wxwidgets"
+WASM_APP_DIR="$TESTS_DIR/apps"
 STANDALONE_DIR="$WASM_APP_DIR/standalone"
 
 echo "=== Building wxWidgets WASM Test Applications ==="
@@ -80,7 +55,7 @@ echo "Test app dir: $WASM_APP_DIR"
 
 # Verify wxWidgets is built
 if [ ! -f "$BUILD_DIR/wx-config" ]; then
-    echo "ERROR: wxWidgets not built. Run build-wxuniversal-wasm.sh first"
+    echo "ERROR: wxWidgets not built. Run build-wx-wasm.sh first"
     exit 1
 fi
 
@@ -120,9 +95,9 @@ fi
 # Build (pass DEBUG flag if requested). App links are independent, so honor
 # JOBS/PARALLEL_JOBS from env.sh (each emcc link is slow due to Asyncify).
 if [ "$DEBUG_BUILD" = "1" ]; then
-    make -j"${JOBS:-1}" -f Makefile.wasm DEBUG=1 $MAKE_PORT_ARGS "$MAKE_TARGET"
+    make -j"${JOBS:-1}" -f Makefile.wasm DEBUG=1 "$MAKE_TARGET"
 else
-    make -j"${JOBS:-1}" -f Makefile.wasm $MAKE_PORT_ARGS "$MAKE_TARGET"
+    make -j"${JOBS:-1}" -f Makefile.wasm "$MAKE_TARGET"
 fi
 
 echo ""
