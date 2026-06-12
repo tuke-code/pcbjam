@@ -162,3 +162,25 @@ slider/statline/statbox wired:
 - **Known cosmetic gap:** DOM menubar/toolbar styling differs from univ
   pixels by design (native buttons, system font); the kicad reference
   regions therefore use per-port reference images.
+
+## Appearance-panel workstreams (2026-06-12)
+
+User-reported pcbnew issues, all fixed and e2e-pinned
+(tests/kicad/appearance.spec.ts, screenshots appearance-*.png):
+  20. DOM elements never clipped to ancestor viewports → layer rows
+      rendered past the pane. UpdateDomGeometry now pushes
+      clip-path:inset() from the accumulated ancestor client rects.
+  21. wxWindowWasm::ScrollWindow never moved children (univ does) →
+      scrolled panes could not scroll at all.
+  22. Mouse events over DOM-backed children never reached the wx pipeline
+      (listeners only on #canvas) → no hover/wheel/right-click over
+      labels/sliders. Document-level forwarding into wx_dom_mouse.
+  23. Wheel events died at the deepest window: wx mouse events don't
+      self-propagate and native ports rely on platform routing.
+      HandleMouseWheelEvent walks up to the TLW.
+  24. Generic (Motif-era) notebook replaced by a DOM-native wxNotebook:
+      real side-by-side tab buttons (ellipsis, no label overflow),
+      reliable switching, native look; registry 'tab' contract kept.
+  25. Universal tooltip layer (#wx-tooltip div, 600 ms, hover hit-test
+      driven) — island widgets (color swatches, visibility toggles) get
+      KiCad's SetToolTip texts; title attrs replaced by aria-label.
