@@ -1,16 +1,16 @@
-# EXPERIMENT: same full build + e2e as ci-full-build.yml, but on a Ubicloud
-# runner instead of an ephemeral Hetzner VM. Ubicloud runners are plain
-# runs-on labels — no create/delete-runner jobs, no shared one-slot lock.
-# Triggered ONLY on the ubicloud-ci branch (and manual dispatch) so it never
-# competes with the Hetzner main CI. ubicloud-standard-30 (x86, 30 vcpu) is
-# the closest parity to the Hetzner ccx53 (32 cores) and matches the arch the
-# e2e screenshot baselines were captured on.
+# The main-branch CI: full KiCad WASM build (all 6 tools, Binaryen 130) +
+# wxWidgets e2e (291 tests) + KiCad e2e (38 tests) on a Ubicloud runner.
+# Replaced the ephemeral-Hetzner-VM workflows (ci-full-build.yml / ci.yml,
+# removed 2026-06-12): Ubicloud runners are plain runs-on labels — no
+# create/delete-runner jobs, no shared one-slot lock — and benchmarked
+# faster end-to-end. Proven green: run 27375556034 (329 tests, 1h52m).
+# ubicloud-standard-30 (x86, 30 vcpu) ≈ the old Hetzner ccx53.
 
 name: CI full build + e2e (Ubicloud)
 
 on:
   push:
-    branches: ["ubicloud-ci"]
+    branches: ["main", "ubicloud-ci"]
     # docs-only commits must not burn a paid runner slot
     paths-ignore: ["docs/**", "**.md"]
   workflow_dispatch:
