@@ -6,7 +6,7 @@ import {
   TOOL_NEEDS_CONFIG_SEED,
 } from "./constants";
 import { buildSymLibTable, installLibsProvider, type LibsSource } from "./libs/source";
-import { PCBJAM_LIB_MOUNT } from "./libs/uri";
+import { libUri, PCBJAM_LIB_MOUNT, PCBJAM_LIB_RW_MOUNT } from "./libs/uri";
 
 /**
  * Boot a KiCad tool directly in the main React document — no iframe.
@@ -98,11 +98,20 @@ async function doBoot(opts: BootOptions): Promise<void> {
   // the wasm boots (the table is seeded in preRun below). No source → empty
   // table, libs disabled.
   let symLibTable = "(sym_lib_table\n  (version 7)\n)\n";
+  // Writable libs get an empty placeholder FILE at their URI (not just the mount
+  // dir): the symbol-editor save path stat()s the lib file after saving
+  // (SetSymModificationTime -> wxFileName::GetModificationTime), which errors on
+  // a non-existent path. The bytes are virtual (served via window.kicadLibs);
+  // this file only satisfies incidental fs checks.
+  let writableLibUris: string[] = [];
   if (libsSource) {
     installLibsProvider(libsSource, log);
     try {
       const libsList = await libsSource.listLibs();
       symLibTable = buildSymLibTable(libsList);
+      writableLibUris = libsList
+        .filter((l) => l.writable)
+        .map((l) => libUri(l.id, true));
       log(`[libs] seeded ${libsList.length} lib(s) into sym-lib-table`);
     } catch (e) {
       log(`[libs] listLibs failed, seeding empty table: ${String(e)}`);
@@ -177,10 +186,17 @@ async function doBoot(opts: BootOptions): Promise<void> {
   const seedKicadConfig = () => {
     const FS = moduleFS();
     FS.mkdirTree(KICAD_CONFIG_DIR);
-    // libs: the mount point that pcbjam lib URIs (/mnt/pcbjam/<lib>) live under.
-    // A real dir so any incidental existence check on the URI passes; the lib
-    // contents themselves are served virtually via window.kicadLibs.
+    // libs: the mount points that pcbjam lib URIs (/mnt/pcbjam[-rw]/<lib>) live
+    // under. Real dirs so any incidental existence/backup check on the URI
+    // passes; the lib contents themselves are served virtually via
+    // window.kicadLibs (read-only origins and writable user libs).
     FS.mkdirTree(PCBJAM_LIB_MOUNT);
+    FS.mkdirTree(PCBJAM_LIB_RW_MOUNT);
+    // Empty placeholder file per writable lib so the editor's post-save
+    // file-times stat succeeds (the real bytes are served via window.kicadLibs).
+    for (const uri of writableLibUris) {
+      if (!FS.analyzePath(uri).exists) FS.writeFile(uri, "");
+    }
     const writeIfAbsent = (path: string, contents: string) => {
       if (FS.analyzePath(path).exists) return;
       FS.writeFile(path, contents);

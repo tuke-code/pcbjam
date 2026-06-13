@@ -66,6 +66,16 @@ case "$APP_NAME" in
         ;;
 esac
 
+# Which app's embind bindings to compile + link. Most apps use their own; the
+# symbol_editor is the eeschema kiface launched at a different TOP_FRAME and has
+# no embind of its own, so it reuses eeschema's — whose bindings (kicadCollabOnSave
+# et al.) the shared kiface objects reference. Without this the symbol_editor link
+# fails with "undefined symbol: kicadCollabOnSave" (the placeholder defines nothing).
+case "$APP_NAME" in
+    symbol_editor) EMBIND_APP="eeschema" ;;
+    *)             EMBIND_APP="$APP_NAME" ;;
+esac
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../common/env.sh"
 source "${SCRIPT_DIR}/../common/versions.sh"
@@ -319,8 +329,8 @@ log_info "KiCad WASM support verified"
 # linker line below references "${STUBS_BUILD}/${APP_NAME}_embind.o" so we
 # create an empty placeholder when the source is missing, to keep the link
 # line stable across apps.
-EMBIND_OBJ="${STUBS_BUILD}/${APP_NAME}_embind.o"
-EMBIND_SRC="${PROJECT_ROOT}/wasm/bindings/${APP_NAME}_embind.cpp"
+EMBIND_OBJ="${STUBS_BUILD}/${EMBIND_APP}_embind.o"
+EMBIND_SRC="${PROJECT_ROOT}/wasm/bindings/${EMBIND_APP}_embind.cpp"
 
 # Step 7: Configure KiCad with CMake
 # We use CMAKE_MODULE_PATH to inject our compatibility layer

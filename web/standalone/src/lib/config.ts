@@ -11,6 +11,7 @@ export const WASM_ASSET_BASE_URL =
 import type { ProviderConfig, ProviderKind } from "@/wasm/collab";
 import { remoteLibsSource } from "@/wasm/libs/remote-source";
 import type { LibsSource } from "@/wasm/libs/source";
+import { withSpikeWritableLib } from "@/wasm/libs/spike-writable";
 import { staticLibsSource } from "@/wasm/libs/static-source";
 
 /**
@@ -57,7 +58,22 @@ export function docSourceConfig(): DocSource {
  */
 export function libsSourceConfig(): LibsSource | null {
   const kind = import.meta.env.VITE_LIBS_SOURCE ?? "remote";
-  if (kind === "off") return null;
-  if (kind === "static") return staticLibsSource();
-  return remoteLibsSource(API_BASE_URL);
+  const base =
+    kind === "off"
+      ? null
+      : kind === "static"
+        ? staticLibsSource()
+        : remoteLibsSource(API_BASE_URL);
+
+  // 0004-A spike: `?libwrite=1` adds one in-memory writable user lib so the
+  // editor save path has a target before the backend exists. Remove once 0004-C
+  // wires real remote writes.
+  if (
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("libwrite") === "1"
+  ) {
+    return withSpikeWritableLib(base, (m) => console.log(m));
+  }
+
+  return base;
 }

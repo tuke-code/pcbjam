@@ -6,11 +6,13 @@ import { libIdFromUri, libUri } from "./uri";
  * local folder); the WASM-facing provider below is the same regardless.
  */
 export interface LibInfo {
-  /** Opaque id used in the lib-table URI (/mnt/pcbjam/<id>). */
+  /** Opaque id used in the lib-table URI (/mnt/pcbjam[-rw]/<id>). */
   id: string;
   /** Display nickname for the sym-lib-table row. */
   name: string;
   description?: string | null;
+  /** Writable (user) lib → mounts under /mnt/pcbjam-rw/ and accepts saves. */
+  writable?: boolean;
 }
 
 export interface LibItemInfo {
@@ -28,6 +30,17 @@ export interface LibsSource {
    * null if absent. `kind` is 'symbol' for now.
    */
   getItemBody(libId: string, kind: string, name: string): Promise<string | null>;
+  /**
+   * Persist one item body into a writable (user) lib. Optional: read-only
+   * sources omit it (a save into a non-writable source resolves false).
+   * `body` is a complete fork-native `kicad_symbol_lib` s-expr.
+   */
+  saveItemBody?(
+    libId: string,
+    kind: string,
+    name: string,
+    body: string,
+  ): Promise<boolean>;
 }
 
 /** The function the WASM `SCH_IO_PCBJAM_LIB` plugin calls via the JS bridge. */
@@ -61,8 +74,11 @@ function sexprEscape(s: string): string {
 export function buildSymLibTable(libsList: LibInfo[]): string {
   const rows = libsList.map((l) => {
     const descr = l.description ? sexprEscape(l.description) : "";
+    // Same plugin type ("PCBJAM") for read-only + writable libs; the rw mount
+    // in the URI is what flips writability (plugin IsLibraryWritable).
     return `  (lib (name "${sexprEscape(l.name)}")(type "PCBJAM")(uri "${libUri(
       l.id,
+      l.writable,
     )}")(options "")(descr "${descr}"))`;
   });
   return `(sym_lib_table\n  (version 7)\n${rows.join("\n")}${
@@ -72,9 +88,10 @@ export function buildSymLibTable(libsList: LibInfo[]): string {
 
 /**
  * Install `window.kicadLibs` backed by a `LibsSource`. The plugin calls
- * `request(op, "/mnt/pcbjam/<id>", arg)`:
+ * `request(op, "/mnt/pcbjam[-rw]/<id>", arg)`:
  *   "list" -> JSON {"symbols":[...]}   (symbol names in the lib)
- *   "get"  -> the item body s-expr     (arg = symbol name)
+ *   "get"  -> the item body s-expr     (arg = symbol name; null if absent)
+ *   "save" -> "ok" / null              (arg = JSON {"name":..,"body":..})
  */
 export function installLibsProvider(
   source: LibsSource,
@@ -100,6 +117,27 @@ export function installLibsProvider(
         }
         case "get":
           return await source.getItemBody(id, "symbol", arg);
+        case "save": {
+          let parsed: { name?: string; body?: string };
+          try {
+            parsed = JSON.parse(arg) as { name?: string; body?: string };
+          } catch {
+            log(`[libs] save: bad JSON arg`);
+            return null;
+          }
+          if (!parsed.name || !parsed.body) return null;
+          if (!source.saveItemBody) {
+            log(`[libs] save: source has no write support (lib=${id})`);
+            return null;
+          }
+          const ok = await source.saveItemBody(
+            id,
+            "symbol",
+            parsed.name,
+            parsed.body,
+          );
+          return ok ? "ok" : null;
+        }
         default:
           return null;
       }
