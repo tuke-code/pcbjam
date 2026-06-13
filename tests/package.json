@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "description": "Playwright tests for wxWidgets WASM and KiCad",
   "scripts": {
-    "test": "playwright test",
+    "test": "npm run test:wx && npm run test:asyncify:firefox",
+    "test:wx": "playwright test",
     "test:ui": "playwright test --ui",
     "test:headed": "playwright test --headed",
     "build-wasm": "cd apps && make -f Makefile.wasm",

@@ -40,6 +40,9 @@ or **hang** (a swap unwinds but is never rewound).
 | [`05-design-a-js-asyncify-arbiter.md`](05-design-a-js-asyncify-arbiter.md) | Incremental design: keep current `EM_ASYNC_JS` sleeps and fibers, but put one JS arbiter in charge of `currData`, transition queueing, and the trampoline. Includes concept explanations. |
 | [`06-design-b-fiber-first-runtime.md`](06-design-b-fiber-first-runtime.md) | Cleaner long-term design: make modals, clipboard, fonts, nested loops, and tools all scheduler-owned fiber-like contexts. Explains how this relates to de-parking and app lifetime. |
 | [`07-decisions-and-outcome.md`](07-decisions-and-outcome.md) | **What was decided and shipped (2026-06-12):** root cause, red-green ledger, the arbiter NOT built and why, roads not taken with revisit triggers. |
+| [`08-dom-port-regression.md`](08-dom-port-regression.md) | DOM-port regression investigation after rebasing onto the async hardening: traces, symbolized crash, ruled-out Asyncify/table/removelist hypotheses, and current stale-window diagnosis. |
+| [`09-dom-window-lifetime-hypothesis.md`](09-dom-window-lifetime-hypothesis.md) | Concrete failure story and first fix experiment for the DOM-port stale `wxWindow` hypothesis: destructor ordering, DOM event reentry, and validation plan. |
+| [`10-resolution-menubar-uaf.md`](10-resolution-menubar-uaf.md) | **RESOLVED:** the regression was a freed `wxMenuBar` left in a live frame's child list by `wxMenuBarBase::Detach()` (DOM-port only — the bar is a real child there). One-line fix in `wxMenuBar::Detach()`; full kicad suite green, zero corruption signatures. |
 
 ## The single decisive next step
 

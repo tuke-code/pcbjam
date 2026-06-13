@@ -451,8 +451,8 @@ cp tests/test-results/dialog-*.png tests/baseline-screenshots/
 ### Running Tests with Screenshots
 
 ```bash
-cd tests/apps
-npm test                    # Run all tests (saves screenshots to test-results/)
+cd tests
+npm test                    # wx e2e specs + asyncify harness (kicad: npm run test:kicad)
 npx playwright test --ui    # Interactive mode with screenshot preview
 ```
 

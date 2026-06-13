@@ -19,8 +19,12 @@ This builds `apps/minimal_test.{html,js,wasm}` and standalone test apps.
 
 ```bash
 npm install
-npm test
+npm test          # wx e2e specs + the asyncify race harness
 ```
+
+KiCad application tests are a separate, heavier suite (they need the
+docker-built KiCad WASM): `npm run test:kicad`. Run only the wx e2e specs with
+`npm run test:wx`.
 
 To run specific tests:
 ```bash
