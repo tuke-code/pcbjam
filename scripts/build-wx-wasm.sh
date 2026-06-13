@@ -188,7 +188,23 @@ fi
 kw_stage wxwidgets-compile
 echo ""
 echo "=== Building wxWidgets (using ${JOBS} parallel jobs) ==="
-emmake make -j${JOBS}
+# A clean -jN build occasionally fails non-deterministically: a burst of GUI
+# translation units (toplevel.cpp, dirdlgg.cpp, the generic colour/dir dialogs,
+# ...) all abort at once with bogus "incomplete type 'wxBitmap'" / "wxIcon has
+# no member IsOk" / "unknown type 'wxTranslations'" errors, while neighbouring
+# files compile fine. It never happens at -j1 (the host default) — it's a
+# parallel-build race over a generated/regenerated header (config.status can
+# re-emit wx/setup.h, and emscripten warms its cache on first use), so some
+# compiles read a file mid-rewrite. The same source builds cleanly on a retry.
+# Rather than serialize the whole (slow) build, fall back to a serial pass only
+# when the parallel one trips: it resumes from the already-built objects, so it
+# just recompiles the few that lost the race. A genuine error still fails the
+# -j1 pass and surfaces. (Same spirit as the serial PCRE pre-build above.)
+if ! emmake make -j${JOBS}; then
+    echo ""
+    echo "=== Parallel build failed; retrying serially to clear the clean-build race ==="
+    emmake make -j1
+fi
 
 # Create library symlinks (remove -emscripten suffix for CMake compatibility)
 echo ""

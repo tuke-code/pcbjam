@@ -126,6 +126,8 @@ S = standalone
 
 all: minimal_test.html \
      $(S)/menu/menu_test.html \
+     $(S)/contextmenu/contextmenu_test.html \
+     $(S)/scrollbar/scrollbar_test.html \
      $(S)/clipboard/clipboard_test.html \
      $(S)/filedialog/filedialog_test.html \
      $(S)/layout/layout_test.html \
@@ -217,6 +219,20 @@ $(S)/menu/menu_test.o: $(S)/menu/menu_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
 
 $(S)/menu/menu_test.html: $(S)/menu/menu_test.o $(WX_CORE_LIB) $(JS_FILES)
+	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
+
+# Context menu test (no GL)
+$(S)/contextmenu/contextmenu_test.o: $(S)/contextmenu/contextmenu_test.cpp
+	$(CXX) -c $(CXXFLAGS) $< -o $@
+
+$(S)/contextmenu/contextmenu_test.html: $(S)/contextmenu/contextmenu_test.o $(WX_CORE_LIB) $(JS_FILES)
+	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
+
+# Scrollbar test (no GL)
+$(S)/scrollbar/scrollbar_test.o: $(S)/scrollbar/scrollbar_test.cpp
+	$(CXX) -c $(CXXFLAGS) $< -o $@
+
+$(S)/scrollbar/scrollbar_test.html: $(S)/scrollbar/scrollbar_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 # Clipboard test (no GL)
@@ -547,6 +563,8 @@ $(S)/asyncify-races/races_test_nosleepfix.html: $(S)/asyncify-races/races_test.o
 
 # Convenience targets
 menu: $(S)/menu/menu_test.html
+contextmenu: $(S)/contextmenu/contextmenu_test.html
+scrollbar: $(S)/scrollbar/scrollbar_test.html
 clipboard: $(S)/clipboard/clipboard_test.html
 filedialog: $(S)/filedialog/filedialog_test.html
 layout: $(S)/layout/layout_test.html
@@ -609,7 +627,7 @@ clean:
 	rm -f $(S)/*/*_test*.html $(S)/*/*_test*.js $(S)/*/*_test*.wasm
 	rm -f $(S)/*/*_repro*.html $(S)/*/*_repro*.js $(S)/*/*_repro*.wasm
 
-.PHONY: all clean menu clipboard filedialog layout aui toolbar grid dialog timer tree dataview htmlwin stc print dnd propgrid pickers collapsible listctrl infobar dataviewvirtual auinotebook wizard gridedit calendar gridrenderers printpreview bitmapbuttons specialized validators ownerdrawn popup xml wasmedge fontenum textdecor bitmask regions maximize earlysize threadpool logerror retinascale coroutine coroutine-nested asyncify-races
+.PHONY: all clean menu contextmenu scrollbar clipboard filedialog layout aui toolbar grid dialog timer tree dataview htmlwin stc print dnd propgrid pickers collapsible listctrl infobar dataviewvirtual auinotebook wizard gridedit calendar gridrenderers printpreview bitmapbuttons specialized validators ownerdrawn popup xml wasmedge fontenum textdecor bitmask regions maximize earlysize threadpool logerror retinascale coroutine coroutine-nested asyncify-races
 
 # === Coroutine pthread variant — reproduces the KiCad Asyncify-fiber x pthreads crash ===
 # Same modal-free harness as `coroutine`, but compiled/linked with pthreads to match
