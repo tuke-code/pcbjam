@@ -1,10 +1,11 @@
 import * as React from "react";
 import { Link } from "react-router-dom";
-import type { Tool } from "@pcbjam/shared";
-import { FolderOpen, Loader2 } from "lucide-react";
-import { useProjects } from "@/lib/api";
+import type { Lib, Tool } from "@pcbjam/shared";
+import { FolderOpen, Library, Loader2, Package } from "lucide-react";
+import { useLibs, useProjects } from "@/lib/api";
 import { downloadBytes } from "@/lib/download";
 import { Button } from "@/components/ui/button";
+import { ToolGrid } from "@/components/ToolGrid";
 import type { SaveBytes } from "@/wasm/save-flow";
 import { LocalProjectView, type LocalFile } from "@/components/LocalProjectView";
 import { WasmTool } from "@/components/WasmTool";
@@ -99,19 +100,43 @@ function buildLocalProject(fileList: FileList): LocalProject {
 
 export function HomePage() {
   const { data: projects, isLoading, error } = useProjects();
+  const symbolLibs = useLibs("symbol");
+  const footprintLibs = useLibs("footprint");
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [local, setLocal] = React.useState<LocalProject | null>(null);
   const [launched, setLaunched] = React.useState<{ tool: Tool; target?: string } | null>(
     null,
   );
+  // A tool launched straight from the home page — no local folder, no backend
+  // project. File-less editors browse backend libraries; document editors
+  // (schematic/PCB/drawing sheet) boot to a blank document (KiCad-launcher style).
+  const [launchedTool, setLaunchedTool] = React.useState<{ tool: Tool } | null>(null);
 
   // <input webkitdirectory> is non-standard; set it imperatively.
   React.useEffect(() => {
     if (inputRef.current) inputRef.current.setAttribute("webkitdirectory", "");
   }, []);
 
-  // Once launched, the WASM runtime is process-global and one-shot for this page
-  // load — render the editor full-screen and nothing else (no going back).
+  // Tool launched from the home page: no project, no files. File-less editors
+  // read libraries from the backend (libsSourceConfig) and persist through the
+  // lib write bridge; document editors open a blank document. Either way there's
+  // no project fetch/save plumbing to wire.
+  if (launchedTool) {
+    return (
+      <WasmTool
+        tool={launchedTool.tool}
+        slug="local"
+        projectId="local"
+        files={[]}
+        fetchBytes={async (p) => {
+          throw new Error(`no project file to fetch: ${p}`);
+        }}
+      />
+    );
+  }
+
+  // Once launched over a local folder, the WASM runtime is process-global and
+  // one-shot for this page load — render the editor full-screen and nothing else.
   if (local && launched) {
     return (
       <WasmTool
@@ -189,8 +214,14 @@ export function HomePage() {
         )}
       </section>
 
+      {/* --- Tools (KiCad-style launcher for the standalone tools) --- */}
+      <section className="mb-10">
+        <h2 className="mb-3 text-lg font-medium">Tools</h2>
+        <ToolGrid onLaunch={(tool) => setLaunchedTool({ tool })} />
+      </section>
+
       {/* --- Backend projects --- */}
-      <section>
+      <section className="mb-10">
         <h2 className="mb-3 text-lg font-medium">Projects from the backend</h2>
         {isLoading && (
           <p className="flex items-center gap-2 text-muted-foreground">
@@ -225,6 +256,85 @@ export function HomePage() {
           )}
         </div>
       </section>
+
+      {/* --- Backend libraries --- */}
+      <section>
+        <h2 className="mb-3 text-lg font-medium">Libraries from the backend</h2>
+        <div className="space-y-3">
+          <LibGroup
+            icon={<Library size={16} />}
+            label="Symbols"
+            query={symbolLibs}
+            onOpen={() => setLaunchedTool({ tool: "symbol_editor" })}
+          />
+          <LibGroup
+            icon={<Package size={16} />}
+            label="Footprints"
+            query={footprintLibs}
+            onOpen={() => setLaunchedTool({ tool: "footprint_editor" })}
+          />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/**
+ * One backend-library group (Symbols / Footprints): clickable chips that launch
+ * the matching editor to browse the library. The editor lists ALL libs of that
+ * kind in its own tree (lib-scoped open is a later iteration); clicking here
+ * just opens the right tool.
+ */
+function LibGroup({
+  icon,
+  label,
+  query,
+  onOpen,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  query: ReturnType<typeof useLibs>;
+  onOpen: (lib: Lib) => void;
+}) {
+  const { data: libs, isLoading, error } = query;
+  return (
+    <div className="rounded-lg border p-4">
+      <h3 className="mb-2 flex items-center gap-2 text-sm font-medium">
+        {icon} {label}
+      </h3>
+      {isLoading && (
+        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="animate-spin" size={14} /> loading…
+        </p>
+      )}
+      {error && (
+        <p className="text-sm text-muted-foreground">No backend reachable.</p>
+      )}
+      {libs && libs.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          No {label.toLowerCase()} libraries.
+        </p>
+      )}
+      {libs && libs.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {libs.map((lib) => (
+            <button
+              key={lib.id}
+              type="button"
+              onClick={() => onOpen(lib)}
+              title={lib.description ?? undefined}
+              className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm hover:bg-accent"
+            >
+              {lib.name}
+              {lib.itemCount !== undefined && (
+                <span className="text-xs text-muted-foreground">
+                  {lib.itemCount}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

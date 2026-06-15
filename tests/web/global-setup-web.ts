@@ -13,6 +13,12 @@ import type { FullConfig } from '@playwright/test';
 const API_BASE = process.env.BACKEND_URL ?? 'http://localhost:3060';
 const DEMO_SLUG = 'demo';
 const DEMO_FILES = ['demo.kicad_sch', 'demo.kicad_pcb', 'demo.kicad_wks'];
+// Origin libs the remote-lib specs browse/place (symbol-write/footprint-browse).
+// The backend self-provisions these on dev/start (src/extract/ensure-example-libs).
+const REQUIRED_LIBS: Record<'symbol' | 'footprint', string[]> = {
+  symbol: ['Device'],
+  footprint: ['Resistor_SMD'],
+};
 
 async function waitForApi(timeoutMs = 60000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -50,8 +56,30 @@ async function verifyDemoProject(): Promise<void> {
   }
 }
 
+async function verifyLibs(): Promise<void> {
+  for (const kind of ['symbol', 'footprint'] as const) {
+    const r = await fetch(`${API_BASE}/api/libs?kind=${kind}`);
+    if (!r.ok) {
+      throw new Error(`GET /api/libs?kind=${kind} -> HTTP ${r.status}`);
+    }
+    const libs = (await r.json()) as { id: string }[];
+    const have = new Set(libs.map((l) => l.id));
+    const missing = REQUIRED_LIBS[kind].filter((id) => !have.has(id));
+    if (missing.length) {
+      throw new Error(
+        `backend missing ${kind} origin lib(s): ${missing.join(', ')}. The example ` +
+          `backend self-provisions libs on dev/start (clones + extracts a KiCad slice ` +
+          `into web/backend/.libs) — check that step ran (network on first run).`
+      );
+    }
+  }
+}
+
 export default async function globalSetup(_config: FullConfig): Promise<void> {
   await waitForApi();
   await verifyDemoProject();
-  console.log(`web e2e setup: backend at ${API_BASE} serving "${DEMO_SLUG}" — OK`);
+  await verifyLibs();
+  console.log(
+    `web e2e setup: backend at ${API_BASE} serving "${DEMO_SLUG}" + origin libs — OK`
+  );
 }

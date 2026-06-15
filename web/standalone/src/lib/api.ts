@@ -1,5 +1,6 @@
 import {
   contract,
+  type Lib,
   type Project,
   type ProjectWithFiles,
 } from "@pcbjam/shared";
@@ -25,6 +26,23 @@ export function useProjects() {
     queryFn: async (): Promise<Project[]> => {
       const res = await client.listProjects();
       if (res.status !== 200) throw new Error("failed to list projects");
+      return res.body;
+    },
+  });
+}
+
+/**
+ * Libraries the backend serves, optionally filtered to a kind ("symbol" |
+ * "footprint"). Origins are kind-filtered server-side; user libs are
+ * kind-agnostic and always returned. Mirrors `useProjects` — read-only listing
+ * for the home page; the editor consumes libs over its own WASM bridge.
+ */
+export function useLibs(kind?: "symbol" | "footprint") {
+  return useQuery({
+    queryKey: ["libs", kind ?? "all"],
+    queryFn: async (): Promise<Lib[]> => {
+      const res = await client.listLibs({ query: { kind } });
+      if (res.status !== 200) throw new Error("failed to list libraries");
       return res.body;
     },
   });
