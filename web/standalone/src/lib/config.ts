@@ -74,12 +74,18 @@ export function libsOwner(): string {
 
 export function libsSourceConfig(projectId?: string): LibsSource | null {
   const kind = import.meta.env.VITE_LIBS_SOURCE ?? "remote";
+  // "local" is the placeholder id for launches with no real backend project
+  // (local folder, tool grid, lib-scoped open). It is NOT a project on the
+  // backend, so don't send it as the project header — a registry server would
+  // scope its lib resolution (project-pinned mirrors) to a non-existent project
+  // and return nothing. Real backend projects pass their uuid and keep scoping.
+  const project = projectId && projectId !== "local" ? projectId : undefined;
   const base =
     kind === "off"
       ? null
       : kind === "static"
         ? staticLibsSource()
-        : remoteLibsSource(API_BASE_URL, libsOwner(), projectId);
+        : remoteLibsSource(API_BASE_URL, libsOwner(), project);
 
   // 0004-A spike: `?libwrite=1` adds one in-memory writable user SYMBOL lib so the
   // editor save path works with no backend (a dev/test aid). The real remote

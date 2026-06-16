@@ -3,8 +3,6 @@ import { Link } from "react-router-dom";
 import type { Lib, Tool } from "@pcbjam/shared";
 import { FolderOpen, Library, Loader2, Package } from "lucide-react";
 import { useLibs, useProjects } from "@/lib/api";
-import { libsSourceConfig } from "@/lib/config";
-import { scopedLibsSource } from "@/wasm/libs/scoped-source";
 import { localFileLibsSource } from "@/wasm/libs/local-file-source";
 import type { LibsSource } from "@/wasm/libs/source";
 import { downloadBytes } from "@/lib/download";
@@ -120,15 +118,6 @@ export function HomePage() {
     tool: Tool;
     libsSource?: LibsSource | null;
   } | null>(null);
-
-  /** Open a backend library scoped to itself in its matching editor. */
-  const openScopedLib = (tool: Tool, lib: Lib) => {
-    const base = libsSourceConfig("local");
-    setLaunchedTool({
-      tool,
-      libsSource: base ? scopedLibsSource(base, lib.id) : undefined,
-    });
-  };
 
   // <input webkitdirectory> is non-standard; set it imperatively.
   React.useEffect(() => {
@@ -299,13 +288,13 @@ export function HomePage() {
             icon={<Library size={16} />}
             label="Symbols"
             query={symbolLibs}
-            onOpen={(lib) => openScopedLib("symbol_editor", lib)}
+            tool="symbol_editor"
           />
           <LibGroup
             icon={<Package size={16} />}
             label="Footprints"
             query={footprintLibs}
-            onOpen={(lib) => openScopedLib("footprint_editor", lib)}
+            tool="footprint_editor"
           />
         </div>
       </section>
@@ -314,21 +303,20 @@ export function HomePage() {
 }
 
 /**
- * One backend-library group (Symbols / Footprints): clickable chips that launch
- * the matching editor to browse the library. The editor lists ALL libs of that
- * kind in its own tree (lib-scoped open is a later iteration); clicking here
- * just opens the right tool.
+ * One backend-library group (Symbols / Footprints): each lib is a deep-link to
+ * `/l/<libId>/<tool>` (LibToolPage), which boots the editor scoped to that one
+ * library. A full navigation (anchor) gives Emscripten a clean page.
  */
 function LibGroup({
   icon,
   label,
   query,
-  onOpen,
+  tool,
 }: {
   icon: React.ReactNode;
   label: string;
   query: ReturnType<typeof useLibs>;
-  onOpen: (lib: Lib) => void;
+  tool: Tool;
 }) {
   const { data: libs, isLoading, error } = query;
   return (
@@ -352,10 +340,9 @@ function LibGroup({
       {libs && libs.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {libs.map((lib) => (
-            <button
+            <a
               key={lib.id}
-              type="button"
-              onClick={() => onOpen(lib)}
+              href={`/l/${encodeURIComponent(lib.id)}/${tool}`}
               title={lib.description ?? undefined}
               className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm hover:bg-accent"
             >
@@ -365,7 +352,7 @@ function LibGroup({
                   {lib.itemCount}
                 </span>
               )}
-            </button>
+            </a>
           ))}
         </div>
       )}
