@@ -58,6 +58,26 @@ else
     fi
 fi
 
+# --- Ensure a working `python` command for build codegen steps --------------
+# Some build steps run scripts via a `#!/usr/bin/env python` shebang (e.g.
+# wxWidgets' src/stc/gen_iface.py, which regenerates wx/stc/stc.h). The bundled
+# emsdk ships only `python3`; modern macOS has no system `python`; and a pyenv
+# shim with no configured version silently shadows PATH and aborts the build
+# with "pyenv: python: command not found". Guard on actually *running* python
+# (the pyenv shim exists but fails), and shim `python` -> python3 so this can't
+# break across machines/CI.
+if ! python -c '' >/dev/null 2>&1; then
+    # Prefer emsdk's bundled python3, fall back to any python3 on PATH.
+    _PY3="$(ls "$_KICAD_WASM_PROJECT_ROOT"/tools/emsdk/python/*/bin/python3 2>/dev/null | head -n1)"
+    [ -x "$_PY3" ] || _PY3="$(command -v python3 || true)"
+    if [ -n "$_PY3" ]; then
+        _PY_SHIM_DIR="$BUILD_ROOT/python-shim"
+        mkdir -p "$_PY_SHIM_DIR"
+        ln -sf "$_PY3" "$_PY_SHIM_DIR/python"
+        export PATH="$_PY_SHIM_DIR:$PATH"
+    fi
+fi
+
 # Common compiler flags
 export EMCC_CFLAGS="-fPIC -DEMSCRIPTEN"
 export EMCC_CXXFLAGS="-fPIC -DEMSCRIPTEN -std=c++17"

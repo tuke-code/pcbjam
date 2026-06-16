@@ -92,6 +92,18 @@ Output: `output/pcbnew.js`, `output/pcbnew.wasm`
 
 See [docs/build.md](docs/build.md) for detailed build documentation.
 
+#### Fresh worktree provisioning
+
+Some test artifacts are gitignored and are NOT produced by the build pipeline,
+so they don't carry into a newly-created git worktree — without them the
+`gal-webgl` tests 404 ("Loading WASM...") and the `collab` specs fail with
+`Could not resolve "@pcbjam/shared"`. After building (`docker/build.sh` +
+`scripts/build-wx-wasm.sh`) and `cd tests && npm i`, run once per worktree:
+
+```bash
+./scripts/setup-worktree.sh   # idempotent: sysroot headers, gal-webgl harness, web/ pnpm install, collab bundle
+```
+
 ### 2. wxWidgets Test Apps (Local)
 
 Build standalone wxWidgets test apps for feature testing:
