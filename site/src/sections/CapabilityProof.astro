@@ -1,7 +1,11 @@
 ---
 import SectionBand from '../components/SectionBand.astro';
 import CheckItem from '../components/CheckItem.astro';
-import Placeholder from '../components/Placeholder.astro';
+import { Picture } from 'astro:assets';
+import pcbnew from '../assets/screens/pcbnew.png';
+import eeschema from '../assets/screens/eeschema.png';
+import gerbview from '../assets/screens/gerbview.png';
+import symbolEditor from '../assets/screens/symbol-editor.png';
 
 const capabilities = [
   'Schematic capture (Eeschema)',
@@ -16,12 +20,34 @@ const capabilities = [
   'Push-and-shove routing',
 ];
 
-// TODO(assets): replace with real annotated screenshots (§4b.4).
+// Real screenshots captured from the WASM build by the e2e harness, each loading
+// a real design. Originals are 1280×720 PNGs in src/assets/screens/ (kept as the
+// source); astro:assets <Picture> emits responsive AVIF/WebP at build time.
+//   PCB        — pic_programmer demo board (Pcbnew)
+//   Schematic  — ECC83 push-pull amplifier (Eeschema)
+//   Gerber     — tiny_tapeout fab output, 6 layers (GerbView)
+//   Symbol     — VCA810 op-amp from a seeded library (Symbol editor)
 const shots = [
-  'PRODUCE: PCB layout editor screenshot (§4b.4a)',
-  'PRODUCE: schematic capture (Eeschema) (§4b.4b)',
-  'PRODUCE: 3D board view (§4b.4c)',
-  'PRODUCE: DRC / ERC results panel (§4b.4d)',
+  {
+    img: pcbnew,
+    caption: 'PCB layout — Pcbnew',
+    alt: 'KiCad Pcbnew laying out the pic_programmer demo board in a browser tab',
+  },
+  {
+    img: eeschema,
+    caption: 'Schematic capture — Eeschema',
+    alt: 'KiCad Eeschema editing the ECC83 push-pull amplifier schematic in a browser tab',
+  },
+  {
+    img: gerbview,
+    caption: 'Gerber viewer — GerbView',
+    alt: 'KiCad GerbView displaying the tiny_tapeout demo board Gerber layers in a browser tab',
+  },
+  {
+    img: symbolEditor,
+    caption: 'Symbol editor',
+    alt: 'KiCad symbol editor showing the VCA810 op-amp symbol in a browser tab',
+  },
 ];
 ---
 
@@ -42,7 +68,20 @@ const shots = [
       {capabilities.map((c) => <CheckItem label={c} />)}
     </ul>
     <div class="shots">
-      {shots.map((s) => <Placeholder label={s} kind="image" ratio="4 / 3" />)}
+      {shots.map((s) => (
+        <figure class="shot">
+          <Picture
+            src={s.img}
+            formats={['avif', 'webp']}
+            alt={s.alt}
+            widths={[320, 640, 960, 1280]}
+            sizes="(max-width: 460px) 90vw, (max-width: 820px) 45vw, 300px"
+            loading="lazy"
+            decoding="async"
+          />
+          <figcaption>{s.caption}</figcaption>
+        </figure>
+      ))}
     </div>
   </div>
 </SectionBand>
@@ -68,6 +107,29 @@ const shots = [
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0.75rem;
+  }
+  .shot {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+  /* astro:assets <Picture> renders the <img>; style it globally within .shots. */
+  .shots :global(img) {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-soft);
+  }
+  .shot figcaption {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--fg-muted);
+    letter-spacing: 0.01em;
   }
   :global(code) {
     font-family: var(--font-mono);
