@@ -11,8 +11,8 @@ import {
  *
  * This is a faithful port of the proven harness HTML (tests/apps/kicad/<tool>.html):
  * it builds the same global `Module` config, runs the same preRun steps (create
- * canvas, write images.tar.gz, seed config), then injects `wx.js` followed by
- * `<tool>.js`. The KiCad WASM build is NON-modularized, so it reads a global
+ * canvas, write images.tar.gz, seed config), then injects `wx.js`, `wx-dom.js`,
+ * and `<tool>.js`. The KiCad WASM build is NON-modularized, so it reads a global
  * `var Module` and publishes `FS`/`wxElementRegistry` onto `window` — exactly the
  * surface the iframe approach used, only now in the top-level window.
  *
@@ -220,10 +220,16 @@ async function doBoot(opts: BootOptions): Promise<void> {
     mainScriptUrlOrBlob: `${base}/${tool}.js`,
   };
 
-  // wx.js MUST load first: it defines globals the wasm imports (getConfigEntryLength,
-  // …) and the wxElementRegistry the open-flow drives. Then the tool glue, whose
-  // execution captures currentScript.src as Emscripten's _scriptName.
+  // Load order mirrors the harness HTML (tests/apps/kicad/<tool>.html):
+  //   wx.js     — defines globals the wasm imports (getConfigEntryLength, …) and
+  //               the wxElementRegistry the open-flow drives.
+  //   wx-dom.js — the DOM-port shim that defines window.wxDomCreateControl and the
+  //               other DOM widget hooks the wasm invokes via EM_ASM. Without it the
+  //               tool aborts at startup with "wxDomCreateControl is not defined".
+  //   <tool>.js — the tool glue, whose execution captures currentScript.src as
+  //               Emscripten's _scriptName.
   await loadScript(`${base}/wx.js`);
+  await loadScript(`${base}/wx-dom.js`);
   await loadScript(`${base}/${tool}.js`);
-  log(`[boot] injected wx.js + ${tool}.js (base=${base})`);
+  log(`[boot] injected wx.js + wx-dom.js + ${tool}.js (base=${base})`);
 }
