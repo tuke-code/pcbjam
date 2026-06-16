@@ -1,5 +1,7 @@
-# The main-branch CI: full KiCad WASM build (all 6 tools, Binaryen 130) +
-# wxWidgets e2e (291 tests) + KiCad e2e (38 tests) on a Ubicloud runner.
+# The build + e2e CI: full KiCad WASM build (all 6 tools, Binaryen 130, host-side
+# asyncify only — the -O2 pass is skipped via ASYNCIFY_ONLY=1) + wxWidgets e2e
+# (291 tests) + KiCad e2e (38 tests) on a Ubicloud runner. Runs on pushes to
+# main/ubicloud-ci and on PRs against main.
 # Replaced the ephemeral-Hetzner-VM workflows (ci-full-build.yml / ci.yml,
 # removed 2026-06-12): Ubicloud runners are plain runs-on labels — no
 # create/delete-runner jobs, no shared one-slot lock — and benchmarked
@@ -13,22 +15,36 @@ on:
     branches: ["main", "ubicloud-ci"]
     # docs-only commits must not burn a paid runner slot
     paths-ignore: ["docs/**", "**.md"]
+  pull_request:
+    branches: ["main"]
+    paths-ignore: ["docs/**", "**.md"]
   workflow_dispatch:
     inputs:
-      binaryen_version: { description: "Binaryen version for the host asyncify+-O2 step", required: false, default: "130" }
+      binaryen_version: { description: "Binaryen version for the host asyncify step", required: false, default: "130" }
 
 concurrency:
-  group: ci-ubicloud              # independent of the Hetzner wasm-opt-bench slot
-  cancel-in-progress: false
+  # Per-ref: a new push to a PR (or to main) cancels its own older in-flight run.
+  group: ci-ubicloud-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-and-test:
     name: Build all tools + KiCad e2e (Ubicloud)
+    # Don't run untrusted fork PRs on the paid runner (push/dispatch always run;
+    # same-repo PRs run). Remove this `if:` to enable fork-PR CI.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubicloud-standard-30
     timeout-minutes: 300
     env:
       KICAD_LOG_NESTED: "1"
       BINARYEN_VERSION: ${{ inputs.binaryen_version || '130' }}
+      # Skip the heavy wasm-opt -O2 pass (scripts/common/apply-asyncify.sh:124):
+      # stops after the asyncify pass. The full e2e suite below validates that
+      # the non-O2 wasm runs correctly in Chrome/Firefox.
+      ASYNCIFY_ONLY: "1"
+      # Stable docker-compose project → deterministic build-cache volume name
+      # (kicad-wasm-ci_kicad-build-cache) for the deps cache below.
+      COMPOSE_PROJECT_NAME: kicad-wasm-ci
     steps:
       # Docker comes preinstalled on Ubicloud images (validated by the arm64
       # repro run) — only the Binaryen from-source toolchain is needed.
@@ -49,14 +65,34 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
 
+      # Cache the ~10-min --build-deps output (boost/cairo/occ/... sysroot + stamps,
+      # which live in the kicad-build-cache docker volume). Key on the deps inputs
+      # only — deps don't depend on the kicad/wx submodule SHAs, so it stays warm
+      # across most PRs. On a hit we seed the volume so build.sh's per-dep
+      # check_stamp short-circuits; on a miss the deps build and we tar them out.
+      - name: Restore deps cache
+        id: deps-cache
+        uses: actions/cache@v4
+        with:
+          path: deps-cache
+          key: deps-${{ runner.os }}-${{ hashFiles('scripts/deps/**','scripts/common/versions.sh','scripts/common/functions.sh','scripts/common/env.sh','docker/Dockerfile','docker/docker-compose.yml') }}
+
+      - name: Seed deps volume from cache
+        if: steps.deps-cache.outputs.cache-hit == 'true'
+        run: |
+          docker volume create kicad-wasm-ci_kicad-build-cache
+          docker run --rm -v kicad-wasm-ci_kicad-build-cache:/bw -v "$PWD/deps-cache":/cache \
+            alpine sh -c 'tar xzf /cache/deps.tar.gz -C /bw'
+
       # Same build recipe as ci-full-build.yml: full KiCad WASM build of ALL 6
-      # tools, host-side asyncify + -O2 on Binaryen v130 (BINARYEN_VERSION in
-      # env → get-wasm-opt.sh). 'all' = pcbnew eeschema calculator pl_editor
-      # symbol_editor gerbview, built in sequence.
+      # tools, host-side asyncify on Binaryen v130 (BINARYEN_VERSION in env →
+      # get-wasm-opt.sh); the -O2 pass is skipped (ASYNCIFY_ONLY=1 in job env).
+      # 'all' = pcbnew eeschema calculator pl_editor symbol_editor gerbview,
+      # built in sequence. --build-deps short-circuits on a cache hit.
       - name: Build all KiCad tools WASM with Binaryen ${{ env.BINARYEN_VERSION }}
         run: |
           # Lift the docker-compose dev-Mac caps and pipeline the host-side
-          # asyncify+-O2 with the next tool's container compile — same tuning
+          # asyncify pass with the next tool's container compile — same tuning
           # as the Hetzner workflow (rationale in ci-full-build.yml and
           # docs/ci-build-slowness-findings.md). standard-30: 30 vcpu / 120 GB.
           # nproc-1: Ubicloud's preinstalled docker daemon rejects a cpus limit
@@ -71,6 +107,15 @@ jobs:
           ./docker/build.sh all --build-deps -j "$(nproc)"
           echo "wasm-opt used:"; ./scripts/common/get-wasm-opt.sh --version 2>/dev/null || true
           ls -lh output/*.wasm
+
+      # On a cache miss, tar the freshly-built deps (sysroot + stamps) out of the
+      # volume so actions/cache saves them (post-job) under the key above.
+      - name: Package deps for cache
+        if: steps.deps-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p deps-cache
+          docker run --rm -v kicad-wasm-ci_kicad-build-cache:/bw -v "$PWD/deps-cache":/cache \
+            alpine sh -c 'cd /bw && tar czf /cache/deps.tar.gz sysroot stamps'
 
       # Host-side wxWidgets build producing the wx test apps for `npm run test`
       # (separate from the in-docker wxWidgets that KiCad links against).
@@ -88,7 +133,7 @@ jobs:
       # needs $(SYSROOT)/include, so copy just the headers out of the volume.
       - name: Expose docker sysroot headers to host builds
         run: |
-          VOL=$(docker volume ls -q --filter name=kicad-build-cache | head -1)
+          VOL=kicad-wasm-ci_kicad-build-cache
           echo "sysroot volume: $VOL"
           mkdir -p build-wasm/sysroot
           docker run --rm -v "$VOL":/bw -v "$PWD/build-wasm/sysroot":/host alpine \
