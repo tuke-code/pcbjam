@@ -11,7 +11,7 @@ import {
   type KicadDoc,
   type Tool,
 } from "@pcbjam/shared";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import {
   libsSourceConfig,
   WASM_ASSET_BASE_URL,
@@ -19,7 +19,13 @@ import {
   type DocSource,
 } from "@/lib/config";
 import { bootKicadTool } from "@/wasm/boot";
-import type { LibsSource } from "@/wasm/libs/source";
+import {
+  LIB_BUSY_EVENT,
+  LIB_ERROR_EVENT,
+  type LibBusyDetail,
+  type LibErrorDetail,
+  type LibsSource,
+} from "@/wasm/libs/source";
 import { memfsFilePath, memfsProjectDir } from "@/wasm/constants";
 import { driveProjectIntoTool, type ToolFile } from "@/wasm/kicad-runner";
 import { registerSaveHook, type SaveBytes } from "@/wasm/save-flow";
@@ -333,6 +339,21 @@ async function maybeStartCollab(
 }
 
 /**
+ * Wait until the wxWidgets UI has actually built some elements — it populates a
+ * frame or two AFTER the boot sequence resolves, so dropping the loading overlay
+ * on boot-resolve flashes a blank editor. Polls `wxElementRegistry` (the same
+ * "UI built" signal the e2e suite uses) and falls through after a timeout so a
+ * tool with a minimal UI can never hang the overlay.
+ */
+async function waitForWxUi(win: ToolWindow, timeoutMs = 25_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if ((win.wxElementRegistry?.findAll({}).length ?? 0) > 3) return;
+    await new Promise((r) => setTimeout(r, 150));
+  }
+}
+
+/**
  * Boots a KiCad tool directly in this React document (no iframe): builds the
  * Emscripten `Module` config, injects the proven harness scripts (wx.js +
  * <tool>.js, the same artifacts the e2e tests use) into the page, then syncs the
@@ -388,12 +409,53 @@ export function WasmTool({
   const [logs, setLogs] = React.useState<string[]>([]);
   const [showLog, setShowLog] = React.useState(false);
   const [oomExhausted, setOomExhausted] = React.useState(false);
+  // Editor lifecycle for the loading chrome: false until the tool has booted +
+  // opened (covers the big WASM-compile freeze with a full-screen overlay).
+  const [ready, setReady] = React.useState(false);
+  // A library item currently being fetched (open/save), for a transient spinner.
+  const [libBusy, setLibBusy] = React.useState<string | null>(null);
+  // Last lib error (e.g. a backend 404 on open), shown as a dismissible toast.
+  const [libError, setLibError] = React.useState<string | null>(null);
 
   const base = (assetBaseUrl ?? WASM_ASSET_BASE_URL).replace(/\/$/, "");
   const append = React.useCallback(
     (msg: string) => setLogs((prev) => [...prev.slice(-800), msg]),
     [],
   );
+
+  // Loading/error chrome for library item fetches (open/save), driven by events
+  // the libs bridge dispatches (wasm/libs/source). The fetch is otherwise
+  // invisible; a 404 would silently do nothing without this.
+  React.useEffect(() => {
+    let busyTimer: ReturnType<typeof setTimeout> | undefined;
+    const onBusy = (e: Event) => {
+      const d = (e as CustomEvent<LibBusyDetail>).detail;
+      clearTimeout(busyTimer);
+      if (d.busy) {
+        // Debounce — only flag slow fetches, so fast ones don't flicker.
+        busyTimer = setTimeout(() => setLibBusy(d.name || "library item"), 180);
+      } else {
+        setLibBusy(null);
+      }
+    };
+    const onError = (e: Event) => {
+      setLibError((e as CustomEvent<LibErrorDetail>).detail.message);
+    };
+    window.addEventListener(LIB_BUSY_EVENT, onBusy);
+    window.addEventListener(LIB_ERROR_EVENT, onError);
+    return () => {
+      clearTimeout(busyTimer);
+      window.removeEventListener(LIB_BUSY_EVENT, onBusy);
+      window.removeEventListener(LIB_ERROR_EVENT, onError);
+    };
+  }, []);
+
+  // Auto-dismiss the lib error toast.
+  React.useEffect(() => {
+    if (!libError) return;
+    const t = setTimeout(() => setLibError(null), 6000);
+    return () => clearTimeout(t);
+  }, [libError]);
 
   React.useEffect(() => {
     const removeNavigationHook = installToolNavigationHook(window as ToolWindow, {
@@ -488,6 +550,11 @@ export function WasmTool({
           log: append,
           onStatus: setStatus,
         });
+        // Tool booted + project opened. Wait for the wx UI to actually build
+        // before dropping the overlay, so we don't reveal a still-blank editor.
+        await waitForWxUi(win);
+        setStatus("");
+        setReady(true);
       } catch (err) {
         append(`[fatal] ${String(err)}`);
         setStatus(`Error: ${String(err)}`);
@@ -521,10 +588,59 @@ export function WasmTool({
         />
       )}
 
-      {status && (
+      {/* Boot overlay — covers the big WASM download/compile freeze until the
+          tool has booted + opened. */}
+      {!ready && (
+        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-[#1a1a2e] text-white">
+          {status.startsWith("Error") ? (
+            <>
+              <p className="max-w-md px-6 text-center font-mono text-sm text-red-300">
+                {status}
+              </p>
+              <button
+                className="rounded border border-white/30 px-3 py-1 text-xs hover:bg-white/10"
+                onClick={() => window.location.reload()}
+              >
+                Reload
+              </button>
+            </>
+          ) : (
+            <>
+              <Loader2 className="animate-spin" size={32} />
+              <p className="font-mono text-sm text-white/80">
+                {status || "Loading…"}
+              </p>
+              <p className="font-mono text-xs text-white/40">
+                First load downloads the tool (large) — this can take a moment.
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Transient post-boot status (e.g. file open). */}
+      {ready && status && (
         <div className="pointer-events-none absolute left-3 top-3 z-20 rounded bg-black/70 px-3 py-2 font-mono text-xs text-white">
           {status}
         </div>
+      )}
+
+      {/* A library item is being fetched (open/save). */}
+      {ready && libBusy && (
+        <div className="pointer-events-none absolute left-1/2 top-3 z-20 flex -translate-x-1/2 items-center gap-2 rounded bg-black/80 px-3 py-1.5 text-xs text-white">
+          <Loader2 className="animate-spin" size={14} /> Loading {libBusy}…
+        </div>
+      )}
+
+      {/* Library error (e.g. a backend 404 on open) — auto-dismisses. */}
+      {libError && (
+        <button
+          className="absolute left-1/2 top-3 z-40 max-w-md -translate-x-1/2 rounded bg-red-950/95 px-3 py-2 text-center text-xs text-red-100 shadow-lg ring-1 ring-red-500/40"
+          onClick={() => setLibError(null)}
+          title="Dismiss"
+        >
+          {libError}
+        </button>
       )}
 
       <div className="absolute bottom-0 left-0 right-0 z-20">

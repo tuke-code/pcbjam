@@ -73,6 +73,36 @@ declare global {
   }
 }
 
+/**
+ * Events the libs bridge dispatches on `window` so the editor chrome (WasmTool)
+ * can show a loading state for the otherwise-invisible item fetch, and surface an
+ * error when a body can't be loaded (e.g. a backend 404). Decoupled via events so
+ * `wasm/libs` stays UI-agnostic.
+ */
+export const LIB_BUSY_EVENT = "pcbjam:lib-busy";
+export const LIB_ERROR_EVENT = "pcbjam:lib-error";
+
+export interface LibBusyDetail {
+  busy: boolean;
+  op: string;
+  kind: string;
+  name: string;
+}
+export interface LibErrorDetail {
+  message: string;
+}
+
+function emitLibBusy(detail: LibBusyDetail): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(LIB_BUSY_EVENT, { detail }));
+}
+function emitLibError(message: string): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent(LIB_ERROR_EVENT, { detail: { message } }),
+  );
+}
+
 /** Optional artificial latency (`?libdelay=1500`) to exercise the bridge. */
 function artificialDelayMs(): number {
   const raw = new URLSearchParams(window.location.search).get("libdelay");
@@ -142,6 +172,10 @@ export function installLibsProvider(
     if (!id) return null;
     if (delay) await sleep(delay);
 
+    // "get"/"save" are user-triggered (open/save an item) and otherwise give no
+    // visible feedback — broadcast busy + errors so the editor can show them.
+    const userFacing = op === "get" || op === "save";
+    if (userFacing) emitLibBusy({ busy: true, op, kind, name: arg });
     try {
       switch (op) {
         case "list": {
@@ -153,8 +187,15 @@ export function installLibsProvider(
           const key = kind === "footprint" ? "footprints" : "symbols";
           return JSON.stringify({ [key]: names });
         }
-        case "get":
-          return await source.getItemBody(id, kind, arg);
+        case "get": {
+          const body = await source.getItemBody(id, kind, arg);
+          if (body === null) {
+            emitLibError(
+              `Couldn't open "${arg}" — the backend has no body for it (404).`,
+            );
+          }
+          return body;
+        }
         case "save": {
           let parsed: { name?: string; body?: string };
           try {
@@ -174,6 +215,7 @@ export function installLibsProvider(
             parsed.name,
             parsed.body,
           );
+          if (!ok) emitLibError(`Couldn't save "${parsed.name}".`);
           return ok ? "ok" : null;
         }
         default:
@@ -181,7 +223,10 @@ export function installLibsProvider(
       }
     } catch (e) {
       log(`[libs] request failed: ${String(e)}`);
+      if (userFacing) emitLibError(`Failed to ${op} "${arg}".`);
       return null;
+    } finally {
+      if (userFacing) emitLibBusy({ busy: false, op, kind, name: arg });
     }
   };
 
