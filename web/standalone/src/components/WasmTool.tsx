@@ -5,8 +5,8 @@ import {
   EXTENSION_TOOL,
   FILELESS_TOOLS,
   fileToDoc,
-  kicadItemsMap,
   toolSchema,
+  ydocHasState,
   yToDoc,
   type KicadDoc,
   type Tool,
@@ -29,7 +29,11 @@ import {
 import { memfsFilePath, memfsProjectDir } from "@/wasm/constants";
 import { driveProjectIntoTool, type ToolFile } from "@/wasm/kicad-runner";
 import { registerSaveHook, type SaveBytes } from "@/wasm/save-flow";
-import type { KicadDocSession, KicadItemsWindow } from "@/wasm/collab";
+import type {
+  KicadCollabHandle,
+  KicadDocSession,
+  KicadItemsWindow,
+} from "@/wasm/collab";
 import { clog, cwarn } from "@/wasm/collab/debug";
 import { createOomWatch, respawnInNewTab } from "@/recovery/oom-watch";
 import { MemoryExhaustedDialog } from "@/recovery/MemoryExhaustedDialog";
@@ -236,7 +240,11 @@ async function maybeConnectDocSession(
   const room = collabRoomId(opts.projectId, opts.targetPath);
   const session = await connectKicadDoc({ provider: yjsProviderConfig(), room });
 
-  if (kicadItemsMap(session.doc).size === 0) {
+  // Use the full doc state (meta + layout + items), NOT just item count: a
+  // populated drawing sheet (pl_editor `.kicad_wks`) has zero uuid items, so an
+  // items-only check makes a joining tab refetch the stale file instead of
+  // materializing the shared doc's current state.
+  if (!ydocHasState(session.doc)) {
     opts.log(`[ydoc] room ${room} is empty — falling back to the API fetch (will file-seed)`);
     return { session };
   }
@@ -272,7 +280,7 @@ async function maybeStartCollab(
     log: (m: string) => void;
     onStatus: (t: string) => void;
   },
-): Promise<void> {
+): Promise<KicadCollabHandle | undefined> {
   const collabParam = new URLSearchParams(win.location.search).get("collab");
   const mod = win.Module;
   clog("maybeStartCollab gate:", {
@@ -289,11 +297,11 @@ async function maybeStartCollab(
   // so detaching would silently drop every edit.
   if (!opts.collabSession && (collabParam === "0" || collabParam === "false")) {
     clog("disabled (?collab=0) — skipping");
-    return;
+    return undefined;
   }
   if (!COLLAB_TOOLS.has(opts.tool)) {
     clog(`tool ${opts.tool} has no collab bridge — skipping`);
-    return;
+    return undefined;
   }
   if (typeof mod?.kicadCollabSnapshotItems !== "function") {
     cwarn(
@@ -301,7 +309,7 @@ async function maybeStartCollab(
       typeof mod?.kicadCollabSnapshotItems,
       `— the loaded ${opts.tool}.wasm predates the v2 items bridge (ysync 0008 Stage C). Rebuild + \`npm run setup:kicad\` and restart the dev server.`,
     );
-    return;
+    return undefined;
   }
 
   const { startKicadCollab, attachKicadCollab } = await import("@/wasm/collab");
@@ -312,14 +320,14 @@ async function maybeStartCollab(
     // opened the file materialized from this very doc, attach + baseline only;
     // when the room was empty (API fallback), seed() file-seeds it as usual.
     clog("attaching to pre-connected doc session; editorMatchesDoc:", !!opts.editorMatchesDoc);
-    attachKicadCollab(mod, win as unknown as KicadItemsWindow, opts.collabSession, {
+    const handle = attachKicadCollab(mod, win as unknown as KicadItemsWindow, opts.collabSession, {
       seedDoc,
       editorMatchesDoc: opts.editorMatchesDoc,
     });
     opts.log(`[collab] attached to Y.Doc session`);
     opts.onStatus("Collab: connected");
     clog("connected ✓");
-    return;
+    return handle;
   }
 
   const provider = yjsProviderConfig();
@@ -328,7 +336,7 @@ async function maybeStartCollab(
   // verbatim to namespace + persist (see @pcbjam/shared collabRoomId).
   const room = collabRoomId(opts.projectId, opts.targetPath ?? opts.tool);
   clog("starting collab", provider.kind, "room", room, "seedDoc:", !!seedDoc);
-  await startKicadCollab(mod, win as unknown as KicadItemsWindow, {
+  const handle = await startKicadCollab(mod, win as unknown as KicadItemsWindow, {
     provider,
     room,
     seedDoc,
@@ -336,6 +344,7 @@ async function maybeStartCollab(
   opts.log(`[collab] ${provider.kind} connected on ${room}`);
   opts.onStatus("Collab: connected");
   clog("connected ✓");
+  return handle;
 }
 
 /**
@@ -405,6 +414,7 @@ export function WasmTool({
 }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const startedRef = React.useRef(false);
+  const driftRef = React.useRef<{ stop(): void } | null>(null);
   const [status, setStatus] = React.useState("Loading tool…");
   const [logs, setLogs] = React.useState<string[]>([]);
   const [showLog, setShowLog] = React.useState(false);
@@ -540,7 +550,7 @@ export function WasmTool({
           log: append,
           onStatus: setStatus,
         });
-        await maybeStartCollab(win, {
+        const collabHandle = await maybeStartCollab(win, {
           tool,
           slug,
           projectId,
@@ -550,6 +560,21 @@ export function WasmTool({
           log: append,
           onStatus: setStatus,
         });
+        // Drift detection: while this doc is collaboratively edited, periodically
+        // (every N edits + at session end) compare the WASM serialization to the
+        // Y.Doc and report any divergence. Gated on a real collab session.
+        if (collabHandle && targetPath && COLLAB_TOOLS.has(tool)) {
+          const { startDriftDetection } = await import("@/wasm/collab/drift-detect");
+          driftRef.current = startDriftDetection({
+            doc: collabHandle.doc,
+            mod: win.Module,
+            win,
+            tool,
+            slug,
+            targetPath,
+            log: append,
+          });
+        }
         // Tool booted + project opened. Wait for the wx UI to actually build
         // before dropping the overlay, so we don't reveal a still-blank editor.
         await waitForWxUi(win);
@@ -563,6 +588,8 @@ export function WasmTool({
 
     return () => {
       win.removeEventListener("keydown", swallowBrowserSave, true);
+      driftRef.current?.stop();
+      driftRef.current = null;
       oom.stop();
     };
     // Boot is one-shot per mount; deps intentionally exclude files/targetPath so

@@ -1,5 +1,6 @@
 import {
   contract,
+  type DriftReportBody,
   type Lib,
   type Project,
   type ProjectWithFiles,
@@ -77,6 +78,36 @@ export async function fetchFileBytes(
   const res = await fetch(fileBytesUrl(slug, relPath));
   if (!res.ok) throw new Error(`download failed (${res.status}): ${relPath}`);
   return new Uint8Array(await res.arrayBuffer());
+}
+
+// --- collaboration drift reporting (ysync) ---
+
+/**
+ * Report a detected ydoc/wasm drift (the editor's periodic, every-N-edits check).
+ * Best-effort: a failed report must never disrupt editing, so callers ignore
+ * rejections.
+ */
+export async function reportDrift(
+  slug: string,
+  body: DriftReportBody,
+): Promise<void> {
+  await client.reportDrift({ params: { project: slug }, body });
+}
+
+/**
+ * Fire-and-forget drift report that survives the page closing — used by the
+ * session-end (`beforeunload`) check. `sendBeacon` queues the POST past unload;
+ * a keepalive `fetch` is the fallback when the beacon is rejected (too large).
+ */
+export function reportDriftBeacon(slug: string, body: DriftReportBody): void {
+  const url = `${API_BASE_URL}/api/projects/${encodeURIComponent(slug)}/drift`;
+  const blob = new Blob([JSON.stringify(body)], { type: "application/json" });
+  try {
+    if (navigator.sendBeacon(url, blob)) return;
+  } catch {
+    /* fall through to keepalive fetch */
+  }
+  void fetch(url, { method: "POST", body: blob, keepalive: true }).catch(() => {});
 }
 
 /**

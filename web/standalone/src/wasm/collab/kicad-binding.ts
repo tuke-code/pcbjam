@@ -10,6 +10,7 @@ import {
   kicadItemsMap,
   parseItemsWireDelta,
   renderItem,
+  ydocHasState,
   yToItem,
   type ItemsWireDelta,
   type KicadDoc,
@@ -125,7 +126,10 @@ export function bindKicadCollab(doc: Y.Doc, bridge: KicadItemsBridge): KicadBind
 
   function seed(seedDoc?: KicadDoc, opts?: { editorMatchesDoc?: boolean }): void {
     seeded = true; // open the UP gate; everything below runs synchronously
-    if (opts?.editorMatchesDoc && items.size > 0) {
+    // `ydocHasState` (meta + layout + items), NOT `items.size`: a populated
+    // drawing sheet (pl_editor .kicad_wks) has zero uuid items, so an items-only
+    // check would mis-classify a seeded room as empty and re-seed/clobber it.
+    if (opts?.editorMatchesDoc && ydocHasState(doc)) {
       // The editor opened exactly this doc's content (Y.Doc-load path): no
       // adopt apply needed. snapshotItems() still runs to BASELINE the wasm
       // differ — otherwise the first local edit would re-emit the full model.
@@ -137,7 +141,7 @@ export function bindKicadCollab(doc: Y.Doc, bridge: KicadItemsBridge): KicadBind
       }
       return;
     }
-    if (items.size === 0 && seedDoc) {
+    if (!ydocHasState(doc) && seedDoc) {
       // First tab, file-seeded: write the FULL doc (meta + layout + items) so
       // the Y.Doc — not the editor snapshot — is the lossless source of truth
       // (the file is recoverable via docToFile). The editor already opened the
@@ -158,12 +162,13 @@ export function bindKicadCollab(doc: Y.Doc, bridge: KicadItemsBridge): KicadBind
     }
     const local = itemsWireToDelta(wire, {});
 
+    const hasState = ydocHasState(doc);
     clog(
       `seed: doc has ${items.size} item(s), editor has ${local.added.length} →`,
-      items.size === 0 ? "SEEDING doc (first tab)" : "ADOPTING doc (joining)",
+      hasState ? "ADOPTING doc (joining)" : "SEEDING doc (first tab)",
     );
 
-    if (items.size === 0) {
+    if (!hasState) {
       // First tab, no file source: seed the shared doc from the editor model.
       applyDeltaToY(doc, local, ORIGIN);
       return;

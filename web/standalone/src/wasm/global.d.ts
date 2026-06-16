@@ -6,6 +6,7 @@ declare global {
     writeFile(path: string, data: Uint8Array | string): void;
     readFile(path: string, opts?: { encoding?: "binary" | "utf8" }): unknown;
     analyzePath(path: string): { exists: boolean };
+    unlink(path: string): void;
   }
 
   // Loose shape of the wxWidgets-WASM element registry exposed by wx.js.
