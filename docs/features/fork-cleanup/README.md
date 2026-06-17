@@ -4,6 +4,13 @@
 > All `file:line` references are against the `kicad` submodule at its current HEAD
 > (`ac7d733787`), upstream merge-base `4bfed3f174`, and the root repo at the same time.
 > Verify line numbers before editing — they drift.
+>
+> **⚠️ The baseline counts in this README are superseded** — doc 01 has since landed (commit
+> `c39e8f8689`) and other work shifted the numbers. For the *current* divergence, the per-change
+> revert/relocate/re-enable verdict, effort, and resulting diff, see
+> [00-effort-and-current-state.md](00-effort-and-current-state.md) (measured at HEAD `cb82b64410`,
+> 2026-06-17): **~2,795 churned lines / 88 modified files today → ~480–620 / ~50 files after
+> ~16–28 engineer-days of cleanup.**
 
 ## Why this exists
 
@@ -104,7 +111,8 @@ Every disabled/divergent item, with verdict. Detail + recipes in the linked docs
 
 | File | Contents |
 |---|---|
-| [01-revert-dead-code.md](01-revert-dead-code.md) | Diff that compiles only in unused configs: IPC-API gates, `kiglew.h`, `opengl_gal.cpp`, diagnostics. ~480 lines, zero behavior change. |
+| [00-effort-and-current-state.md](00-effort-and-current-state.md) | **Current state (2026-06-17): per-change revert/relocate/re-enable verdict, effort, and resulting diff math reconciled against a live file ledger. Read this first.** |
+| [01-revert-dead-code.md](01-revert-dead-code.md) | Diff that compiles only in unused configs: IPC-API gates, `kiglew.h`, `opengl_gal.cpp`, diagnostics. ~480 lines, zero behavior change. **(DONE — `c39e8f8689`.)** |
 | [02-cmake-dechurn.md](02-cmake-dechurn.md) | ~600 lines of CMake reindent/duplication → early-return guards, `list(REMOVE_ITEM)`, shader-hook, relocate `if(EMSCRIPTEN)` to `cmake/wasm/`. |
 | [03-config-not-code.md](03-config-not-code.md) | Patches that re-implement existing settings: zoom pref, hotkeys file, `HAVE_CLOCK_GETTIME`, kiface init from the shell. |
 | [04-stub-tu-relocation.md](04-stub-tu-relocation.md) | Move in-file `#else` stubs to new translation units: fontconfig, libcontext, SpaceMouse. |
