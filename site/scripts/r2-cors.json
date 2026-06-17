@@ -1,0 +1,18 @@
+{
+  "rules": [
+    {
+      "allowed": {
+        "origins": [
+          "https://pcbjam.com",
+          "https://www.pcbjam.com",
+          "https://*.vercel.app",
+          "http://localhost:4321"
+        ],
+        "methods": ["GET", "HEAD"],
+        "headers": ["*"]
+      },
+      "exposeHeaders": ["Content-Length", "Content-Encoding", "Content-Type"],
+      "maxAgeSeconds": 86400
+    }
+  ]
+}

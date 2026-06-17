@@ -82,3 +82,6 @@ output/
 
 /tests/.test-port-asyncify
 /memory/
+
+# Wrangler (Cloudflare CLI) local state/cache — created when running R2 deploys.
+.wrangler/

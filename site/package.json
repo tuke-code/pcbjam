@@ -14,6 +14,7 @@
     "astro": "astro"
   },
   "dependencies": {
+    "@astrojs/mdx": "^6.0.3",
     "@astrojs/vercel": "^10.0.8",
     "@fontsource/oswald": "^5.2.8",
     "@vercel/analytics": "^2.0.1",
