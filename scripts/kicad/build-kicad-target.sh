@@ -387,6 +387,17 @@ if [ "${APP_NAME}" = "sym_convert" ]; then
     SYM_CONVERTER_CMAKE_FLAG="-DKICAD_SYM_CONVERTER_WASM=ON"
 fi
 
+# 3D viewer (experimental): opt in with BUILD_3D_VIEWER=ON. Default OFF keeps
+# existing/CI builds unchanged and the 3D stubs in place. When ON, the 3D
+# viewer's fixed-function OpenGL renderer needs Emscripten's legacy GL emulation
+# plus our immediate-mode shim (color-per-vertex + double-precision helpers).
+BUILD_3D_VIEWER="${BUILD_3D_VIEWER:-OFF}"
+GL3D_LINK_FLAGS=""
+if [ "${BUILD_3D_VIEWER}" = "ON" ]; then
+    log_info "3D viewer ENABLED for WASM (BUILD_3D_VIEWER=ON)"
+    GL3D_LINK_FLAGS="-sLEGACY_GL_EMULATION --js-library ${WASM_LAYER}/shims/gl_immediate_shim.js"
+fi
+
 emcmake cmake "${KICAD_DIR}" \
     ${CCACHE_OPTS} \
     ${SYM_CONVERTER_CMAKE_FLAG} \
@@ -397,7 +408,7 @@ emcmake cmake "${KICAD_DIR}" \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     -DCMAKE_CXX_FLAGS="${EXTRA_FLAGS} -pthread -sUSE_ZLIB=1 -DKICAD_USE_PLATFORM_WASM=1${DIAG_DEFINES} -I${SYSROOT}/include -I${STUBS_DIR} -include ${STUBS_DIR}/char_traits_uint16_workaround.h" \
     -DCMAKE_C_FLAGS="${EXTRA_FLAGS} -pthread -sUSE_ZLIB=1 -I${SYSROOT}/include -I${STUBS_DIR}" \
-    -DCMAKE_EXE_LINKER_FLAGS="${LINKER_DEBUG_FLAGS} -pthread -sUSE_ZLIB=1 -sASYNCIFY=1 -sDYNCALLS=1 -sASYNCIFY_STACK_SIZE=65536 -sUSE_PTHREADS=1 -sPTHREAD_POOL_SIZE='navigator.hardwareConcurrency' -sPTHREAD_POOL_SIZE_STRICT=0 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=256MB -sMAXIMUM_MEMORY=4GB -sMAX_WEBGL_VERSION=2 -sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','UTF8ToString','stringToUTF8','lengthBytesUTF8','dynCall'] -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=['\$dynCall'] --bind -L${SYSROOT}/lib ${STUBS_BUILD}/libgit2_stub.a ${STUBS_BUILD}/libcurl_stub.a${APP_STUB_LINK} ${STUBS_BUILD}/libnng_stub.a ${EMBIND_OBJ}" \
+    -DCMAKE_EXE_LINKER_FLAGS="${LINKER_DEBUG_FLAGS} -pthread -sUSE_ZLIB=1 -sASYNCIFY=1 -sDYNCALLS=1 -sASYNCIFY_STACK_SIZE=65536 -sUSE_PTHREADS=1 -sPTHREAD_POOL_SIZE='navigator.hardwareConcurrency' -sPTHREAD_POOL_SIZE_STRICT=0 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=256MB -sMAXIMUM_MEMORY=4GB -sMAX_WEBGL_VERSION=2 ${GL3D_LINK_FLAGS} -sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','UTF8ToString','stringToUTF8','lengthBytesUTF8','dynCall'] -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=['\$dynCall'] --bind -L${SYSROOT}/lib ${STUBS_BUILD}/libgit2_stub.a ${STUBS_BUILD}/libcurl_stub.a${APP_STUB_LINK} ${STUBS_BUILD}/libnng_stub.a ${EMBIND_OBJ}" \
     -DCMAKE_PREFIX_PATH="${SYSROOT};${WX_BUILD}" \
     -DwxWidgets_CONFIG_EXECUTABLE="${WX_BUILD}/wx-config" \
     \
@@ -405,7 +416,7 @@ emcmake cmake "${KICAD_DIR}" \
     -DKICAD_SPICE=OFF \
     -DKICAD_USE_EGL=OFF \
     -DKICAD_USE_BUNDLED_GLEW=ON \
-    -DKICAD_BUILD_3D_VIEWER_WASM=OFF \
+    -DKICAD_BUILD_3D_VIEWER_WASM=${BUILD_3D_VIEWER} \
     -DKICAD_IPC_API=ON \
     -DKICAD_USE_PCH=ON \
     \
