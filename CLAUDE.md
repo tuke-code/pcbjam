@@ -26,3 +26,5 @@ It's okay to add temporary logging that will be removed for debugging.
 Don't try to guess what's broken , use debug tools / symbols, supported by the build scripts
 
 Feature docs/patches are in features/<branch-name>/. Run scripts/create-feature-patches.sh to save patches for root, kicad, wxwidgets submodules.
+
+The landing page / website is in /site (Astro, deployed as static assets to Cloudflare R2). When releasing a new version, bump the hardcoded build SHA `BUILD_SHA` in site/src/components/Footer.astro to the deployed main-repo commit. It's shown in the footer and links to that commit; because it pins the kicad + wxwidgets submodule revisions implicitly, it is our GPLv3 corresponding-source pointer (see /licenses). The site is static so there's no build-time git/env to set it automatically — it must be updated by hand each release.

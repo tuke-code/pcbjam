@@ -5,6 +5,13 @@ import EECredit from './EECredit.astro';
 const year = new Date().getFullYear();
 // TODO(links): add Roadmap (/roadmap) and dedicated How-it-works/Open pages when they ship.
 const GITHUB_URL = 'https://github.com/emergence-engineering';
+
+// Build provenance. Hardcoded because the site ships as static assets (R2), so
+// there's no build-time git/env to read it from. BUMP THIS to the deployed
+// main-repo (pcbjam) commit on each release — it pins the KiCad + wxWidgets
+// submodule revisions implicitly. See /licenses for the source-code offer.
+const BUILD_SHA = '695a460';
+const BUILD_COMMIT_URL = `https://github.com/emergence-engineering/pcbjam/commit/${BUILD_SHA}`;
 ---
 
 <footer class="site-footer">
@@ -28,7 +35,7 @@ const GITHUB_URL = 'https://github.com/emergence-engineering';
       <nav class="links stack" aria-label="Product">
         <a href="/#how-it-works">How it works</a>
         <a href="/#open">Open &amp; yours</a>
-        <a href="/#multiplayer">Multiplayer</a>
+        <a href="/#demo">Live demo</a>
         <a href="/#waitlist">Join the waitlist</a>
       </nav>
     </div>
@@ -44,12 +51,20 @@ const GITHUB_URL = 'https://github.com/emergence-engineering';
         <a href="/privacy">Privacy Policy</a>
         <a href="/terms">Terms of Service</a>
         <a href="/cookies">Cookie Policy</a>
+        <a href="/licenses">Open-Source Licenses</a>
       </nav>
     </div>
   </div>
 
   <div class="container bottom">
-    <span>&copy; {year} Emergence Engineering</span>
+    <span
+      >&copy; {year} Emergence Engineering &middot; <a
+        class="build"
+        href={BUILD_COMMIT_URL}
+        rel="noopener"
+        target="_blank">build {BUILD_SHA}</a
+      ></span
+    >
     <span class="attrib muted">
       Built on the open-source <a href="https://www.kicad.org" rel="noopener" target="_blank"
         >KiCad</a
@@ -123,6 +138,15 @@ const GITHUB_URL = 'https://github.com/emergence-engineering';
   .attrib {
     font-size: 0.82rem;
     max-width: 42rem;
+  }
+  .build {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.82rem;
+    color: var(--fg-muted);
+  }
+  .build:hover {
+    color: var(--fg);
+    text-decoration: none;
   }
 
   @media (max-width: 820px) {
