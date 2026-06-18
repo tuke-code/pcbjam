@@ -61,7 +61,7 @@ trap 'kw_fail 130; exit 130' INT TERM
 
 cd "$(dirname "$0")/.."
 
-VALID_APPS="pcbnew | eeschema | calculator | pl_editor | symbol_editor | footprint_editor | gerbview | all"
+VALID_APPS="pcbnew | eeschema | calculator | pl_editor | symbol_editor | footprint_editor | gerbview | sym_convert | all"
 
 usage() {
     echo "Usage: ./docker/build.sh <app>[,<app>...] [args...]" >&2
@@ -92,7 +92,7 @@ else
     IFS=',' read -r -a APPS <<< "$APP_NAME"
     for app in "${APPS[@]}"; do
         case "$app" in
-            pcbnew|eeschema|calculator|pl_editor|symbol_editor|footprint_editor|gerbview) ;;
+            pcbnew|eeschema|calculator|pl_editor|symbol_editor|footprint_editor|gerbview|sym_convert) ;;
             *)
                 echo "Error: unknown app '$app' (expected: ${VALID_APPS})" >&2
                 usage
@@ -163,6 +163,7 @@ kicad_subdir_for() {
         pl_editor)        echo "pagelayout_editor" ;;
         symbol_editor)    echo "eeschema" ;;
         footprint_editor) echo "pcbnew" ;;
+        sym_convert)      echo "eeschema" ;;
         *)                echo "$1" ;;
     esac
 }
@@ -218,6 +219,13 @@ postprocess_app() {
     local app="$1"
     local out_dir="output"
 
+    # The converter is finalized in-container (real tools, small -g0 wasm) and is
+    # a synchronous node CLI, so it needs no host post-processing.
+    if [ "$app" = "sym_convert" ]; then
+        echo "Skipping host post-processing for ${app} (finalized in-container)"
+        return 0
+    fi
+
     # Inject dynCall shims (fixes "dynCall_* is not defined" errors in Emscripten 4.x)
     kw_stage dyncall-shims
     ./scripts/common/inject-dyncall-shims.sh "${out_dir}/${app}.js"
@@ -226,9 +234,12 @@ postprocess_app() {
     kw_stage finalize
     ./scripts/common/apply-finalize.sh "${out_dir}/${app}.wasm" "${out_dir}/${app}.wasm"
 
-    # Apply asyncify transformation on host
-    kw_stage asyncify
-    ./scripts/common/apply-asyncify.sh "${out_dir}/${app}.wasm" "${out_dir}/${app}.wasm"
+    # Apply asyncify transformation on host. The converter is a synchronous node
+    # CLI built with ASYNCIFY=0, so asyncify is unnecessary and would be wrong.
+    if [ "$app" != "sym_convert" ]; then
+        kw_stage asyncify
+        ./scripts/common/apply-asyncify.sh "${out_dir}/${app}.wasm" "${out_dir}/${app}.wasm"
+    fi
 }
 
 # --- Pipelined driver state (KICAD_PIPELINE=1) ---

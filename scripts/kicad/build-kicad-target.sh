@@ -65,8 +65,15 @@ case "$APP_NAME" in
         KICAD_TARGET="footprint_editor"
         KICAD_SUBDIR="pcbnew"
         ;;
+    sym_convert)
+        # Standalone .lib -> .kicad_sym converter (node CLI). Its add_executable
+        # lives in eeschema/CMakeLists.txt (gated by KICAD_SYM_CONVERTER_WASM), so
+        # artifacts land in the eeschema/ subdir of its own kicad-sym_convert tree.
+        KICAD_TARGET="sym_convert"
+        KICAD_SUBDIR="eeschema"
+        ;;
     *)
-        echo "Error: unknown app '$APP_NAME' (expected: pcbnew | eeschema | calculator | pl_editor | symbol_editor | footprint_editor | gerbview)" >&2
+        echo "Error: unknown app '$APP_NAME' (expected: pcbnew | eeschema | calculator | pl_editor | symbol_editor | footprint_editor | gerbview | sym_convert)" >&2
         exit 1
         ;;
 esac
@@ -79,6 +86,9 @@ esac
 case "$APP_NAME" in
     symbol_editor)    EMBIND_APP="eeschema" ;;
     footprint_editor) EMBIND_APP="pcbnew" ;;
+    # sym_convert links the eeschema kiface objects, which reference eeschema's
+    # embind symbols (kicadCollabOnSave et al.) — reuse eeschema's embind object.
+    sym_convert)      EMBIND_APP="eeschema" ;;
     *)                EMBIND_APP="$APP_NAME" ;;
 esac
 
@@ -88,6 +98,9 @@ esac
 # (pcbnewGetScriptsSearchPaths et al., defined in pcbnew_scripting_stub.cpp).
 case "$APP_NAME" in
     footprint_editor) STUB_APP="pcbnew" ;;
+    # sym_convert links the eeschema kiface objects, so it needs eeschema's
+    # frame stub (eeschema_frame_stub.cpp) like symbol_editor does.
+    sym_convert)      STUB_APP="eeschema" ;;
     *)                STUB_APP="$APP_NAME" ;;
 esac
 
@@ -295,34 +308,42 @@ fi
 
 log_info "Stub libraries built"
 
-# Step 6.2: Replace Emscripten's wasm-opt with stub to bypass asyncify transformation
-# This allows Emscripten to generate JS with Asyncify runtime, but we run the real
-# wasm-opt --asyncify on the host where more RAM is available (needs 50GB+ for KiCad)
+# Step 6.2/6.3: wasm-opt + wasm-emscripten-finalize handling.
+# For the editor apps these tools OOM on the huge debug wasm, so we stub them in
+# the container and run them on the host (docker/build.sh phase 2). The small,
+# debug-stripped (-g0) converter finalizes fine in-container, so for sym_convert
+# we restore/keep the real tools and skip host post-processing entirely.
 if [ -z "${EMSDK}" ]; then
     log_error "EMSDK environment variable is not set."
     exit 1
 fi
 EMSDK_WASM_OPT="${EMSDK}/upstream/bin/wasm-opt"
-if [ -f "${EMSDK_WASM_OPT}" ] && [ ! -f "${EMSDK_WASM_OPT}.real" ]; then
-    log_info "Backing up real wasm-opt..."
-    mv "${EMSDK_WASM_OPT}" "${EMSDK_WASM_OPT}.real"
-fi
-# Always copy the latest stub (in case it was updated)
-cp "${STUBS_DIR}/wasm-opt-stub.sh" "${EMSDK_WASM_OPT}"
-chmod +x "${EMSDK_WASM_OPT}"
-log_info "wasm-opt stub installed (asyncify will run on host)"
-
-# Step 6.3: Replace wasm-emscripten-finalize with stub (same pattern as wasm-opt)
-# This tool also OOMs on large WASM with debug symbols, so we run it on the host
 EMSDK_FINALIZE="${EMSDK}/upstream/bin/wasm-emscripten-finalize"
-if [ -f "${EMSDK_FINALIZE}" ] && [ ! -f "${EMSDK_FINALIZE}.real" ]; then
-    log_info "Backing up real wasm-emscripten-finalize..."
-    mv "${EMSDK_FINALIZE}" "${EMSDK_FINALIZE}.real"
+
+if [ "${APP_NAME}" = "sym_convert" ]; then
+    # Use the real tools so the converter is fully finalized inside the container.
+    [ -f "${EMSDK_WASM_OPT}.real" ] && cp "${EMSDK_WASM_OPT}.real" "${EMSDK_WASM_OPT}"
+    [ -f "${EMSDK_FINALIZE}.real" ] && cp "${EMSDK_FINALIZE}.real" "${EMSDK_FINALIZE}"
+    log_info "Using real wasm-opt/finalize for sym_convert (finalize in-container)"
+else
+    if [ -f "${EMSDK_WASM_OPT}" ] && [ ! -f "${EMSDK_WASM_OPT}.real" ]; then
+        log_info "Backing up real wasm-opt..."
+        mv "${EMSDK_WASM_OPT}" "${EMSDK_WASM_OPT}.real"
+    fi
+    # Always copy the latest stub (in case it was updated)
+    cp "${STUBS_DIR}/wasm-opt-stub.sh" "${EMSDK_WASM_OPT}"
+    chmod +x "${EMSDK_WASM_OPT}"
+    log_info "wasm-opt stub installed (asyncify will run on host)"
+
+    if [ -f "${EMSDK_FINALIZE}" ] && [ ! -f "${EMSDK_FINALIZE}.real" ]; then
+        log_info "Backing up real wasm-emscripten-finalize..."
+        mv "${EMSDK_FINALIZE}" "${EMSDK_FINALIZE}.real"
+    fi
+    # Always copy the latest stub (in case it was updated)
+    cp "${STUBS_DIR}/wasm-emscripten-finalize-stub.sh" "${EMSDK_FINALIZE}"
+    chmod +x "${EMSDK_FINALIZE}"
+    log_info "wasm-emscripten-finalize stub installed (finalize will run on host)"
 fi
-# Always copy the latest stub (in case it was updated)
-cp "${STUBS_DIR}/wasm-emscripten-finalize-stub.sh" "${EMSDK_FINALIZE}"
-chmod +x "${EMSDK_FINALIZE}"
-log_info "wasm-emscripten-finalize stub installed (finalize will run on host)"
 
 # Step 6.5: Verify WASM support is in KiCad fork
 # The kicad submodule should already have WASM port detection and kiplatform support
@@ -359,8 +380,16 @@ if command -v ccache &> /dev/null; then
     log_info "Using ccache for compilation"
 fi
 
+# The standalone converter is a gated eeschema target; enabling the option also
+# trims the SCH_IO factory to the two KiCad plugins (no pcbjam/http) for this tree.
+SYM_CONVERTER_CMAKE_FLAG=""
+if [ "${APP_NAME}" = "sym_convert" ]; then
+    SYM_CONVERTER_CMAKE_FLAG="-DKICAD_SYM_CONVERTER_WASM=ON"
+fi
+
 emcmake cmake "${KICAD_DIR}" \
     ${CCACHE_OPTS} \
+    ${SYM_CONVERTER_CMAKE_FLAG} \
     -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
     -DCMAKE_INSTALL_PREFIX="${SYSROOT}" \
     -DCMAKE_MODULE_PATH="${WASM_LAYER}/cmake" \
@@ -475,10 +504,13 @@ fi
 emmake make -j${JOBS} "${KICAD_TARGET}"
 
 # Step 8.1: Build bitmap resources (images.tar.gz)
-# This creates the icon archive that KiCad loads at runtime
-kw_stage kicad-bitmaps
-log_info "Building bitmap resources..."
-emmake make bitmap_archive_build
+# This creates the icon archive that KiCad loads at runtime. The headless
+# converter has no GUI/icons, so skip it.
+if [ "${APP_NAME}" != "sym_convert" ]; then
+    kw_stage kicad-bitmaps
+    log_info "Building bitmap resources..."
+    emmake make bitmap_archive_build
+fi
 
 # Step 9: Create stamp file
 create_stamp "${KICAD_STAMP}"
