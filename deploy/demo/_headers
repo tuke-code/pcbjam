@@ -1,0 +1,7 @@
+# Cloudflare Pages headers for demo.pcbjam.com.
+# Cross-origin isolation is REQUIRED for KiCad WASM (SharedArrayBuffer + threads).
+# The big WASM/content blobs are cross-origin on cdn.pcbjam.com and satisfy COEP
+# via their own CORP/ACAO headers (a Cloudflare Transform Rule on that hostname).
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp

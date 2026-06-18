@@ -43,6 +43,8 @@ export function ToolPage() {
 
   // PreflightGate runs the device-capability check; on a fatal mismatch it blocks
   // here (before WasmTool mounts) so the expensive WASM asset fetch is skipped.
+  // fetch/upload go through the active project source (api.ts): a backend
+  // project uploads saves; the static gallery downloads them to local.
   return (
     <PreflightGate>
       <WasmTool

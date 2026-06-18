@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import type { Lib, Tool } from "@pcbjam/shared";
 import { FolderOpen, Library, Loader2, Package } from "lucide-react";
 import { useLibs, useProjects } from "@/lib/api";
+import { PROJECT_SOURCE_KIND } from "@/lib/config";
 import { localFileLibsSource } from "@/wasm/libs/local-file-source";
 import type { LibsSource } from "@/wasm/libs/source";
 import { downloadBytes } from "@/lib/download";
@@ -101,6 +102,9 @@ function buildLocalProject(fileList: FileList): LocalProject {
 }
 
 export function HomePage() {
+  // Static (no-backend) demo mode: projects come from a read-only CDN gallery,
+  // there are no backend libraries, and editor saves download to local.
+  const staticMode = PROJECT_SOURCE_KIND === "static";
   const { data: projects, isLoading, error } = useProjects();
   const symbolLibs = useLibs("symbol");
   const footprintLibs = useLibs("footprint");
@@ -190,8 +194,9 @@ export function HomePage() {
     <div className="container max-w-3xl py-10">
       <h1 className="text-2xl font-semibold tracking-tight">PCBJam</h1>
       <p className="mb-8 text-sm text-muted-foreground">
-        Open KiCad files in the browser — from a backend, or straight from a
-        local folder.
+        {staticMode
+          ? "Edit KiCad files in your browser — open an example below or your own local folder. Nothing is uploaded; Save downloads to your machine."
+          : "Open KiCad files in the browser — from a backend, or straight from a local folder."}
       </p>
 
       {/* --- Local folder --- */}
@@ -243,9 +248,11 @@ export function HomePage() {
         <ToolGrid onLaunch={(tool) => setLaunchedTool({ tool })} />
       </section>
 
-      {/* --- Backend projects --- */}
+      {/* --- Projects (backend, or the static example gallery) --- */}
       <section className="mb-10">
-        <h2 className="mb-3 text-lg font-medium">Projects from the backend</h2>
+        <h2 className="mb-3 text-lg font-medium">
+          {staticMode ? "Example projects" : "Projects from the backend"}
+        </h2>
         {isLoading && (
           <p className="flex items-center gap-2 text-muted-foreground">
             <Loader2 className="animate-spin" /> loading…
@@ -253,8 +260,9 @@ export function HomePage() {
         )}
         {error && (
           <p className="text-sm text-muted-foreground">
-            No backend reachable ({(error as Error).message}). Use a local folder
-            above, or configure VITE_API_BASE_URL.
+            {staticMode
+              ? `Couldn't load the example gallery (${(error as Error).message}). Use a local folder above.`
+              : `No backend reachable (${(error as Error).message}). Use a local folder above, or configure VITE_API_BASE_URL.`}
           </p>
         )}
         <div className="divide-y rounded-lg border">
@@ -274,30 +282,32 @@ export function HomePage() {
           ))}
           {projects && projects.length === 0 && (
             <div className="px-4 py-6 text-sm text-muted-foreground">
-              The backend has no projects.
+              {staticMode ? "No example projects." : "The backend has no projects."}
             </div>
           )}
         </div>
       </section>
 
-      {/* --- Backend libraries --- */}
-      <section>
-        <h2 className="mb-3 text-lg font-medium">Libraries from the backend</h2>
-        <div className="space-y-3">
-          <LibGroup
-            icon={<Library size={16} />}
-            label="Symbols"
-            query={symbolLibs}
-            tool="symbol_editor"
-          />
-          <LibGroup
-            icon={<Package size={16} />}
-            label="Footprints"
-            query={footprintLibs}
-            tool="footprint_editor"
-          />
-        </div>
-      </section>
+      {/* --- Backend libraries (hidden in the no-backend static demo) --- */}
+      {!staticMode && (
+        <section>
+          <h2 className="mb-3 text-lg font-medium">Libraries from the backend</h2>
+          <div className="space-y-3">
+            <LibGroup
+              icon={<Library size={16} />}
+              label="Symbols"
+              query={symbolLibs}
+              tool="symbol_editor"
+            />
+            <LibGroup
+              icon={<Package size={16} />}
+              label="Footprints"
+              query={footprintLibs}
+              tool="footprint_editor"
+            />
+          </div>
+        </section>
+      )}
     </div>
   );
 }

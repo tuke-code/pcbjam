@@ -1,0 +1,12 @@
+{
+  "$comment": "Curates the demo.pcbjam.com static gallery. Each project REFERENCES source files already in the repo (root is repo-relative) so we don't duplicate them. scripts/deploy/publish-content.mjs reads the bytes and publishes them to cdn.pcbjam.com/content/<tag>/. Add projects here to grow the gallery.",
+  "projects": [
+    {
+      "slug": "demo-board",
+      "name": "Demo Board",
+      "description": "A small example board. Open the PCB or schematic, edit it, and Save downloads the result to your machine — no account, no backend.",
+      "root": "tests/fixtures/demo",
+      "files": ["demo.kicad_pcb", "demo.kicad_sch", "demo.kicad_wks"]
+    }
+  ]
+}

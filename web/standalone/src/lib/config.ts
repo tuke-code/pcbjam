@@ -1,12 +1,44 @@
 export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3050";
 
-// Default is SAME-ORIGIN ("/wasm", served from public/wasm by Vite). KiCad WASM
-// pthread workers cannot be created cross-origin, so dev must serve same-origin.
-// Override with an absolute URL (e.g. a CDN) only if that origin is configured
-// to also satisfy the worker/COEP constraints.
-export const WASM_ASSET_BASE_URL =
-  import.meta.env.VITE_WASM_ASSET_BASE_URL ?? "/wasm";
+// Where the KiCad WASM artifacts are served from (no trailing slash).
+//   dev / same-origin: "/wasm" (flat layout, served from public/wasm by Vite).
+//   prod CDN:          VITE_WASM_ROOT, e.g. "https://cdn.pcbjam.com/wasm".
+// A cross-origin CDN works because boot.ts loads the pthread worker through a
+// same-origin blob shim (see wasm/boot.ts) and the CDN sets CORP/ACAO.
+// VITE_WASM_ASSET_BASE_URL is the legacy name and is still honored.
+export const WASM_ROOT = (
+  import.meta.env.VITE_WASM_ROOT ??
+  import.meta.env.VITE_WASM_ASSET_BASE_URL ??
+  "/wasm"
+).replace(/\/+$/, "");
+
+// Per-release WASM manifest file under WASM_ROOT (e.g. "manifest-2.7.7.json").
+// When set, the standalone resolves each tool's versioned, content-addressed
+// folder (WASM_ROOT/<tool>/<ver>/) from it AT RUNTIME — see wasm/wasm-assets.ts,
+// so a tool can be repointed after a bad deploy without rebuilding the app.
+// Unset ⇒ flat layout directly under WASM_ROOT (dev / same-origin). The manifest
+// is fetched uncached; the tool folders it points at are immutable + long-cached.
+export const WASM_MANIFEST_FILE = import.meta.env.VITE_WASM_MANIFEST || null;
+
+/** @deprecated Use WASM_ROOT + resolveWasmBase(). Kept for back-compat. */
+export const WASM_ASSET_BASE_URL = WASM_ROOT;
+
+/**
+ * Where the standalone reads PROJECTS from (env VITE_PROJECT_SOURCE):
+ *   "remote" (default) — the @pcbjam/shared REST backend at API_BASE_URL.
+ *   "static"           — a read-only example gallery published to a CDN as a
+ *                        manifest + file bytes (no backend), e.g. the
+ *                        demo.pcbjam.com gallery. Editor saves download to local.
+ *                        Needs VITE_PROJECT_MANIFEST_URL. See lib/project-source.ts.
+ */
+export type ProjectSourceKind = "remote" | "static";
+export const PROJECT_SOURCE_KIND: ProjectSourceKind =
+  import.meta.env.VITE_PROJECT_SOURCE === "static" ? "static" : "remote";
+
+/** Full URL of the static gallery manifest, e.g.
+ *  "https://cdn.pcbjam.com/content/2.7.7/manifest.json". Required for "static". */
+export const PROJECT_MANIFEST_URL = import.meta.env.VITE_PROJECT_MANIFEST_URL || null;
 
 import type { ProviderConfig, ProviderKind } from "@/wasm/collab";
 import { remoteLibsSource } from "@/wasm/libs/remote-source";

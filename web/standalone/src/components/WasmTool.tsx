@@ -14,11 +14,11 @@ import {
 import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import {
   libsSourceConfig,
-  WASM_ASSET_BASE_URL,
   yjsProviderConfig,
   type DocSource,
 } from "@/lib/config";
 import { bootKicadTool } from "@/wasm/boot";
+import { resolveWasmBase } from "@/wasm/wasm-assets";
 import {
   LIB_BUSY_EVENT,
   LIB_ERROR_EVENT,
@@ -537,7 +537,8 @@ export function WasmTool({
    * to "api" (plain fetch + open). Local-folder sessions don't pass this.
    */
   docSource?: DocSource;
-  /** Where the WASM glue/artifacts are served from; defaults to VITE_WASM_ASSET_BASE_URL. */
+  /** Override the resolved WASM asset base (used verbatim, e.g. e2e fixtures).
+   *  Default: resolveWasmBase(tool) — the CDN manifest folder, or flat /wasm. */
   assetBaseUrl?: string;
 }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
@@ -556,7 +557,6 @@ export function WasmTool({
   // Last lib error (e.g. a backend 404 on open), shown as a dismissible toast.
   const [libError, setLibError] = React.useState<string | null>(null);
 
-  const base = (assetBaseUrl ?? WASM_ASSET_BASE_URL).replace(/\/$/, "");
   const append = React.useCallback(
     (msg: string) => setLogs((prev) => [...prev.slice(-800), msg]),
     [],
@@ -644,6 +644,9 @@ export function WasmTool({
 
     void (async () => {
       try {
+        // Resolve the per-tool asset base at runtime (CDN manifest → versioned
+        // folder, or the flat local /wasm in dev). See wasm/wasm-assets.ts.
+        const base = await resolveWasmBase(tool, assetBaseUrl);
         await bootKicadTool({
           tool,
           base,
@@ -773,7 +776,7 @@ export function WasmTool({
     // Boot is one-shot per mount; deps intentionally exclude files/targetPath so
     // they don't retrigger a (rejected) second boot.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tool, slug, base, append]);
+  }, [tool, slug, assetBaseUrl, append]);
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-[#1a1a2e]">

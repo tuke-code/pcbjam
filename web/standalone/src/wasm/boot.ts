@@ -32,8 +32,10 @@ const DEFAULT_USER_LIB_NAME = "My Symbols";
  *   - `locateFile` is overridden to resolve `<base>/<file>`, so the .wasm and the
  *     pthread worker script are fetched from the asset dir regardless of the
  *     SPA route the user is on.
- *   - `mainScriptUrlOrBlob` pins the pthread worker to `<base>/<tool>.js`
- *     (same-origin — required: KiCad's pthreads cannot spawn cross-origin).
+ *   - `mainScriptUrlOrBlob` pins the pthread worker to `<base>/<tool>.js`. For a
+ *     same-origin base that's the URL directly; for a cross-origin CDN base it's
+ *     a same-origin blob shim that importScripts the glue (see
+ *     `pthreadWorkerScript` — `new Worker(<cross-origin URL>)` is illegal).
  *
  * Single-instance: the build owns process-global state (one `Module`, one wasm
  * memory) so only ONE tool can run per page load. A second boot — switching
@@ -88,6 +90,27 @@ function loadScript(src: string): Promise<void> {
     s.onload = () => resolve();
     s.onerror = () => reject(new Error(`failed to load script: ${src}`));
     document.body.appendChild(s);
+  });
+}
+
+/**
+ * The pthread worker "script" passed as `Module.mainScriptUrlOrBlob`. KiCad's
+ * pthreads spawn CLASSIC workers via `new Worker(...)` (see `<tool>.js`
+ * `allocateUnusedWorker`):
+ *   - SAME-ORIGIN base → the plain URL string (the proven local/dev path).
+ *   - CROSS-ORIGIN base (the CDN) → a SAME-ORIGIN `blob:` worker that
+ *     `importScripts()` the cross-origin glue. `new Worker(<cross-origin URL>)`
+ *     is a SecurityError, but a `blob:` URL inherits the page origin (legal),
+ *     and a classic worker's `importScripts` MAY load a cross-origin script when
+ *     the CDN sends `Cross-Origin-Resource-Policy: cross-origin` (needed because
+ *     the page is COEP `require-corp`). The `.wasm`/`images.tar.gz` fetches just
+ *     need `ACAO` + `CORP` on the CDN. See docs/features/demo-deploy/0001-*.
+ */
+function pthreadWorkerScript(base: string, tool: Tool): string | Blob {
+  const abs = new URL(`${base}/${tool}.js`, window.location.href);
+  if (abs.origin === window.location.origin) return `${base}/${tool}.js`;
+  return new Blob([`importScripts(${JSON.stringify(abs.href)});`], {
+    type: "text/javascript",
   });
 }
 
@@ -276,8 +299,9 @@ async function doBoot(opts: BootOptions): Promise<void> {
     },
     // Resolve wasm + pthread worker against the asset base, not the SPA route.
     locateFile: (path: string) => `${base}/${path}`,
-    // Pin the pthread worker script (must be same-origin).
-    mainScriptUrlOrBlob: `${base}/${tool}.js`,
+    // Pin the pthread worker script. Same-origin → direct URL; cross-origin CDN
+    // → a same-origin blob shim that importScripts the glue (see helper above).
+    mainScriptUrlOrBlob: pthreadWorkerScript(base, tool),
   };
 
   // Load order mirrors the harness HTML (tests/apps/kicad/<tool>.html):
