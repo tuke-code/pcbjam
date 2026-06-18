@@ -56,6 +56,7 @@ const caption =
 <script>
   const BOOT_SRC = "/gerber-demo/index.html";
   const RELOAD_KEY = "gerber-demo-coi-reload";
+  const RELOAD_DEBOUNCE_MS = 10000;
 
   function hasWebGL2(): boolean {
     try {
@@ -65,7 +66,8 @@ const caption =
     }
   }
 
-  function launch(root: HTMLElement): void {
+  // Best path: embed the viewer inline (only when this page is cross-origin isolated).
+  function launchInline(root: HTMLElement): void {
     if (root.dataset.state === "loading" || root.dataset.state === "ready") return;
     root.dataset.state = "loading";
 
@@ -95,54 +97,65 @@ const caption =
     frame?.appendChild(iframe);
   }
 
-  function showFallback(root: HTMLElement): void {
+  // Genuinely incapable browser: cross-origin isolated, yet no SharedArrayBuffer
+  // or WebGL2. The only true dead-end — show the poster + the "recent browser"
+  // note. (We can ONLY assert this when isolated; on a non-isolated page
+  // SharedArrayBuffer is always undefined regardless of the browser's support.)
+  function showUnsupported(root: HTMLElement): void {
     root.dataset.state = "unsupported";
     const launchEl = root.querySelector<HTMLElement>(".gerber-demo__launch");
-    const fallback = root.querySelector<HTMLElement>(".gerber-demo__fallback");
-    // Keep the poster (it's the <a> background); hide the play affordance, show note.
     launchEl?.querySelector(".gerber-demo__play")?.setAttribute("hidden", "");
     launchEl?.querySelector(".gerber-demo__cta")?.setAttribute("hidden", "");
     launchEl?.querySelector(".gerber-demo__sub")?.setAttribute("hidden", "");
     if (launchEl) {
-      launchEl.removeAttribute("href"); // not clickable
+      launchEl.removeAttribute("href");
       launchEl.style.cursor = "default";
     }
+    const fallback = root.querySelector<HTMLElement>(".gerber-demo__fallback");
     if (fallback) fallback.hidden = false;
   }
 
   function initDemo(): void {
     const root = document.querySelector<HTMLElement>(".gerber-demo");
     if (!root) return; // page without the demo
+    const launchEl = root.querySelector<HTMLAnchorElement>(".gerber-demo__launch");
 
-    const isolated = window.crossOriginIsolated === true;
-
-    // Soft SPA navigation lands here NOT cross-origin isolated; force one real
-    // load so the route's COOP/COEP headers apply. Guard against reload loops.
-    if (!isolated) {
-      if (!sessionStorage.getItem(RELOAD_KEY)) {
-        sessionStorage.setItem(RELOAD_KEY, "1");
-        location.reload();
-        return;
-      }
-      // Already retried and still not isolated → genuinely unsupported (or no
-      // headers, e.g. a preview without vercel.json). Fall back.
-    } else {
+    if (window.crossOriginIsolated === true) {
       sessionStorage.removeItem(RELOAD_KEY);
-    }
-
-    const supported =
-      isolated && typeof SharedArrayBuffer !== "undefined" && hasWebGL2();
-
-    if (!supported) {
-      showFallback(root);
+      if (typeof SharedArrayBuffer !== "undefined" && hasWebGL2()) {
+        root.dataset.state = "idle";
+        launchEl?.addEventListener("click", (e) => {
+          e.preventDefault(); // intercept the href; embed inline instead
+          launchInline(root);
+        });
+      } else {
+        showUnsupported(root);
+      }
       return;
     }
 
-    const launchEl = root.querySelector<HTMLElement>(".gerber-demo__launch");
-    launchEl?.addEventListener("click", (e) => {
-      e.preventDefault(); // intercept the href; embed inline instead
-      launch(root);
-    });
+    // NOT cross-origin isolated — usually because a soft SPA navigation delivered
+    // this page (the route's COOP/COEP only take effect on a real load). Reload
+    // ONCE to get the isolated version so we can embed inline. Guard with a
+    // TIMESTAMP, not a sticky flag: a stale flag from an earlier visit must not
+    // permanently strand the demo, but two reloads within the debounce window
+    // would be a loop — so we only suppress a reload we *just* did.
+    const last = Number(sessionStorage.getItem(RELOAD_KEY) || "0");
+    if (Date.now() - last > RELOAD_DEBOUNCE_MS) {
+      sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
+      location.reload();
+      return;
+    }
+
+    // Reloaded moments ago and STILL not isolated (stale cache, missing headers,
+    // a preview without vercel.json…). Don't dead-end and don't blame the
+    // browser: the standalone viewer page is isolated on its own, so let the
+    // button open it in a new tab — capable browsers get the full viewer there.
+    if (launchEl) {
+      launchEl.target = "_blank";
+      launchEl.rel = "noopener";
+      root.dataset.state = "external";
+    }
   }
 
   // Run on first load and on every SPA navigation (ClientRouter).
