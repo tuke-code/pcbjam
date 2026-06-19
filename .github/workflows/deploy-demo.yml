@@ -84,7 +84,17 @@ jobs:
       - name: Build demo
         run: node scripts/deploy/build-demo.mjs --tag "${{ steps.tag.outputs.tag }}" --cdn "$CDN"
 
-      # 4) Deploy to Cloudflare Pages (demo.pcbjam.com is the project's custom domain).
+      # 4) Ensure the Pages project exists (first deploy creates it; no-op after).
+      #    Its production branch must equal PAGES_PROD_BRANCH or deploys land as
+      #    previews and demo.pcbjam.com won't update.
+      - name: Ensure Pages project exists
+        run: >
+          npx --yes wrangler@4 pages project create "$PAGES_PROJECT"
+          --production-branch "$PAGES_PROD_BRANCH"
+          || echo "pages project create skipped (already exists)"
+
+      # 5) Deploy to Cloudflare Pages. Attach demo.pcbjam.com to this project
+      #    (Pages → $PAGES_PROJECT → Custom domains) for the custom domain to serve it.
       - name: Deploy to Cloudflare Pages
         run: >
           npx --yes wrangler@4 pages deploy web/standalone/dist
