@@ -64,7 +64,9 @@ jobs:
 
       - name: Resolve tag
         id: tag
-        run: echo "tag=${GITHUB_REF_NAME:-${{ github.event.inputs.tag }}}" >> "$GITHUB_OUTPUT"
+        # On workflow_dispatch GITHUB_REF_NAME is the branch (e.g. main), so prefer
+        # the explicit input; on a tag push the input is empty and ref_name is the tag.
+        run: echo "tag=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
 
       # 1) Reuse prebuilt WASM: snapshot the current registry into manifest-<tag>
       #    (no build, no upload). Fails if the WASM was never published — run
