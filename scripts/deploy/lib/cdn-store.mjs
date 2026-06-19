@@ -79,11 +79,14 @@ export function localDriver(outDir) {
 }
 
 export function r2Driver({ bucket, remote }) {
-  const wrangler = process.env.WRANGLER_CMD?.split(" ") || ["wrangler"];
+  // Default to `npx wrangler` so no global install is needed (override via env).
+  const wrangler = process.env.WRANGLER_CMD?.split(" ") || ["npx", "--yes", "wrangler@4"];
   const flags = remote ? ["--remote"] : [];
-  const run = (args) =>
+  // quiet: capture stderr instead of inheriting it — used for existence PROBES,
+  // where wrangler's "key does not exist" on a fresh bucket is expected + caught.
+  const run = (args, { quiet = false } = {}) =>
     execFileSync(wrangler[0], [...wrangler.slice(1), ...args], {
-      stdio: ["pipe", "pipe", "inherit"],
+      stdio: ["pipe", "pipe", quiet ? "pipe" : "inherit"],
       maxBuffer: 1024 * 1024 * 512,
     });
   const tmp = join(tmpdir(), `r2put-${process.pid}`);
@@ -92,9 +95,12 @@ export function r2Driver({ bucket, remote }) {
     getJSON(key) {
       const dest = `${tmp}-get`;
       try {
-        run(["r2", "object", "get", `${bucket}/${key}`, "--file", dest, ...flags]);
+        // Probe: a missing object is the normal "not published yet" case.
+        run(["r2", "object", "get", `${bucket}/${key}`, "--file", dest, ...flags], {
+          quiet: true,
+        });
       } catch {
-        return null; // not found / error → absent
+        return null; // not found / error → absent (expected on first publish)
       }
       try {
         return JSON.parse(readFileSync(dest, "utf8"));
