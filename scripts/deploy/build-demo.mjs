@@ -22,18 +22,37 @@ import {
 import { join, resolve } from "node:path";
 
 function parseArgs(argv) {
-  const a = { tag: null, cdn: "https://cdn.pcbjam.com" };
+  const a = {
+    tag: null,
+    cdn: "https://cdn.pcbjam.com",
+    repo: "https://github.com/emergence-engineering/pcbjam",
+  };
   for (let i = 2; i < argv.length; i++) {
     const next = () => argv[++i];
     switch (argv[i]) {
       case "--tag": a.tag = next(); break;
       case "--cdn": a.cdn = next(); break;
+      case "--repo": a.repo = next(); break;
       default: throw new Error(`unknown arg: ${argv[i]}`);
     }
   }
   if (!a.tag) throw new Error("--tag <release tag> is required");
   a.cdn = a.cdn.replace(/\/+$/, "");
+  a.repo = a.repo.replace(/\/+$/, "");
   return a;
+}
+
+// Best-effort source commit for the version badge's corresponding-source link;
+// empty string if git isn't available (CI shallow checkout etc.) — the badge
+// then falls back to the tag's release page.
+function gitSha(cwd) {
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], { cwd })
+      .toString()
+      .trim();
+  } catch {
+    return "";
+  }
 }
 
 function main() {
@@ -55,12 +74,18 @@ function main() {
     // Built-in offline symbols (no backend); cross-tab collab only.
     VITE_LIBS_SOURCE: "static",
     VITE_YJS_PROVIDER: "broadcastchannel",
+    // Build identity for the version badge. The commit is the GPLv3
+    // corresponding-source pointer (pins the kicad + wxwidgets submodules).
+    VITE_APP_TAG: a.tag,
+    VITE_GIT_SHA: gitSha(repoRoot),
+    VITE_REPO_URL: a.repo,
   };
 
   console.log(`build-demo: tag=${a.tag} cdn=${a.cdn}`);
   console.log(`  VITE_WASM_ROOT=${env.VITE_WASM_ROOT}`);
   console.log(`  VITE_WASM_MANIFEST=${env.VITE_WASM_MANIFEST}`);
   console.log(`  VITE_PROJECT_MANIFEST_URL=${env.VITE_PROJECT_MANIFEST_URL}`);
+  console.log(`  VITE_APP_TAG=${env.VITE_APP_TAG} VITE_GIT_SHA=${env.VITE_GIT_SHA || "(none)"}`);
 
   // Keep the dev-only WASM symlink out of the bundle (it'd copy 100s of MB into
   // dist/; the CDN serves it). In CI it isn't present, so this is a no-op there.

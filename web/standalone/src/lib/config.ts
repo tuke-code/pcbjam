@@ -24,6 +24,26 @@ export const WASM_MANIFEST_FILE = import.meta.env.VITE_WASM_MANIFEST || null;
 /** @deprecated Use WASM_ROOT + resolveWasmBase(). Kept for back-compat. */
 export const WASM_ASSET_BASE_URL = WASM_ROOT;
 
+// --- build identity (version badge + GPLv3 corresponding-source pointer) -------
+// The standalone is GPLv3; the badge surfaces the build's tag + a link to the
+// exact source. The repo commit pins the kicad + wxwidgets submodule revisions,
+// so APP_GIT_SHA → github.com/.../commit/<sha> is our corresponding-source
+// pointer (mirrors site/src/components/Footer.astro's BUILD_SHA). All three are
+// injected at build time by scripts/deploy/build-demo.mjs; unset in a plain dev
+// checkout (badge then shows "dev" → repo root).
+
+/** Release tag for this build (e.g. "2.7.7"); shown in the version badge. */
+export const APP_TAG = import.meta.env.VITE_APP_TAG || null;
+
+/** Source commit this build was made from; the badge links to it as the GPLv3
+ *  corresponding-source pointer. */
+export const APP_GIT_SHA = import.meta.env.VITE_GIT_SHA || null;
+
+/** Public source repository for the GPL editor (no trailing slash). */
+export const REPO_URL = (
+  import.meta.env.VITE_REPO_URL || "https://github.com/emergence-engineering/pcbjam"
+).replace(/\/+$/, "");
+
 /**
  * Where the standalone reads PROJECTS from (env VITE_PROJECT_SOURCE):
  *   "remote" (default) — the @pcbjam/shared REST backend at API_BASE_URL.

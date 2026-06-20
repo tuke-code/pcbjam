@@ -6,6 +6,12 @@ interface ImportMetaEnv {
   readonly VITE_WASM_ROOT?: string;
   /** Per-release WASM manifest file under VITE_WASM_ROOT (e.g. "manifest-2.7.7.json"); enables versioned per-tool folders. */
   readonly VITE_WASM_MANIFEST?: string;
+  /** Release tag for this build (e.g. "2.7.7"); shown in the version badge. */
+  readonly VITE_APP_TAG?: string;
+  /** Source commit this build was made from; the badge links to it as the GPLv3 corresponding-source pointer. */
+  readonly VITE_GIT_SHA?: string;
+  /** Public source repo URL for the GPL editor (default github.com/emergence-engineering/pcbjam). */
+  readonly VITE_REPO_URL?: string;
   /** @deprecated legacy alias for VITE_WASM_ROOT. */
   readonly VITE_WASM_ASSET_BASE_URL?: string;
   /** Project source: "remote" (default, REST backend) | "static" (read-only CDN gallery, no backend). */
