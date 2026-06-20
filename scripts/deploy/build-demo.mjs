@@ -26,6 +26,7 @@ function parseArgs(argv) {
     tag: null,
     cdn: "https://cdn.pcbjam.com",
     repo: "https://github.com/emergence-engineering/pcbjam",
+    libTag: null,
   };
   for (let i = 2; i < argv.length; i++) {
     const next = () => argv[++i];
@@ -33,6 +34,9 @@ function parseArgs(argv) {
       case "--tag": a.tag = next(); break;
       case "--cdn": a.cdn = next(); break;
       case "--repo": a.repo = next(); break;
+      // KiCad library snapshot tag (published once to libs/kicad/<libTag>/).
+      // Omitted ⇒ the offline built-in example symbols (back-compat).
+      case "--lib-tag": a.libTag = next(); break;
       default: throw new Error(`unknown arg: ${argv[i]}`);
     }
   }
@@ -74,8 +78,14 @@ function main() {
     // Loaded folders import into a browser-local (IndexedDB) project — editable,
     // persistent, exported via Download .zip — layered over the gallery.
     VITE_LOCAL_PROJECTS: "idb",
-    // Built-in offline symbols (no backend); cross-tab collab only.
-    VITE_LIBS_SOURCE: "static",
+    // Libraries: the full KiCad set from versioned CDN static origins when a
+    // --lib-tag is given (read-only, IDB-cached); else built-in offline symbols.
+    ...(a.libTag
+      ? {
+          VITE_LIBS_SOURCE: "cdn",
+          VITE_LIBS_MANIFEST_URL: `${a.cdn}/libs/kicad/${a.libTag}/manifest.json`,
+        }
+      : { VITE_LIBS_SOURCE: "static" }),
     VITE_YJS_PROVIDER: "broadcastchannel",
     // Build identity for the version badge. The commit is the GPLv3
     // corresponding-source pointer (pins the kicad + wxwidgets submodules).
@@ -89,6 +99,7 @@ function main() {
   console.log(`  VITE_WASM_MANIFEST=${env.VITE_WASM_MANIFEST}`);
   console.log(`  VITE_PROJECT_MANIFEST_URL=${env.VITE_PROJECT_MANIFEST_URL}`);
   console.log(`  VITE_APP_TAG=${env.VITE_APP_TAG} VITE_GIT_SHA=${env.VITE_GIT_SHA || "(none)"}`);
+  console.log(`  VITE_LIBS_SOURCE=${env.VITE_LIBS_SOURCE}${env.VITE_LIBS_MANIFEST_URL ? ` (${env.VITE_LIBS_MANIFEST_URL})` : ""}`);
 
   // Keep the dev-only WASM symlink out of the bundle (it'd copy 100s of MB into
   // dist/; the CDN serves it). In CI it isn't present, so this is a no-op there.

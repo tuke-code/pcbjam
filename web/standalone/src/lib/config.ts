@@ -72,6 +72,7 @@ export const LOCAL_PROJECTS_ENABLED =
   import.meta.env.VITE_LOCAL_PROJECTS === "idb";
 
 import type { ProviderConfig, ProviderKind } from "@/wasm/collab";
+import { cdnLibsSource } from "@/wasm/libs/cdn-source";
 import { remoteLibsSource } from "@/wasm/libs/remote-source";
 import { scopedLibsSource } from "@/wasm/libs/scoped-source";
 import type { LibsSource } from "@/wasm/libs/source";
@@ -137,6 +138,13 @@ export function libsOwner(): string {
   return import.meta.env.VITE_LIBS_OWNER ?? "local-user";
 }
 
+/** Full URL of the CDN libs top manifest (required for VITE_LIBS_SOURCE=cdn),
+ *  e.g. https://cdn.pcbjam.com/libs/kicad/9.0.0/manifest.json. The full default
+ *  KiCad symbol+footprint set, served read-only as version-pinned static origins
+ *  (IDB-cached). See wasm/libs/cdn-source.ts + docs/features/r2-idb-sync. */
+export const CDN_LIBS_MANIFEST_URL =
+  import.meta.env.VITE_LIBS_MANIFEST_URL || null;
+
 export function libsSourceConfig(projectId?: string): LibsSource | null {
   const kind = import.meta.env.VITE_LIBS_SOURCE ?? "remote";
   // "local" is the placeholder id for launches with no real backend project
@@ -150,7 +158,11 @@ export function libsSourceConfig(projectId?: string): LibsSource | null {
       ? null
       : kind === "static"
         ? staticLibsSource()
-        : remoteLibsSource(API_BASE_URL, libsOwner(), project);
+        : kind === "cdn"
+          ? CDN_LIBS_MANIFEST_URL
+            ? cdnLibsSource(CDN_LIBS_MANIFEST_URL)
+            : staticLibsSource() // misconfigured cdn ⇒ offline fallback
+          : remoteLibsSource(API_BASE_URL, libsOwner(), project);
 
   // 0004-A spike: `?libwrite=1` adds one in-memory writable user SYMBOL lib so the
   // editor save path works with no backend (a dev/test aid). The real remote

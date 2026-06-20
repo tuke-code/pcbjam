@@ -20,6 +20,10 @@ interface ImportMetaEnv {
   readonly VITE_PROJECT_MANIFEST_URL?: string;
   /** "idb" ⇒ loaded folders import into a browser-local (IndexedDB) project with its own URL; otherwise the in-page File System Access flow. */
   readonly VITE_LOCAL_PROJECTS?: string;
+  /** Library source: "remote" (default backend) | "static" (offline examples) | "cdn" (full KiCad set from CDN static origins) | "synced" | "off". */
+  readonly VITE_LIBS_SOURCE?: string;
+  /** CDN libs top-manifest URL (required when VITE_LIBS_SOURCE=cdn), e.g. https://cdn.pcbjam.com/libs/kicad/9.0.0/manifest.json. */
+  readonly VITE_LIBS_MANIFEST_URL?: string;
   /** Yjs collab provider: none | broadcastchannel | partykit | hocuspocus. */
   readonly VITE_YJS_PROVIDER?: string;
   /** Host/URL for network collab providers (partykit, hocuspocus). */
