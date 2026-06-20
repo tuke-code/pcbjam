@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -188,6 +188,99 @@ export async function extractAll(
     libs += Object.keys(FOOTPRINT_MANIFEST).length;
   }
   return { libs, symbols, footprints };
+}
+
+/* ----------------------------------------------------- full-set extraction --
+ * The CURATED extractAll above provisions a small example tree on disk. For the
+ * demo CDN we instead want EVERY lib, in memory, to publish as r2-idb-sync
+ * snapshots (see scripts/deploy/publish-libs.ts) — same per-item parse/extends
+ * resolution, no on-disk serve tree.
+ */
+
+export interface ExtractedItem {
+  kind: "symbol" | "footprint";
+  name: string;
+  /** Complete self-contained s-expr body (extends inlined for symbols). */
+  body: string;
+  description: string | null;
+  keywords: string | null;
+}
+export interface ExtractedLib {
+  lib: string;
+  kind: "symbol" | "footprint";
+  items: ExtractedItem[];
+}
+
+/** Extract EVERY lib present under the source dirs into in-memory bodies:
+ *  each `<Lib>.kicad_symdir/<name>.kicad_sym` (resolved + self-contained) and
+ *  each `<Lib>.pretty/<name>.kicad_mod`. Libs with no items are skipped. */
+export async function extractAllLibs(opts: {
+  symbolsSrc?: string;
+  footprintsSrc?: string;
+}): Promise<ExtractedLib[]> {
+  const out: ExtractedLib[] = [];
+
+  if (opts.symbolsSrc) {
+    const dirs = (await readdir(opts.symbolsSrc, { withFileTypes: true }))
+      .filter((e) => e.isDirectory() && e.name.endsWith(".kicad_symdir"))
+      .map((e) => e.name)
+      .sort();
+    for (const dirName of dirs) {
+      const lib = dirName.slice(0, -".kicad_symdir".length);
+      const symdir = path.join(opts.symbolsSrc, dirName);
+      const names = (await readdir(symdir))
+        .filter((f) => f.endsWith(".kicad_sym"))
+        .map((f) => f.slice(0, -".kicad_sym".length))
+        .sort();
+      const items: ExtractedItem[] = [];
+      for (const name of names) {
+        const { src: fileSrc, sym } = await readSymbol(symdir, name);
+        const parents = await resolveChain(symdir, sym);
+        items.push({
+          kind: "symbol",
+          name: sym.name,
+          body: buildSelfContainedLib(
+            libHeader(fileSrc),
+            parents.map((p) => p.block),
+            sym.block,
+          ),
+          description: sym.description,
+          keywords: sym.keywords,
+        });
+      }
+      if (items.length) out.push({ lib, kind: "symbol", items });
+    }
+  }
+
+  if (opts.footprintsSrc) {
+    const dirs = (await readdir(opts.footprintsSrc, { withFileTypes: true }))
+      .filter((e) => e.isDirectory() && e.name.endsWith(".pretty"))
+      .map((e) => e.name)
+      .sort();
+    for (const dirName of dirs) {
+      const lib = dirName.slice(0, -".pretty".length);
+      const pretty = path.join(opts.footprintsSrc, dirName);
+      const names = (await readdir(pretty))
+        .filter((f) => f.endsWith(".kicad_mod"))
+        .map((f) => f.slice(0, -".kicad_mod".length))
+        .sort();
+      const items: ExtractedItem[] = [];
+      for (const name of names) {
+        const fileSrc = await readFile(path.join(pretty, `${name}.kicad_mod`), "utf8");
+        const fp = parseFootprintFile(fileSrc, name);
+        items.push({
+          kind: "footprint",
+          name: fp.name,
+          body: fp.body,
+          description: fp.description,
+          keywords: fp.keywords,
+        });
+      }
+      if (items.length) out.push({ lib, kind: "footprint", items });
+    }
+  }
+
+  return out;
 }
 
 function arg(name: string): string | undefined {
