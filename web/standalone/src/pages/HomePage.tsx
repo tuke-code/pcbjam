@@ -10,9 +10,11 @@ import type { LibsSource } from "@/wasm/libs/source";
 import { downloadBytes } from "@/lib/download";
 import { importFileList, importFsaFolder } from "@/lib/import-folder";
 import { localProjectStore } from "@/lib/project-source";
+import { isDocumentTool } from "@/lib/new-file";
 import { Button } from "@/components/ui/button";
 import { ToolGrid } from "@/components/ToolGrid";
 import { ProjectsSection } from "@/components/ProjectsSection";
+import { NewFileDialog } from "@/components/NewFileDialog";
 import type { SaveBytes } from "@/wasm/save-flow";
 import { LocalProjectView, type LocalFile } from "@/components/LocalProjectView";
 import { WasmTool } from "@/components/WasmTool";
@@ -130,6 +132,9 @@ export function HomePage() {
     tool: Tool;
     libsSource?: LibsSource | null;
   } | null>(null);
+  // A document tool launched from the grid with the local store on → ask for a
+  // name + project (new-file dialog) instead of booting a throwaway blank doc.
+  const [newFileTool, setNewFileTool] = React.useState<Tool | null>(null);
 
   // <input webkitdirectory> is non-standard; set it imperatively.
   React.useEffect(() => {
@@ -278,8 +283,16 @@ export function HomePage() {
       {/* --- Tools (KiCad-style launcher for the standalone tools) --- */}
       <section className="mb-10">
         <h2 className="mb-3 text-lg font-medium">Tools</h2>
-        <ToolGrid onLaunch={(tool) => setLaunchedTool({ tool })} />
+        <ToolGrid
+          onLaunch={(tool) =>
+            localEnabled && isDocumentTool(tool)
+              ? setNewFileTool(tool)
+              : setLaunchedTool({ tool })
+          }
+        />
       </section>
+
+      <NewFileDialog tool={newFileTool} onClose={() => setNewFileTool(null)} />
 
       {/* --- Backend libraries (hidden in the no-backend static demo) --- */}
       {!staticMode && (

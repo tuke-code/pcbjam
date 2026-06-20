@@ -7,14 +7,24 @@ import {
   TOOL_LABELS,
   type Tool,
 } from "@pcbjam/shared";
-import { ArrowLeft, Download, ExternalLink, Loader2, Trash2 } from "lucide-react";
+import {
+  ArrowLeft,
+  Copy,
+  Download,
+  ExternalLink,
+  FilePlus,
+  Loader2,
+  Trash2,
+} from "lucide-react";
 import { fetchFileBytes, useProject, useSourceDescriptor } from "@/lib/api";
 import { downloadBytes } from "@/lib/download";
 import { localProjectStore } from "@/lib/project-source";
+import { DOCUMENT_TOOLS } from "@/lib/new-file";
 import { zipFiles } from "@/lib/zip";
 import { formatBytes } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { SourceChip } from "@/components/SourceChip";
+import { NewFileDialog } from "@/components/NewFileDialog";
 
 function toolForPath(path: string): Tool | null {
   const dot = path.lastIndexOf(".");
@@ -23,11 +33,11 @@ function toolForPath(path: string): Tool | null {
 }
 
 /**
- * View of a project's files (open them in a tool). For a browser-local project
- * it also exports — Download .zip for the whole project, or per file — and can
- * delete it; the source chip says where edits go. Backend projects stay
- * read-mostly (create/delete live in the closed app that hosts this editor); the
- * read-only gallery downloads on save.
+ * Project-centric view (mirrors the closed app): Files + a "New file" row whose
+ * document-tool buttons create a templated file in THIS project and open it, so
+ * you always edit a real file that saves back. Writable projects (local IDB or a
+ * remote-rw backend) get New / export; a read-only gallery project gets "Save a
+ * copy to browser" (fork into editable IDB). The source chip says where edits go.
  */
 export function ProjectView() {
   const { project: slug = "" } = useParams();
@@ -36,7 +46,9 @@ export function ProjectView() {
   const { data, isLoading, error } = useProject(slug);
   const { data: descriptor } = useSourceDescriptor(slug);
   const isLocal = descriptor?.kind === "local";
+  const canFork = descriptor?.kind === "remote-ro" && !!localProjectStore();
   const [busy, setBusy] = React.useState(false);
+  const [newFileTool, setNewFileTool] = React.useState<Tool | null>(null);
 
   const exportZip = async () => {
     const store = localProjectStore();
@@ -61,6 +73,26 @@ export function ProjectView() {
     await store.deleteProject(slug);
     await qc.invalidateQueries({ queryKey: ["local-projects"] });
     navigate("/");
+  };
+
+  // Copy a read-only gallery project into an editable browser-local project.
+  const fork = async () => {
+    const store = localProjectStore();
+    if (!store || !data) return;
+    setBusy(true);
+    try {
+      const files = await Promise.all(
+        data.files.map(async (f) => ({
+          path: f.path,
+          bytes: await fetchFileBytes(slug, f.path),
+        })),
+      );
+      const created = await store.createProject(data.project.name, files);
+      await qc.invalidateQueries({ queryKey: ["local-projects"] });
+      window.location.assign(`/p/${created.slug}`);
+    } catch {
+      setBusy(false);
+    }
   };
 
   return (
@@ -88,26 +120,56 @@ export function ProjectView() {
             <p className="text-sm text-muted-foreground">/p/{data.project.slug}</p>
           </div>
 
-          {isLocal && (
-            <div className="mb-6 flex flex-wrap gap-3">
-              <Button variant="outline" size="sm" disabled={busy} onClick={() => void exportZip()}>
-                {busy ? <Loader2 className="animate-spin" size={15} /> : <Download size={15} />}
-                Download .zip
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-destructive hover:text-destructive"
-                onClick={() => void remove()}
-              >
-                <Trash2 size={15} /> Delete
-              </Button>
+          {/* New file (writable projects): a templated doc, created then opened. */}
+          {descriptor?.writable && (
+            <div className="mb-6">
+              <h2 className="mb-2 text-sm font-medium text-muted-foreground">
+                New file
+              </h2>
+              <div className="flex flex-wrap gap-2">
+                {DOCUMENT_TOOLS.map((tool) => (
+                  <Button
+                    key={tool}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setNewFileTool(tool)}
+                  >
+                    <FilePlus size={14} /> {TOOL_LABELS[tool]}
+                  </Button>
+                ))}
+              </div>
             </div>
           )}
 
+          {/* Project-level actions. */}
           <div className="mb-6 flex flex-wrap gap-3">
-            {/* File-less tools — launched without a target file. Full reload
-                (anchor) so Emscripten boots into a clean page. */}
+            {canFork && (
+              <Button variant="outline" size="sm" disabled={busy} onClick={() => void fork()}>
+                {busy ? <Loader2 className="animate-spin" size={15} /> : <Copy size={15} />}
+                Save a copy to browser
+              </Button>
+            )}
+            {isLocal && (
+              <>
+                <Button variant="outline" size="sm" disabled={busy} onClick={() => void exportZip()}>
+                  {busy ? <Loader2 className="animate-spin" size={15} /> : <Download size={15} />}
+                  Download .zip
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => void remove()}
+                >
+                  <Trash2 size={15} /> Delete
+                </Button>
+              </>
+            )}
+          </div>
+
+          {/* File-less tools (gerber viewer, calculator, lib editors) — still
+              project-scoped, opened without a target file. Full reload. */}
+          <div className="mb-6 flex flex-wrap gap-3">
             {[...FILELESS_TOOLS].map((tool) => (
               <a
                 key={tool}
@@ -158,10 +220,16 @@ export function ProjectView() {
             })}
             {data.files.length === 0 && (
               <div className="px-4 py-6 text-sm text-muted-foreground">
-                No files in this project.
+                No files yet — use “New file” above to create one.
               </div>
             )}
           </div>
+
+          <NewFileDialog
+            tool={newFileTool}
+            onClose={() => setNewFileTool(null)}
+            project={{ slug, existingPaths: data.files.map((f) => f.path) }}
+          />
         </>
       )}
     </div>
