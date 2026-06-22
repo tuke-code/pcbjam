@@ -21,6 +21,7 @@ const CASES = [
   'transitive_suspend_in_catch',
   'value_returning_catch',
   'suspend_in_catch_on_fiber',
+  'catch_with_cleanup',
 ];
 
 const CRASH_SIGNATURES = [

@@ -65,7 +65,7 @@ which is why it's a clean ~150-line addition and genuinely upstreamable.
 ## Generalization (follow-up, same session)
 
 The pass was generalized from the MVP (one direct-suspend catch) to **hoist-all-cpp-catches** and
-tested against a richer toy covering the real KiCad/wx shapes. **6 of 7 shapes are green in all
+tested against a richer toy covering the real KiCad/wx shapes. **All 7 shapes are green in all
 three engines** (Firefox + Chrome + Safari/WebKit):
 
 | shape | covered |
@@ -75,7 +75,7 @@ three engines** (Firefox + Chrome + Safari/WebKit):
 | value-returning try/catch | ✅ (LLVM keeps the value in a local → void try, no result routing needed) |
 | suspend-in-catch on a fiber/coroutine stack (eeschema Paste) | ✅ |
 | nested suspend-in-catch tries | ✅ |
-| **catch nested in a catch_all cleanup** (try body has a local with a destructor) | ❌ known gap |
+| **catch nested in a catch_all cleanup** (try body has a local with a destructor) | ✅ (escape past the outermost try; see below) |
 
 **The one gap — catch_all-wrapped catches.** When the try body holds a local with a non-trivial
 destructor, LLVM lowers the C++ catch *nested inside* the cleanup `catch_all`
@@ -88,13 +88,42 @@ reverted:** the escape transform *validates* and fixes the catch_all case *in is
 (rewind traps with `null function`) and it regressed the simple cases too. So the real work is
 finding an asyncify-friendly escape shape — the per-try inline `br_if`-skip form (handler inline
 right after the try) rewinds fine; a `br` out to a separate dispatch does not. That's the
-next pass task; the 6 shapes above use the per-try form and stay green. How often it
+fix is now landed (see "catch_all-escape: LANDED" below); all 7 shapes are green. How often it
 bites KiCad depends on whether the specific catch's try body constructs a destructible
 local/temporary (e.g. a `wxString`); a `try { ptr = Load(fn); } catch(IO_ERROR&)` with a pointer
 result has no cleanup pad and is already covered. (`HOIST_ONLY_SUSPEND` switches off hoist-all back
 to direct-suspend-only, useful for narrowing blast radius while debugging.)
 
-### catch_all-escape: confirmed real; the fix is asyncify-SOUND, not a wall (2026-06-22)
+### catch_all-escape: LANDED (2026-06-22)
+
+**Fixed — all 7 shapes green in Firefox + Chrome + Safari.** When the try body holds a local with a
+non-trivial destructor, LLVM lowers the C++ catch *nested inside* the cleanup `catch_all`; the pass
+hoists it PAST the outermost enclosing try. Confirmed to occur in real KiCad (`pcbnew/files.cpp:670`
+builds `std::map<std::string, UTF8> props` in the try, so its IO/format/bad_alloc catches are
+catch_all-nested). Landing it took a from-source Binaryen build + a minimal *multi-function* repro
+(`/tmp/eh_min2.cpp`, `/tmp/eh_min3.cpp`); two bugs, both invisible on a single function and only live
+once several shapes inline together:
+
+1. **Over-eager deferral → `null function`.** A nested cpp catch is deferred to its ancestor escape
+   target, but the test matched ANY ancestor catch body — so a cpp catch in a *regular* catch body
+   (the `__cxa_end_catch` cleanup tries LLVM emits everywhere) was deferred to a target that never
+   hoisted it; its suspend was dropped and rewind trapped. Fix: defer only when the catch sits in an
+   ancestor's `catch_all` cleanup pad (`hasCatchAll() && catchBodies.back() == child`).
+2. **Trailing catch_all code → `unreachable`.** The rewritten minimal arm completes, but the
+   catch_all body has trailing `(unreachable)` after the nested try (it assumed the handler
+   diverged). Fix: wrap the escape target in a `block $esc`; the arm `br $esc`s after capturing,
+   landing fall-through just before the dispatch (so Asyncify still rewinds the handler).
+
+The pass is in the `binaryen` submodule (`src/passes/HoistCppCatches.cpp`). The earlier
+"not asyncify-rewindable" worry was wrong — Asyncify rewinds the escape form fine; the blockers were
+ordinary IR bugs, exactly as the multi-function-debug plan predicted.
+
+#### Debugging history (superseded)
+
+The notes below trace the path to the fix; their "blocked" conclusions are superseded by the
+landing above.
+
+##### catch_all-escape: confirmed real; the fix is asyncify-SOUND, not a wall (2026-06-22)
 
 > **Correction (later same session):** the "not asyncify-rewindable" conclusion below was
 > **disproven**. Diffing the *asyncified* output of the per-try vs escape forms on a minimal
@@ -126,8 +155,8 @@ catch — own or nested — past the outermost enclosing try, dispatching handle
 in every variant but is **not asyncify-rewindable**: it traps with `null function` even on the simple
 cases the per-try form handles. Tried: inline flag-dispatch (`if (flag==n)` — asyncify skips `if`
 bodies on rewind), a bare single handler, `br_if`-skip guards, and `ReFinalize` (for stale `Try`
-types). None worked, and the root cause — why asyncify cannot rewind into the restructured handler —
-is not yet pinned. Prototype preserved at `scripts/binaryen-hoist-pass/HoistCppCatches.escape-wip.cpp`.
+types). None worked at the time — the actual root causes (over-eager deferral + trailing catch_all code)
+were found later with a multi-function repro; the fix landed in the submodule pass (see above).
 
 **Open options:** (1) diff the *asyncified* IR of the working per-try form vs the escape form on one
 simple case, to pinpoint exactly what Asyncify mis-handles; (2) hand-refactor the affected KiCad

@@ -249,14 +249,7 @@ int main()
     Case_TransitiveSuspendInCatch();
     Case_ValueReturningCatch();
     Case_SuspendInCatchOnFiber();
-
-    // KNOWN LIMITATION (docs/features/wasm-exceptions/07): suspend in a C++ catch whose try body
-    // holds a local with a non-trivial destructor — LLVM nests the catch in a cleanup catch_all.
-    // The escape-target fix (scripts/binaryen-hoist-pass/HoistCppCatches.escape-wip.cpp) is
-    // asyncify-SOUND in isolation (proven: identical asyncified IR + runs) but has structural
-    // bugs on the complex inlined toy. Tractable; needs methodical per-function isolation.
-    Log( "[EH_SPIKE] KNOWN_LIMITATION catch_with_cleanup (catch_all-wrapped; see doc 07)" );
-    (void) &Case_CatchWithCleanup;
+    Case_CatchWithCleanup();
 
     char buf[128];
     std::snprintf( buf, sizeof buf, "[EH_SPIKE] SUMMARY total=%d passed=%d failed=%d",
