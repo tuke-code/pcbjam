@@ -118,6 +118,18 @@ The pass is in the `binaryen` submodule (`src/passes/HoistCppCatches.cpp`). The 
 "not asyncify-rewindable" worry was wrong — Asyncify rewinds the escape form fine; the blockers were
 ordinary IR bugs, exactly as the multi-function-debug plan predicted.
 
+### value-typed (concrete-result) tries: LANDED (2026-06-22)
+
+The pass also handles an escape target whose try yields a *value* (i32/i64/…), not just
+void/unreachable — it routes the body/handler value through a `$result` local (the no-exception
+body value is captured inside `block $esc`; a caught arm br's out and each per-arm dispatch writes
+`$result`; the block yields `local.get $result`). Non-defaultable result types are still skipped.
+These tries don't arise from normal C++ EH lowering (LLVM keeps catch values in locals →
+void/unreachable tries), so they're covered by hand-written modules in
+`scripts/binaryen-hoist-pass/tests/` (`run.sh`): `--fuzz-exec` confirms the pass preserves the
+result value across the exception / no-exception / payload paths, and a real asyncify unwind+rewind
+through a value-typed *suspending* catch yields the correct value (50).
+
 #### Debugging history (superseded)
 
 The notes below trace the path to the fix; their "blocked" conclusions are superseded by the
@@ -212,8 +224,9 @@ them cheaply.
 
 ## Recommended path forward
 
-1. **Generalize the pass** to hoist-all + result-typed tries + catch_all (~1–2 days), still in
-   the fast toy loop. Add lit tests in the fork.
+1. **Generalize the pass** — DONE: hoist-all, catch_all-escape, and value-typed/concrete-result
+   tries are all handled and verified (the value-typed path via `scripts/binaryen-hoist-pass/tests/`).
+   No further generalization is needed for the 7 KiCad shapes.
 2. **Phase 2 — a wx standalone app** flipped to native EH: the first *real* `ShowModal`-from-catch
    path, and the forcing function for transitive hoisting.
 3. **File the design on binaryen #4470** (the pass is a pure addition; upstreaming collapses our
