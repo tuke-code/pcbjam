@@ -451,9 +451,6 @@ emcmake cmake "${KICAD_DIR}" \
     -DODBC_LINK_FLAGS:STRING="" \
     -DODBC_LIBRARIES:STRING="" \
     \
-    -DBUILD_GITHUB_PLUGIN=OFF \
-    -DKICAD_PCM=OFF \
-    \
     -DHAVE_STRCASECMP=1 \
     -DHAVE_STRNCASECMP=1
 

@@ -20,10 +20,25 @@ mkdir -p "$LOGS_DIR"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 LOG_FILE="$LOGS_DIR/${TIMESTAMP}.log"
 
-# Our commit authors (add more if needed)
+# Our commit authors (add more if needed).
+# NOTE: every author whose commits land on top of the upstream base must be
+# listed here (or be matched by OUR_DOMAINS below). If one is missing, the
+# upstream-base detection loop stops early on that author's commit and the
+# divergence is drastically under-counted.
 OUR_AUTHORS=(
     "viktor.vaczi@emergence-engineering.com"
+    "balint.ipkovich@emergence-engineering.com"
+    "torcsvari.gergo@gmail.com"
+    "119620946+matejcsok-ee@users.noreply.github.com"
     "noreply@anthropic.com"
+)
+
+# Any commit whose author email ends with one of these domains is treated as
+# ours too — a safety net so new emergence contributors don't silently break
+# the count. Contributors using gmail/github-noreply addresses must still be
+# listed explicitly in OUR_AUTHORS above.
+OUR_DOMAINS=(
+    "@emergence-engineering.com"
 )
 
 echo "=== KiCad Fork Diff Statistics ===" | tee "$LOG_FILE"
@@ -54,6 +69,14 @@ while read -r commit_hash author_email; do
             break
         fi
     done
+    if [ "$is_ours" = false ]; then
+        for our_domain in "${OUR_DOMAINS[@]}"; do
+            if [[ "$author_email" == *"$our_domain" ]]; then
+                is_ours=true
+                break
+            fi
+        done
+    fi
     if [ "$is_ours" = false ]; then
         UPSTREAM_COMMIT="$commit_hash"
         UPSTREAM_AUTHOR="$author_email"
