@@ -1,5 +1,14 @@
 # 03 — Toolchain compatibility status (verified 2026-06-10/11)
 
+> **Partly superseded 2026-06-22 — see [`06-spike-plan.md`](06-spike-plan.md).** Corrections:
+> (a) the host-side `--asyncify` already runs **Binaryen v130** in CI/publish
+> (`BINARYEN_VERSION=130`), so "we don't have the partial support locally" understates it — v121
+> is only the finalize/in-link copy. (b) `--pass-arg=asyncify-ignore-unwind-from-catch` **is**
+> implemented (shipped v125), but it *silently drops* the suspend — a tripwire-silencer, not a
+> fix. (c) The encoding is resolved to **legacy** (exnref + Asyncify is unsupported in every
+> released Binaryen incl. v130, no roadmap), so the "encoding decision forks the asyncify work"
+> framing in §experiment is closed: legacy + the catch-arm-hoisting pre-pass is the only path.
+
 ## The compatibility matrix
 
 | Combination | Status |

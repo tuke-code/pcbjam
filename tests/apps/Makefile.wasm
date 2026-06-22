@@ -627,6 +627,21 @@ $(S)/asyncify-races/races_test_nosleepfix.html: $(S)/asyncify-races/races_test.o
 	$(CXX) $^ $(LDFLAGS_RACES) --pre-js $(JS) --shell-file $(HTML) -o $@
 	SHIM_DISABLE_HANDLESLEEP=1 ../../scripts/common/inject-dyncall-shims.sh $(basename $@).js
 
+# --- native wasm-EH spike (docs/features/wasm-exceptions/06-spike-plan.md) ---
+# Phase 0 probe: does em 4.0.2 emit *parseable* legacy wasm-EH? One source, built two
+# ways — JS-EH baseline (-fexceptions) vs native wasm-EH (-fwasm-exceptions, legacy
+# encoding =1). wx-free, no Asyncify; run with node. Deliberately NOT in `all`.
+EH_PROBE_BASE = -O2 -sEXIT_RUNTIME=1
+
+$(S)/eh-spike/eh_probe_jseh.js: $(S)/eh-spike/eh_probe.cpp
+	$(CXX) $(EH_PROBE_BASE) -fexceptions $< -o $@
+
+$(S)/eh-spike/eh_probe_wasmeh.js: $(S)/eh-spike/eh_probe.cpp
+	$(CXX) $(EH_PROBE_BASE) -fwasm-exceptions -sSUPPORT_LONGJMP=wasm -sWASM_LEGACY_EXCEPTIONS=1 $< -o $@
+
+eh-probe: $(S)/eh-spike/eh_probe_jseh.js $(S)/eh-spike/eh_probe_wasmeh.js
+.PHONY: eh-probe
+
 # Convenience targets
 menu: $(S)/menu/menu_test.html
 contextmenu: $(S)/contextmenu/contextmenu_test.html

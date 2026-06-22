@@ -41,7 +41,7 @@ const port = resolvePort();
 export default defineConfig({
   globalSetup: './global-setup.ts',
   testDir: './asyncify',
-  testMatch: /asyncify-races.*\.spec\.ts$/,
+  testMatch: /(asyncify-races|eh-spike).*\.spec\.ts$/,
   fullyParallel: false, // one heavy WASM app at a time
   forbidOnly: !!process.env.CI,
   retries: 0,
@@ -69,6 +69,12 @@ export default defineConfig({
         viewport: { width: 1280, height: 720 },
         permissions: ['clipboard-read', 'clipboard-write'],
       },
+    },
+    {
+      // WebKit (Safari's engine) — headless OK on macOS. Project policy: every spec must be
+      // green in all three engines (Firefox + Chrome + Safari). Run via npm run test:asyncify:safari.
+      name: 'webkit',
+      use: { ...devices['Desktop Safari'], viewport: { width: 1280, height: 720 } },
     },
   ],
 

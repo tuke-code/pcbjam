@@ -11,6 +11,15 @@
 > `currData` contention dossier) — this dossier covers the *exception-handling* axis of
 > the same machine.
 
+> **UPDATE 2026-06-22 (see [`06-spike-plan.md`](06-spike-plan.md)).** A 5-agent spike refreshed
+> this dossier and corrected three things below: (1) **the encoding is resolved to LEGACY**
+> (`WASM_LEGACY_EXCEPTIONS=1`) — Asyncify can't consume exnref in any released Binaryen, so the
+> "exnref → TryTable variant" fork is closed; the experiment's `=0` was a dead end. (2) **Binaryen
+> is not a blocker** — CI/publish already pin `BINARYEN_VERSION=130` (the "v121 locally" note below
+> is only the finalize/in-link copy). (3) The long pole is the **emsdk/LLVM compiler bump** for
+> parseable legacy wasm-EH + the OCC `br_table` fix, *not* a newer wasm-opt. The phased red-green
+> plan lives in 06.
+
 ## Why this exists
 
 The whole build is on **`-fexceptions`** (Emscripten's JavaScript-based exception
@@ -64,6 +73,7 @@ KiCad at all.
 | [`05-asyncify-fork-design.md`](05-asyncify-fork-design.md) | Asyncify.cpp internals, why catch arms are structurally hard, and the catch-arm-hoisting fork design with limits and effort. |
 | [`catch_audit.py`](catch_audit.py) | The audit tool (re-runnable; suitable as a CI gate on the kicad submodule). |
 | [`audit-results.txt`](audit-results.txt) | Full audit output incl. all 85 direct-suspend sites. |
+| [`06-spike-plan.md`](06-spike-plan.md) | **(2026-06-22)** Refreshed findings + the phased red-green spike plan; supersedes the encoding/Binaryen-version framing above. |
 
 ## Relationship to docs/features/async/
 

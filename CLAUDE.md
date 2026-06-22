@@ -11,6 +11,7 @@ Update test images with /scripts/update-baseline-screenshots.sh when a new image
 The tests have log files in tests/logs/{wxwidgets/kicad}/{test-name} after each run where the js console and cpp logs are visible
 Always check screenshots for validating tests
 Run e2e tests from /tests folder: `npm run test:kicad` or `npm run test:e2e` (not playwright directly)
+Always run e2e specs in ALL THREE browsers — Firefox, Chrome, AND Safari (WebKit) — not just one; a spec must be green in all three engines. Each playwright config has firefox/chromium/webkit projects (e.g. `npm run test:asyncify:all`; chromium must be `--headed` on ARM Mac).
 
 Build kicad with docker/build.sh (includes wxwidgets build, runs in docker)
 Build wxwidgets standalone with scripts/build-wx-wasm.sh (runs on machine, for wxwidgets-only changes)

@@ -10,3 +10,6 @@
 	path = web/pcbjam-shared
 	url = https://github.com/emergence-engineering/pcbjam-shared.git
 	branch = main
+[submodule "binaryen"]
+	path = binaryen
+	url = https://github.com/emergence-engineering/binaryen
