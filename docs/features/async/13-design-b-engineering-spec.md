@@ -90,6 +90,18 @@ Run `main → wxEntry → OnRun → DoRun` inside a managed **root fiber** (via 
 - [ ] **Phase 3 — migrate waits** (1–2 wk). `wasm_yield_until` API; `ShowModal`/nested loop/clipboard/font on it. **Gate:** full matrix green.
 - [ ] **Phase 4 — lifetime** (few d). Cleanup ordering vs the scheduler; teardown deferred to unload. **Gate:** exit/unload tests green; no cleanup during steady-state pumping.
 
+## 6b. Phase-0 finding — Phase 1 is insufficient; Phase 2 (root fiber) is REQUIRED (2026-06-23)
+
+**Exact failure** (coroutine_test, de-park build): the first case `yield_resume_preserves_state` **passes** (it runs during the startup burst, *before* the main-loop park), then a later fiber swap aborts with **`Aborted(Assertion failed: We cannot stop an async operation in flight)`**, surfacing as `[wxWasm] main loop pump error`.
+
+**Why:** `wxWasmParkMainLoop` is `Asyncify.handleAsync(...)` — a **permanently in-flight async operation** for the app's whole life. A coroutine `emscripten_fiber_swap` inside the rAF pump calls `stop_unwind`, but the park's async op is in flight → abort. Under the old `throw`, the top loop was *not* an async op (`throw "unwind"` is a plain JS exception), so swaps from a clean base worked.
+
+**Tested & ruled out:** changing the rAF pump's `await ccall('ProcessEvents',{async:true})` to a **synchronous** `ccall` does NOT help — the in-flight op is the *park*, not the per-tick ccall. And the park is **permanent** (never completes until exit), so no scheduler serialization can let a coroutine swap "wait for the slot." **So §6's Phase-1 escalation condition is met.**
+
+**The fix (Phase 2, now confirmed required):** the main loop must not be a `handleAsync` park. Make the main stack a **libcontext fiber** (Ruby/Julia pattern): the main fiber runs `ProcessEvents` on its own stack and **yields to the browser by a fiber swap / return-through-`set_main_loop(...,0)`**, not a `handleAsync` suspend — so there is no permanent in-flight async operation, and a coroutine swap is a sibling fiber↔fiber switch from the same `g_main_context`. `ProcessEvents` must run on `g_main_context` (the main fiber), not the fresh rAF-ccall stack. The Phase-1 scheduler is still needed to coordinate modal/clipboard waits that *do* suspend — but **the main-loop park must move off `handleAsync` first.**
+
+**Open Phase-2 design point:** how the main fiber yields to / resumes from the browser each frame (rAF resumes `g_main_context` to run one `ProcessEvents` tick, then the main fiber yields back) without re-introducing a permanent asyncify operation. Candidate: `set_main_loop(tick,0,0)` where `tick` resumes the main fiber via libcontext, the main fiber runs `ProcessEvents` then swaps back, and wx teardown is suppressed until unload (Phase 4 lifetime).
+
 ## 7. Open decisions (resolve during implementation)
 - Is Phase 1 (scheduler treating the `handleAsync` park as a tracked parked context) sufficient, or is Phase 2 (root fiber) required? — answered by the Phase-0 harness against the Phase-1 build.
 - One scheduler file injected post-link (like today's shim) vs an emscripten `--js-library` (link-time, cleaner, survives JS regen). Lean js-library for durability.
