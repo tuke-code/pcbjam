@@ -149,7 +149,12 @@ while IFS= read -r w; do
     if [ -f "$js" ]; then
         ( cd "$(dirname "$js")" && "$SCRIPT_DIR/common/inject-dyncall-shims.sh" "$(basename "$js")" )
     fi
-done < <(find "$STANDALONE_DIR" -name '*_test.wasm' -newer "$EH_MARKER")
+# Match EVERY freshly-linked app wasm, not just standalone/*/*_test.wasm: the main demo
+# (apps/minimal_test.wasm) is at the apps/ root, and the coroutine-pthread repros + wxpt app
+# are *_repro*.wasm / *_wxpt.wasm. The old '*_test.wasm under standalone' filter silently
+# skipped all of those, so under native wasm-EH they never got hoist+asyncify and crashed at
+# runtime with "asyncify_start_unwind not found".
+done < <(find "$WASM_APP_DIR" -name '*.wasm' -newer "$EH_MARKER")
 rm -f "$EH_MARKER"
 
 echo ""
