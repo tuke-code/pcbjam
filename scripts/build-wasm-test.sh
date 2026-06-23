@@ -119,6 +119,15 @@ if [ "$DEBUG_BUILD" = "1" ]; then
 else
     make -j"${JOBS:-1}" -f Makefile.wasm "$MAKE_TARGET"
 fi
+make_rc=$?
+if [ "$make_rc" -ne 0 ]; then
+    # Fail loudly. Silently continuing to the post-link leaves the freshly-linked apps
+    # asyncify-stubbed / un-injected, which looks like mass test failures rather than a build
+    # error. (The EXIT trap restores the stubbed emsdk wasm-opt under WX_NATIVE_EH.)
+    echo "" >&2
+    echo "ERROR: make failed (exit $make_rc); aborting before the post-link step." >&2
+    exit "$make_rc"
+fi
 
 # Inject the dyncall + handlesleep currData shims into every freshly-linked app. The
 # handlesleep currData save/restore (Emscripten #9153) is needed under BOTH EH models:
