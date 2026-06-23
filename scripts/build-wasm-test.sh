@@ -98,7 +98,7 @@ fi
 EMSDK_WASM_OPT="$PROJECT_ROOT/tools/emsdk/upstream/bin/wasm-opt"
 WASMOPT_STUB="$PROJECT_ROOT/wasm/stubs/wasm-opt-stub.sh"
 _eh_restore_wasmopt() { [ -f "${EMSDK_WASM_OPT}.ehbak" ] && mv -f "${EMSDK_WASM_OPT}.ehbak" "${EMSDK_WASM_OPT}"; }
-EH_MARKER=""
+EH_MARKER="$(mktemp)"   # created before the build so 'find -newer' below selects freshly-linked apps (both EH modes)
 if [ "${WX_NATIVE_EH:-0}" = "1" ]; then
     echo ""
     echo "=== Native wasm-EH: resolving Binaryen v130 + hoist-pass wasm-opt ==="
@@ -110,7 +110,6 @@ if [ "${WX_NATIVE_EH:-0}" = "1" ]; then
     cp "$EMSDK_WASM_OPT" "${EMSDK_WASM_OPT}.ehbak"
     cp "$WASMOPT_STUB" "$EMSDK_WASM_OPT"; chmod +x "$EMSDK_WASM_OPT"
     trap _eh_restore_wasmopt EXIT
-    EH_MARKER="$(mktemp)"
 fi
 
 # Build (pass DEBUG flag if requested). App links are independent, so honor
@@ -121,22 +120,28 @@ else
     make -j"${JOBS:-1}" -f Makefile.wasm "$MAKE_TARGET"
 fi
 
-# Native wasm-EH: restore the emsdk wasm-opt, then hoist + asyncify each freshly-linked app.
+# Inject the dyncall + handlesleep currData shims into every freshly-linked app. The
+# handlesleep currData save/restore (Emscripten #9153) is needed under BOTH EH models:
+# without it a rewind that resumes through a fresh wasm re-entry hits
+# _asyncify_start_rewind(null) -> "memory access out of bounds" — e.g. a context-menu pick
+# while the main loop is parked. The Makefile only injects it for the coroutine apps;
+# inject-dyncall-shims.sh is idempotent (skips an already-shimmed glue), so re-running it
+# here is safe. Native wasm-EH additionally needs post-link hoist + asyncify on the .wasm first.
 if [ "${WX_NATIVE_EH:-0}" = "1" ]; then
     _eh_restore_wasmopt; trap - EXIT
     echo ""
     echo "=== Post-link --hoist-cpp-catches + --asyncify (native wasm-EH) ==="
-    while IFS= read -r w; do
-        "$SCRIPT_DIR/common/hoist-and-asyncify.sh" "$w"
-        # Bind the asyncify-instrumented dynCall_* trampolines (needs -sDYNCALLS=1) so unwind/rewind
-        # through indirect calls works — same shim KiCad uses (scripts/common/inject-dyncall-shims.sh).
-        js="${w%.wasm}.js"
-        if [ -f "$js" ]; then
-            ( cd "$(dirname "$js")" && "$SCRIPT_DIR/common/inject-dyncall-shims.sh" "$(basename "$js")" )
-        fi
-    done < <(find "$STANDALONE_DIR" -name '*_test.wasm' -newer "$EH_MARKER")
-    rm -f "$EH_MARKER"
 fi
+while IFS= read -r w; do
+    if [ "${WX_NATIVE_EH:-0}" = "1" ]; then
+        "$SCRIPT_DIR/common/hoist-and-asyncify.sh" "$w"
+    fi
+    js="${w%.wasm}.js"
+    if [ -f "$js" ]; then
+        ( cd "$(dirname "$js")" && "$SCRIPT_DIR/common/inject-dyncall-shims.sh" "$(basename "$js")" )
+    fi
+done < <(find "$STANDALONE_DIR" -name '*_test.wasm' -newer "$EH_MARKER")
+rm -f "$EH_MARKER"
 
 echo ""
 echo "=== Build complete ==="

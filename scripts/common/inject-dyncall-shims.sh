@@ -131,7 +131,15 @@ elif grep -q '__nestedHandleSleepInstalled' "$JS_FILE"; then
 else
     HS_MARKER=$(grep -n '^_emscripten_fiber_swap\.isAsync = true;$' "$JS_FILE" | head -1 | cut -d: -f1)
     if [ -z "$HS_MARKER" ]; then
-        echo "Warning: _emscripten_fiber_swap.isAsync marker not found - skipping handleSleep fix"
+        # No libcontext fiber glue (a non-fiber Asyncify app — e.g. a plain wx app with
+        # modals/menus, no tool coroutines). The currData save/restore is still needed:
+        # without it a rewind resuming through a fresh wasm re-entry hits
+        # _asyncify_start_rewind(null) -> "memory access out of bounds" (the context-menu
+        # pick while the main loop is Asyncify-parked). Append at EOF — Asyncify is defined
+        # by then and the shim wraps handleSleep at load, before any runtime sleep.
+        echo "" >> "$JS_FILE"
+        cat "$SHIM_DIR/handlesleep.js" >> "$JS_FILE"
+        echo "Injected handleSleep fix at EOF (no fiber glue)"
     else
         head -n "$HS_MARKER" "$JS_FILE" > "${JS_FILE}.tmp"
         echo "" >> "${JS_FILE}.tmp"

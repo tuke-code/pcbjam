@@ -102,6 +102,60 @@ Run `main → wxEntry → OnRun → DoRun` inside a managed **root fiber** (via 
 
 **Open Phase-2 design point:** how the main fiber yields to / resumes from the browser each frame (rAF resumes `g_main_context` to run one `ProcessEvents` tick, then the main fiber yields back) without re-introducing a permanent asyncify operation. Candidate: `set_main_loop(tick,0,0)` where `tick` resumes the main fiber via libcontext, the main fiber runs `ProcessEvents` then swaps back, and wx teardown is suppressed until unload (Phase 4 lifetime).
 
+## 6c. IMPLEMENTED & verified (2026-06-23): the per-frame-yield while-loop
+
+The fix is **simpler than "an explicit libcontext root fiber."** `DoRun` (top level) is now a plain C++ loop on the real main stack (`evtloop.cpp`):
+```cpp
+while (!m_shouldExit) { ProcessEvents(); wxWasmYieldToBrowser(); }
+```
+`wxWasmYieldToBrowser` is `EM_ASYNC_JS(void, …, { await new Promise(r => requestAnimationFrame(r)); })` — an Asyncify suspend that **completes every frame**. Because nothing is permanently suspended, the Asyncify slot is free (`state==Normal`) whenever `ProcessEvents` runs, so a tool-coroutine fiber swap inside it succeeds; and `ProcessEvents` runs on the real main C stack (= libcontext's `g_main_context`), so swaps are from the right context. `ScheduleExit` just sets `m_shouldExit` for the top level (nested/quasi-modal loops still use the `setTimeout` pump + `wxWasmExitNestedLoop`). `wxWasmParkMainLoop` is removed. No explicit fiber API or scheduler was needed for the *main-loop* fix — the key was only that the suspension **completes** each frame instead of being permanent.
+
+**Result (JS-EH):** coroutine in-app suite **13/13 pass, 0 fail** (was: abort after case 1); `coroutine` + `coroutine-nested` e2e specs **green**; dialog renders + modals **green** (no regression). Only `coroutine-pthread` outstanding — but its `coroutine_test_wxpt.wasm` was **stale** (the `coroutine-pthread` make target didn't rebuild it); all apps are being rebuilt to confirm.
+
+**Still likely needed later (Phase 1 scheduler / Phase 3):** modal/clipboard waits that genuinely suspend across the loop still use the nested `setTimeout` pump; if overlapping suspensions there prove fragile, layer the scheduler on. But the *coroutine regression itself is fixed by this main-loop change alone.*
+
+## 6d. Phase-2 exposes a SECOND coupling: context-menu re-entrancy needs Phase 1 (2026-06-23)
+
+The while-loop main loop (§6c) fixed the coroutines but **regressed the context menu** (2 e2e specs). Right-click → choose *Cut* → `Aborted(RuntimeError: unreachable)` / `memory access out of bounds`. Stack: a DOM mouse event (`mouseEventHandlerFunc` → the Asyncify export wrapper → `wasm-function[…]`) **re-enters wasm while `DoPopupMenu`'s `wxDomPopupMenuModal` context is suspended on the deep main stack** — a single-slot re-entrancy fault. The de-park's *permanent-context* loop masked it (its menu context was shallow — a fresh-ccall `ProcessEvents` — and always "in flight"); the while-loop's no-permanent-context, deep-stack suspend exposes it.
+
+**Three targeted fixes, all empirically REJECTED (don't retry these):**
+1. **C++ pump in `wxDomPopupMenuModal`** (mirror `startModal`) — *redundant*: `wx-dom.js`'s `wxShowContextMenu` **already** runs the same `setTimeout` ProcessEvents pump. No effect. (Reverted.)
+2. **`ASYNCIFY_STACK_SIZE` 8192→65536** — not a buffer-size fault (still crashes at 65536; emscripten appends that hint to *every* `unreachable`). (Kept anyway — the while-loop genuinely deepens every suspension, so 65536 ≈ the coroutine apps + KiCad is the right call for all wx apps.)
+3. **DOM backdrop blocking canvas pointer events** (`wx-dom.js`) — confirmed present in the rebuilt glue; still crashes. So the re-entry is **not** a canvas leak — the wx DOM port's document-level mouse handler re-enters wasm regardless. (Reverted.)
+
+**Conclusion — the hard tension, stated plainly:**
+- **de-park** (permanent-context loop): menus ✅, coroutines ❌
+- **while-loop** (no permanent context): coroutines ✅, menus ❌
+
+Neither is clean alone. Both faults are the SAME single-slot `currData`/state arbiter problem — Design B's **scheduler (Phase 1)** — now *proven necessary, not optional*. The §6c while-loop is the correct **foundation** (it removes the permanent park that blocked coroutine swaps); Phase 1 must layer on top so a wasm re-entry during ANY suspension (coroutine swap, menu/modal `handleAsync`, main-loop yield) is coordinated (deferred/queued or serialized) rather than misfiring a rewind. Kept in-tree: `evtloop.cpp` while-loop + the 65536 bump. Reverted: the redundant C++ pump and the backdrop.
+
+## 6e. The precise mechanism (export-wrapper diagnostic, 2026-06-23)
+
+Instrumented the Asyncify export wrapper to log every wasm entry while `state != Normal`. The menu crash is **not** a one-shot bad rewind — it's an **infinite busy unwind/rewind loop** on one buffer:
+```
+asyncify_start_unwind  state=1(Unwinding)  currData=1240280   ← main suspends
+asyncify_start_rewind  state=2(Rewinding)  currData=1240280   ← …immediately resumed
+__main_argc_argv       state=2             currData=1240280   ← main runs a few dynCall_ii deep
+…repeats forever (currData unchanged) until the OOB crash
+```
+Buffer `1240280` (the parked main stack, suspended at the menu) is **suspended then immediately re-resumed, over and over**. Only one context exists, but it is being re-driven in a tight spin: its continuation re-suspends instantly (the menu promise is still pending), and something re-rewinds it each cycle.
+
+**Two drivers fight over the single slot:** with the while-loop, the main-loop structure AND the **menu's own `setTimeout` ProcessEvents pump** (`wx-dom.js`) both try to drive the parked main stack — one re-rewinds what the other parked. Under the de-park there was a *single* pump chain (the rAF pump *was* the loop; the menu pump nested inside its `await`), so nothing double-drove the slot.
+
+**Scheduler invariant this pins (the central requirement):** exactly ONE unwind/rewind transition in flight; a pump tick runs a **fresh** `ProcessEvents` (new stack) and must NEVER re-rewind an already-parked context — only that context's own `wakeUp` (its promise resolving) may resume it. The scheduler must enforce this across the main-loop yield, the menu/modal/nested pumps, and fiber swaps. (A plausible smaller first cut: a single shared "is a transition in flight / is a context parked" guard the pumps consult before re-driving — test it against the contextmenu specs before committing to the full registry.)
+
+## 6f. RESOLVED (2026-06-23): the arbiter already existed — it just wasn't injected
+
+A gated export-wrapper + `start_rewind` probe nailed the proximate cause: the menu's wakeUp fires `_asyncify_start_rewind(Asyncify.currData)` with **`currData == null`** → reads address 0 → OOB. The cause: the **`handlesleep.js` currData save/restore shim** — the existing Design-A / Emscripten #9153 arbiter (`scripts/common/shims/handlesleep.js`, which restores `currData` to the parked context's buffer before every rewind) — was **NOT injected into the contextmenu glue** (`pendingSleepContexts` count 0, vs 9 in the working coroutine app). Appending it manually → crash gone, `[CTXMENU_EVENT] Cut chosen` fires, spec 4/4 green.
+
+**Why it was missing:** `inject-dyncall-shims.sh` gates the handleSleep shim on the libcontext fiber marker (`_emscripten_fiber_swap.isAsync = true;`), and `build-wasm-test.sh` only ran the injector under `WX_NATIVE_EH=1`. So plain (non-fiber) wx apps under JS-EH never received the currData arbiter. They didn't crash *before* the while-loop because the de-park's shallow menu context (a fresh-ccall `ProcessEvents`) never hit the null-rewind path; the while-loop's deeper main-stack suspend exposes it.
+
+**Fix — build-system only, NO new runtime code:**
+1. `build-wasm-test.sh` injects the shim into every freshly-linked app for **both** EH models (idempotent — the Makefile-injected coroutine apps are skipped).
+2. `inject-dyncall-shims.sh` appends the handleSleep shim at EOF when there's no fiber glue (Asyncify is defined by then; it wraps `handleSleep` at load, before any runtime sleep).
+
+**So §6c–6e's "build the single-owner currData arbiter" conclusion was right about the diagnosis but the arbiter already exists (`handlesleep.js`) — it only needed to reach these apps.** The scheduler invariant in §6e *is* what `handlesleep.js` implements (each parked context owns its buffer; `currData` is restored before its own rewind). The while-loop (coroutine fix) + this injection fix together resolve both regressions. §7's open question is therefore moot: no Phase-1 scheduler nor Phase-2 root fiber was needed — the while-loop main loop + the pre-existing currData shim suffice.
+
 ## 7. Open decisions (resolve during implementation)
 - Is Phase 1 (scheduler treating the `handleAsync` park as a tracked parked context) sufficient, or is Phase 2 (root fiber) required? — answered by the Phase-0 harness against the Phase-1 build.
 - One scheduler file injected post-link (like today's shim) vs an emscripten `--js-library` (link-time, cleaner, survives JS regen). Lean js-library for durability.
