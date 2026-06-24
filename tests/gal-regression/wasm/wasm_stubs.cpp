@@ -202,7 +202,8 @@ const METRICS& METRICS::Default() {
 void OUTLINE_GLYPH::Triangulate(std::function<void(const VECTOR2I&, const VECTOR2I&, const VECTOR2I&)>) const {}
 
 void FONT::Draw(KIGFX::GAL*, const wxString&, const VECTOR2I&, const VECTOR2I&,
-                const TEXT_ATTRIBUTES&, const METRICS&) const {}
+                const TEXT_ATTRIBUTES&, const METRICS&, std::optional<VECTOR2I>,
+                wxString*) const {}
 
 // STROKE_GLYPH stubs
 STROKE_GLYPH::STROKE_GLYPH( const STROKE_GLYPH& aGlyph )
