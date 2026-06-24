@@ -22,16 +22,18 @@ quarantine) for the suite to pass.
   raytracer test** (`coroutine-raytrace.spec.ts`). Everything else — including the dedicated thread-pool
   test and the fiber+pthread coroutine suite — is green. (The earlier "~90 failures" were a build-pipeline
   artifact, now fixed and committed; see §1.)
-- **The bug — RESOLVED.** The post-link Asyncify pass (`hoist-and-asyncify.sh`) **omitted
-  `emscripten_sleep`** from its asyncify-imports list, so binaryen never instrumented the functions that
+- **The bug — RESOLVED.** The post-link Asyncify pass **omitted `emscripten_sleep`** from its
+  asyncify-imports list, so binaryen never instrumented the functions that
   yield via it (the raytracer threading). Un-instrumented, such a function calls `emscripten_sleep` a
   second time *before unwinding* → `Aborted(invalid state: 1)`. **native-EH-specific** because emcc
   auto-adds `emscripten_sleep` to the in-link Asyncify (JS-EH), but our hand-written post-link list didn't.
   **Fixed** by adding it (+ the other emcc async built-ins). `main()` is **NOT** re-entered — an earlier
   reading I had to correct (§2).
-- **Result:** the raytracer runs **multi-core under native-EH — `serial 1342ms → parallel 142ms = 9.45×`
-  on 16 cores.** All 6 `coroutine-raytrace` tests pass in Chromium; verified multi-core in Firefox too.
-  (WebKit is blocked by a *separate*, pre-existing COEP worker-load limitation — §2a.)
+- **Result:** the threading *mechanism* — the `raytrace_threads_test` repro, **not** the shipped 3D viewer
+  (still single-threaded behind `#ifdef`s) — runs **multi-core under native-EH: `serial 1342ms → parallel
+  142ms = 9.45×` on 16 cores.** All 6 `coroutine-raytrace` tests pass in Chromium; verified multi-core in
+  Firefox too. The *real* raytracer goes multi-core only after the §4 raw→pool refactor. (WebKit is blocked
+  by a *separate*, pre-existing COEP worker-load limitation — §2a.)
 - **Implication for the pool:** this also de-risks the refactor — a `multi_future::wait()` that yields via
   `emscripten_sleep` would have hit the identical gap, now closed. The pool-migration plan (§4) stands and
   is now lower-risk.
@@ -78,7 +80,7 @@ native-EH-specific signal, root-caused and fixed in §2.
   once. The abort stack only *shows* `main`'s frames because Asyncify's unwind/rewind runs inside a
   `setTimeout`-driven `doRewind` that keeps the JS stack live.)
 - **Why un-instrumented:** binaryen's Asyncify instruments only functions that can reach a *listed* async
-  import. The post-link list in `hoist-and-asyncify.sh` was `startModal, js_*, invoke_*, __asyncjs__*,
+  import. The post-link list was `startModal, js_*, invoke_*, __asyncjs__*,
   emscripten_fiber_swap` — curated for the wx apps, which yield via **fibers**. It **omitted
   `emscripten_sleep`**, which the raytracer (and B1/B2/m4) yield via. `env.emscripten_sleep` *is* a wasm
   import, so binaryen can match it — it just wasn't told to.
@@ -95,8 +97,11 @@ mechanism is this imports gap, not a spawn-topology problem.
 
 ### The fix + result
 
-Added `env.emscripten_sleep` (+ `scan_registers`, `lazy_load_code`, `wget`, `wget_data`, `idb_*`) to
-`hoist-and-asyncify.sh`. Rebuilt + verified:
+Added `env.emscripten_sleep` (+ `scan_registers`, `lazy_load_code`, `wget`, `wget_data`, `idb_*`) to the
+post-link asyncify-imports — now the shared **`scripts/common/asyncify-imports.txt`**, consumed by the
+unified **`apply-asyncify.sh`** that both the wx-test and KiCad builds call (the two near-duplicate scripts
+were folded into one; `hoist-and-asyncify.sh` is gone). So the KiCad list gets `emscripten_sleep` too,
+pre-empting the identical latent bug when its threading is un-shimmed. Rebuilt + verified:
 
 | Check | Result |
 |---|---|
@@ -122,7 +127,7 @@ asyncify fix. Tracked separately.
 
 ---
 
-## 3. The pivotal contrast: the pool pattern survives native-EH
+## 3. The pool-vs-raw contrast — it was the missing import, not the pattern
 
 Two wx apps, two outcomes:
 
@@ -131,10 +136,12 @@ Two wx apps, two outcomes:
 | `threadpool_test.cpp` (`threadpool.spec.ts`) | create `hwc` `std::thread`s into the **pre-warmed** pool, run a short body, **`join()`** each | **PASS** |
 | `raytrace_threads_test.cpp` (`coroutine-raytrace.spec.ts`) | raw detached/persistent `std::thread`, **busy-wait** join, default **drains** the pool → on-demand creation | **FAIL** (`invalid state: 1`) |
 
-The difference is the *pattern*: **create + clean join into a pre-warmed pool works; persistent raw
-threads + busy-wait (and on-demand creation) abort.** This is direct evidence that moving KiCad off raw
-threads and onto the standing pool is the right cure — *if* the actual pool API behaves like
-`threadpool` (clean) rather than like the raytracer (abort). See the gap in §6.
+This *looked* like "the pool pattern survives and the raw pattern aborts." With §2's root cause in hand
+it's sharper: **`threadpool`'s create-and-`join()` never calls `emscripten_sleep`, so it never tripped the
+missing import; the raytracer yields via `emscripten_sleep`, so it did.** With the import added, **both**
+patterns work under native-EH — raw threads are *not* fundamentally broken. The pool refactor (§4) is still
+worth doing, but for its real reasons (removes the mode-(a) deadlock, reuses threads, upstreamable), not
+because raw threads can't survive native-EH.
 
 ---
 

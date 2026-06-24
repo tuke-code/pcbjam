@@ -94,7 +94,7 @@ fi
 
 # Native wasm-EH (docs/features/wasm-exceptions/): the emsdk-bundled Binaryen v121 crashes
 # asyncifying wasm-EH, so stub the in-link Asyncify and run --hoist-cpp-catches + --asyncify
-# post-link on Binaryen v130 (scripts/common/hoist-and-asyncify.sh).
+# post-link on Binaryen v130 (scripts/common/apply-asyncify.sh --hoist --no-removelist).
 EMSDK_WASM_OPT="$PROJECT_ROOT/tools/emsdk/upstream/bin/wasm-opt"
 WASMOPT_STUB="$PROJECT_ROOT/wasm/stubs/wasm-opt-stub.sh"
 _eh_restore_wasmopt() { [ -f "${EMSDK_WASM_OPT}.ehbak" ] && mv -f "${EMSDK_WASM_OPT}.ehbak" "${EMSDK_WASM_OPT}"; }
@@ -143,7 +143,7 @@ if [ "${WX_NATIVE_EH:-0}" = "1" ]; then
 fi
 while IFS= read -r w; do
     if [ "${WX_NATIVE_EH:-0}" = "1" ]; then
-        "$SCRIPT_DIR/common/hoist-and-asyncify.sh" "$w"
+        "$SCRIPT_DIR/common/apply-asyncify.sh" --hoist --no-removelist "$w"
     fi
     js="${w%.wasm}.js"
     if [ -f "$js" ]; then

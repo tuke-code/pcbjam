@@ -1,157 +1,128 @@
 #!/bin/bash
-# Apply asyncify transformation to KiCad WASM
+# Unified post-link Asyncify pass for KiCad AND the wx test apps.
 #
-# Usage: ./scripts/common/apply-asyncify.sh <input.wasm> <output.wasm>
+# Usage: apply-asyncify.sh [--hoist] [--no-removelist] <input.wasm> [output.wasm]
 #
-# This script is called by docker/build.sh but can also be run standalone
-# for debugging asyncify issues.
+#   (default)         KiCad / JS-EH: --asyncify + remove-list + -O2.
+#   --hoist           native wasm-EH: run our --hoist-cpp-catches fork pass FIRST (lets Asyncify
+#                     suspend from inside C++ catch blocks) and enable all wasm features (-all) so
+#                     binaryen understands the EH instructions. Used by build-wasm-test.sh under
+#                     WX_NATIVE_EH and (later) the native-EH KiCad build.
+#   --no-removelist   skip the KiCad big-function remove-list (the small wx test apps don't contain
+#                     those symbols, and one bare entry — "match" — could collide).
+#
+# WHY post-link (not emcc's in-link Asyncify): the emsdk-bundled Binaryen crashes asyncifying
+# wasm-EH and a compiler/standalone version skew corrupts asyncify metadata. So the in-link pass is
+# stubbed (build-kicad-target.sh / build-wasm-test.sh) and the real transform runs here, on the host
+# (more RAM), with a pinned Binaryen. The cost: emcc's automatic asyncify-imports generation is
+# bypassed, so the BOUNDARY import list lives in asyncify-imports.txt (see that file).
+#
+# Binaryen selection (env overrides win, set by build-wasm-test.sh):
+#   V130_WASMOPT   = wasm-opt for --asyncify + -O2 (else get-wasm-opt.sh = emsdk-matched).
+#   HOIST_WASMOPT  = wasm-opt fork carrying --hoist-cpp-catches (else built on demand).
 
-set -e
+set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-# Get wasm-opt path
-WASM_OPT=$("${SCRIPT_DIR}/get-wasm-opt.sh")
+# --- flags ---
+DO_HOIST=0
+USE_REMOVELIST=1
+while [[ "${1:-}" == --* ]]; do
+    case "$1" in
+        --hoist)         DO_HOIST=1; shift ;;
+        --no-removelist) USE_REMOVELIST=0; shift ;;
+        *) echo "apply-asyncify: unknown flag: $1" >&2; exit 1 ;;
+    esac
+done
 
-# Bound Binaryen's host thread pool. wasm-opt runs function-parallel passes, and
-# each worker holds the optimization working-set of one function at a time — so
-# peak RAM scales with thread count. Binaryen reads BINARYEN_CORES to size the
-# pool; default to 8 for memory-constrained dev machines, overridable via the
-# environment (CI sets it to $(nproc) on the 128 GB Hetzner runner).
-export BINARYEN_CORES="${BINARYEN_CORES:-8}"
+INPUT_WASM="${1:-output/pcbnew.wasm}"
+OUTPUT_WASM="${2:-${INPUT_WASM}}"
+[ -f "${INPUT_WASM}" ] || { echo "ERROR: Input file not found: ${INPUT_WASM}" >&2; exit 1; }
 
-# Preload a scalable allocator on Linux. wasm-opt churns a ~40 GB high-water mark
-# of short-lived allocations across all worker threads; glibc malloc serializes
-# concurrent alloc/free on per-arena locks, so under many threads ~half of every
-# core's cycles collapse into futex lock-spin (strace: ~99% kernel time in futex)
-# instead of optimization work — the more cores, the worse it gets. jemalloc and
-# mimalloc are built for exactly this many-thread churn and eliminate the storm,
-# roughly halving wall-clock. macOS already ships a scalable allocator
-# (libmalloc/nano-zone), so only Linux needs this. Honor an externally-set
-# WASM_OPT_PRELOAD; otherwise auto-detect a system jemalloc/mimalloc.
-#
-# WASM_OPT_PRELOAD=none (or 0) forces NO preload — a clean glibc baseline for
-# benchmarking the allocator A/B (see scripts/bench/).
-if [[ "${WASM_OPT_PRELOAD:-}" == "none" || "${WASM_OPT_PRELOAD:-}" == "0" ]]; then
-    WASM_OPT_PRELOAD=""
-    _PRELOAD_FORCED_OFF=1
+# --- Binaryen tools (env overrides from build-wasm-test.sh win) ---
+WASM_OPT="${V130_WASMOPT:-$("${SCRIPT_DIR}/get-wasm-opt.sh")}"
+if [ "$DO_HOIST" = 1 ]; then
+    HOIST_OPT="${HOIST_WASMOPT:-$("${SCRIPT_DIR}/../binaryen-hoist-pass/build-wasm-opt.sh")}"
 fi
 
+# native wasm-EH needs -all so binaryen parses the EH instructions; HOIST_KEEP_NAMES keeps the
+# names section through -O2 for callstack debugging. KiCad/JS-EH uses neither (matches old behavior).
+FEAT=()
+[ "$DO_HOIST" = 1 ] && FEAT=(-all)
+G="${HOIST_KEEP_NAMES:+-g}"
+
+# --- the import boundary (shared) + the KiCad remove-list (opt-out), read from sibling files ---
+_join_list() { grep -vE '^[[:space:]]*#|^[[:space:]]*$' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '\n' ',' | sed 's/,$//'; }
+ASYNCIFY_IMPORTS="${ASYNCIFY_IMPORTS_PASS:-$(_join_list "${SCRIPT_DIR}/asyncify-imports.txt")}"
+REMOVE_ARG=()
+if [ "$USE_REMOVELIST" = 1 ]; then
+    REMOVE_ARG=("--pass-arg=asyncify-removelist@$(_join_list "${SCRIPT_DIR}/asyncify-removelist.txt")")
+fi
+
+# --- memory machinery (identical to before; matters for the host-side KiCad pass) ---
+# Bound Binaryen's host thread pool: peak RAM scales with thread count.
+export BINARYEN_CORES="${BINARYEN_CORES:-8}"
+
+# Preload a scalable allocator on Linux — glibc malloc collapses into futex lock-spin under
+# wasm-opt's many-thread allocation churn; jemalloc/mimalloc roughly halve wall-clock. macOS
+# already ships a scalable allocator. WASM_OPT_PRELOAD=none|0 forces a clean glibc baseline.
+if [[ "${WASM_OPT_PRELOAD:-}" == "none" || "${WASM_OPT_PRELOAD:-}" == "0" ]]; then
+    WASM_OPT_PRELOAD=""; _PRELOAD_FORCED_OFF=1
+fi
 if [[ -z "${WASM_OPT_PRELOAD:-}" && -z "${_PRELOAD_FORCED_OFF:-}" && "$(uname -s)" == "Linux" ]]; then
     for _alloc in \
         "/usr/lib/$(uname -m)-linux-gnu/libjemalloc.so.2" \
         "/usr/lib/$(uname -m)-linux-gnu/libmimalloc.so.2" \
-        /usr/lib/libjemalloc.so.2 \
-        /usr/lib/libmimalloc.so.2; do
-        if [[ -e "${_alloc}" ]]; then
-            WASM_OPT_PRELOAD="${_alloc}"
-            break
-        fi
+        /usr/lib/libjemalloc.so.2 /usr/lib/libmimalloc.so.2; do
+        [[ -e "${_alloc}" ]] && { WASM_OPT_PRELOAD="${_alloc}"; break; }
     done
 fi
-
-# Build the command prefix that injects the allocator (preserving any existing
-# LD_PRELOAD). Empty when no scalable allocator was found — wasm-opt then runs
-# under the default allocator, just slower.
 if [[ -n "${WASM_OPT_PRELOAD:-}" ]]; then
     PRELOAD_CMD=(env "LD_PRELOAD=${WASM_OPT_PRELOAD}${LD_PRELOAD:+:${LD_PRELOAD}}")
 else
     PRELOAD_CMD=()
 fi
+# GNU `time -v` on Linux CI records peak RSS + wall-clock per pass; macOS `time` lacks -v.
+if /usr/bin/time -v true >/dev/null 2>&1; then TIME_CMD=(/usr/bin/time -v); else TIME_CMD=(); fi
 
-# Wrap wasm-opt in GNU `time -v` when available (Linux CI) so the log records
-# peak RSS + wall-clock for each pass. macOS `time` lacks -v, so fall back to
-# running wasm-opt directly there.
-if /usr/bin/time -v true >/dev/null 2>&1; then
-    TIME_CMD=(/usr/bin/time -v)
-else
-    TIME_CMD=()
-fi
-
-INPUT_WASM="${1:-output/pcbnew.wasm}"
-OUTPUT_WASM="${2:-${INPUT_WASM}}"
-
-if [ ! -f "${INPUT_WASM}" ]; then
-    echo "ERROR: Input file not found: ${INPUT_WASM}"
-    exit 1
-fi
-
-echo "Applying asyncify transformation..."
+echo "Applying Asyncify${DO_HOIST:+ (+hoist-cpp-catches)}..."
 echo "  Input:  ${INPUT_WASM}"
 echo "  Output: ${OUTPUT_WASM}"
-echo "  Tool:   ${WASM_OPT}"
+echo "  asyncify wasm-opt: ${WASM_OPT}"
+[ "$DO_HOIST" = 1 ] && echo "  hoist    wasm-opt: ${HOIST_OPT}"
+echo "  BINARYEN_CORES=${BINARYEN_CORES}  LD_PRELOAD=${WASM_OPT_PRELOAD:-<none>}"
 
-# Asyncify import patterns (functions that trigger async suspension)
-# - env.invoke_* : Exception handling trampolines
-# - env.__asyncjs__* : EM_ASYNC_JS functions (like startModal())
-ASYNCIFY_IMPORTS="env.invoke_*,env.__asyncjs__*,env.emscripten_fiber_swap"
+SRC="${INPUT_WASM}"
 
-# Functions to exclude from asyncify instrumentation
-# These are large functions that inflate beyond V8's local-count limits.
-ASYNCIFY_REMOVE=$(cat << 'REMOVELIST'
-COLOR_SETTINGS::COLOR_SETTINGS(wxString const&, bool)
-BuildBitmapInfo(std::__2::unordered_map<BITMAPS, std::__2::vector<BITMAP_INFO, std::__2::allocator<BITMAP_INFO>>, std::__2::hash<BITMAPS>, std::__2::equal_to<BITMAPS>, std::__2::allocator<std::__2::pair<BITMAPS const, std::__2::vector<BITMAP_INFO, std::__2::allocator<BITMAP_INFO>>>>>&)
-match
-DIALOG_PAD_PROPERTIES_BASE::DIALOG_PAD_PROPERTIES_BASE(wxWindow*, int, wxString const&, wxPoint const&, wxSize const&, long)
-buildKicadAboutBanner(EDA_BASE_FRAME*, ABOUT_APP_INFO&)
-IGESToBRep_CurveAndSurface::TransferGeometry(opencascade::handle<IGESData_IGESEntity> const&, Message_ProgressRange const&)
-StepAP214_Protocol::StepAP214_Protocol()
-BRepCheck_ParallelAnalyzer::operator()(int) const
-ShapeFix_Wire::FixGap3d(int, bool)
-ShapeFix_Wire::FixGap2d(int, bool)
-PCB_EDIT_FRAME::setupUIConditions()
-REMOVELIST
-)
-
-ASYNCIFY_REMOVE_ARG=$(echo "${ASYNCIFY_REMOVE}" | tr '\n' ',' | sed 's/,$//')
-
-echo ""
-echo "Running wasm-opt --asyncify..."
-echo "This may take several minutes and use significant RAM..."
-echo "  BINARYEN_CORES=${BINARYEN_CORES}"
-echo "  LD_PRELOAD=${WASM_OPT_PRELOAD:-<none>}"
-
-"${PRELOAD_CMD[@]}" "${TIME_CMD[@]}" "${WASM_OPT}" --asyncify \
-    "--pass-arg=asyncify-imports@${ASYNCIFY_IMPORTS}" \
-    "--pass-arg=asyncify-removelist@${ASYNCIFY_REMOVE_ARG}" \
-    --pass-arg=asyncify-propagate-addlist \
-    "${INPUT_WASM}" -o "${OUTPUT_WASM}"
-
-# ASYNCIFY_ONLY=1 stops after the asyncify pass (skips -O2). Used by the
-# benchmark harness (scripts/bench/) to time/compare just the asyncify pass,
-# whose RAM fits where the -O2 pass on the bloated module would not.
-if [[ "${ASYNCIFY_ONLY:-0}" == "1" ]]; then
-    echo ""
-    echo "ASYNCIFY_ONLY=1 → skipping -O2 pass (benchmark mode)."
-    ls -lh "${OUTPUT_WASM}"
-    exit 0
+# 1. (native wasm-EH only) hoist C++ catch arms so Asyncify can suspend from inside them.
+if [ "$DO_HOIST" = 1 ]; then
+    echo "Running --hoist-cpp-catches..."
+    "${PRELOAD_CMD[@]}" "${TIME_CMD[@]}" "${HOIST_OPT}" --hoist-cpp-catches "${FEAT[@]}" ${G} "${SRC}" -o "${OUTPUT_WASM}"
+    SRC="${OUTPUT_WASM}"
 fi
 
-# Post-asyncify shrink pass. Asyncify emits deliberately verbose instrumentation
-# (spills every live local) and relies on the optimizer to coalesce it back down
-# under V8's per-function locals limit — without it, large coroutine-entry
-# functions silently stall (and on newer Chromium hard-crash the renderer while
-# loading a heavy board) in Chrome's V8. See docs/debugging/DEBUG.md §6-7.
-#
-# Level is configurable via BINARYEN_OPT_LEVEL: -O1 already runs CoalesceLocals
-# and is sufficient (measured: same ~187 MB / 64 MB-gzip output as -O2 on pcbnew,
-# validated green on the load-pcb chromium-ci spec — but a lighter, faster pass,
-# which is why CI sets -O1). -O2 stays the default for the more thorough rewrite.
-# Do NOT use -Os/-Oz here: they break the asyncify runtime (Binaryen #4484).
+# 2. The real Asyncify transform.
+echo "Running wasm-opt --asyncify (several minutes + significant RAM)..."
+"${PRELOAD_CMD[@]}" "${TIME_CMD[@]}" "${WASM_OPT}" --asyncify "${FEAT[@]}" ${G} \
+    "--pass-arg=asyncify-imports@${ASYNCIFY_IMPORTS}" \
+    "${REMOVE_ARG[@]}" \
+    --pass-arg=asyncify-propagate-addlist \
+    "${SRC}" -o "${OUTPUT_WASM}"
+
+# ASYNCIFY_ONLY=1 stops before -O2 (benchmark harness in scripts/bench/ times just the transform).
+if [[ "${ASYNCIFY_ONLY:-0}" == "1" ]]; then
+    echo "ASYNCIFY_ONLY=1 → skipping -O2 (benchmark mode)."; ls -lh "${OUTPUT_WASM}"; exit 0
+fi
+
+# 3. Post-asyncify shrink. Asyncify spills every live local; without coalescing, large
+# coroutine-entry functions exceed V8's per-function locals limit and stall/crash the renderer.
+# -O1 already runs CoalesceLocals and suffices (CI uses it); -O2 is the default. NOT -Os/-Oz
+# (they break the asyncify runtime — Binaryen #4484). See docs/debugging/DEBUG.md §6-7.
 BINARYEN_OPT_LEVEL="${BINARYEN_OPT_LEVEL:--O2}"
+echo "Running wasm-opt ${BINARYEN_OPT_LEVEL} (shrink instrumented functions under V8's local limit)..."
+"${PRELOAD_CMD[@]}" "${TIME_CMD[@]}" "${WASM_OPT}" "${BINARYEN_OPT_LEVEL}" "${FEAT[@]}" ${G} "${OUTPUT_WASM}" -o "${OUTPUT_WASM}"
 
-echo ""
-echo "Running wasm-opt ${BINARYEN_OPT_LEVEL} on the asyncified wasm..."
-echo "  Purpose: shrink asyncify-instrumented functions back under V8's"
-echo "  per-function locals limit (otherwise large coroutine-entry and"
-echo "  similar functions stall/crash in Chrome's V8). See docs/debugging/DEBUG.md §6-7."
-echo "  This pass takes several minutes and ~10-15 GB RAM."
-echo "  BINARYEN_CORES=${BINARYEN_CORES}"
-echo "  LD_PRELOAD=${WASM_OPT_PRELOAD:-<none>}"
-
-"${PRELOAD_CMD[@]}" "${TIME_CMD[@]}" "${WASM_OPT}" "${BINARYEN_OPT_LEVEL}" "${OUTPUT_WASM}" -o "${OUTPUT_WASM}"
-
-echo ""
 echo "Asyncify + ${BINARYEN_OPT_LEVEL} complete: ${OUTPUT_WASM}"
 ls -lh "${OUTPUT_WASM}"

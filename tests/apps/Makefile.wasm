@@ -54,7 +54,7 @@ CXXFLAGS += -MMD -MP
 # Native wasm-EH (WX_NATIVE_EH=1): compile + link with -fwasm-exceptions (legacy encoding) +
 # wasm setjmp/longjmp, matching the libwx build (scripts/build-wx-wasm.sh). The in-link Asyncify
 # (emsdk Binaryen v121) crashes on wasm-EH, so build-wasm-test.sh stubs it and runs the real
-# pipeline (--hoist-cpp-catches + --asyncify, scripts/common/hoist-and-asyncify.sh) post-link.
+# pipeline (--hoist-cpp-catches + --asyncify, scripts/common/apply-asyncify.sh --hoist) post-link.
 ifdef WX_NATIVE_EH
 EH_FLAGS = -fwasm-exceptions -sSUPPORT_LONGJMP=wasm -sWASM_LEGACY_EXCEPTIONS=1 -sDYNCALLS=1
 else
