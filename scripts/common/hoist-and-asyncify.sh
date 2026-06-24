@@ -14,10 +14,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WASM="$1"
 [ -f "$WASM" ] || { echo "hoist-and-asyncify: no such wasm: $WASM" >&2; exit 1; }
 
-# Suspending imports across all wx test apps (a superset is safe — absent ones are ignored):
-# wx modal dialogs (startModal), clipboard/font JS (js_*), the wasm-EH invoke_* trampolines,
-# EM_ASYNC_JS (__asyncjs__*), and coroutine fiber swaps.
-IMPORTS="${ASYNCIFY_IMPORTS_PASS:-env.startModal,env.js_*,env.invoke_*,env.__asyncjs__*,env.emscripten_fiber_swap}"
+# Suspending imports (a superset is safe — absent ones are ignored): wx modal dialogs (startModal),
+# clipboard/font JS (js_*), the wasm-EH invoke_* trampolines, EM_ASYNC_JS (__asyncjs__*), coroutine
+# fiber swaps, AND the Emscripten async built-ins that emcc auto-adds for the in-link Asyncify
+# (emscripten_sleep + idb/wget/scan/lazy-load). Omitting emscripten_sleep meant code that yields via
+# it (the raytracer threading / pthread waits) was NOT instrumented, so it failed to unwind after a
+# sleep and aborted "invalid state: 1" on the next one — the native-EH-only raytracer regression.
+IMPORTS="${ASYNCIFY_IMPORTS_PASS:-env.startModal,env.js_*,env.invoke_*,env.__asyncjs__*,env.emscripten_fiber_swap,env.emscripten_sleep,env.emscripten_scan_registers,env.emscripten_lazy_load_code,env.emscripten_wget,env.emscripten_wget_data,env.emscripten_idb_*}"
 
 # Resolve the two wasm-opts once via env (build-wasm-test.sh exports these), else on demand.
 V130="${V130_WASMOPT:-$(BINARYEN_VERSION=130 "${SCRIPT_DIR}/get-wasm-opt.sh" 2>/dev/null | tail -1)}"

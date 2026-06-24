@@ -74,6 +74,10 @@ KiCad at all.
 | [`catch_audit.py`](catch_audit.py) | The audit tool (re-runnable; suitable as a CI gate on the kicad submodule). |
 | [`audit-results.txt`](audit-results.txt) | Full audit output incl. all 85 direct-suspend sites. |
 | [`06-spike-plan.md`](06-spike-plan.md) | **(2026-06-22)** Refreshed findings + the phased red-green spike plan; supersedes the encoding/Binaryen-version framing above. |
+| [`07-spike-results-and-opinion.md`](07-spike-results-and-opinion.md) | **(2026-06-22)** Toy-spike results: asyncify + legacy-wasm-EH works; the `HoistCppCatches` Binaryen pass flips suspend-in-catch green on all 3 engines; go/no-go opinion. |
+| [`08-wx-app-render-rootcause.md`](08-wx-app-render-rootcause.md) | Why a native-EH wx app rendered blank: the `set_main_loop` `"unwind"` throw caught by native-EH `catch_all` cleanup pads tore down the main frame. |
+| [`09-event-loop-deparking-plan.md`](09-event-loop-deparking-plan.md) | The EH-agnostic main-loop rework (de-park → per-frame-yield `while`-loop) fixing the blank render + the coroutine/menu regressions. |
+| [`10-pthreads-native-eh.md`](10-pthreads-native-eh.md) | **(2026-06-24)** Native-EH × pthreads: the main-thread thread-spawn regression (`invalid state: 1` / re-entrant `main()`); the pool pattern survives; the KiCad raw→pool refactor plan + the test gap. |
 
 ## Relationship to docs/features/async/
 
