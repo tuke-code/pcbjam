@@ -90,6 +90,41 @@ describe("cdn libs source", () => {
     expect(await src.getItemBody("Device", "symbol", "Nope")).toBeNull();
   });
 
+  it("getAllItems returns every item with its body in one shot (fat list)", async () => {
+    const src = await fakeCdn();
+    const all = (await src.getAllItems!("Device")).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+    expect(all).toEqual([
+      { kind: "symbol", name: "C", body: "(kicad_symbol_lib (symbol C))" },
+      { kind: "symbol", name: "R", body: "(kicad_symbol_lib (symbol R))" },
+    ]);
+    // Bodies match the per-item getItemBody for the same kind/name.
+    for (const it of all) {
+      expect(it.body).toBe(await src.getItemBody("Device", it.kind, it.name));
+    }
+  });
+
+  it("presync warms a kind's lib bundles and reports per-lib progress", async () => {
+    const src = await fakeCdn();
+    const events: Array<{ done: number; total: number; current: string }> = [];
+    await src.presync!({ kind: "symbol", onProgress: (p) => events.push({ ...p }) });
+
+    const last = events[events.length - 1]!;
+    expect(last.total).toBe(1); // one symbol lib (Device)
+    expect(last.done).toBe(1); // completed
+    expect(events.some((e) => e.current === "Device")).toBe(true);
+    // Warmed: items are served from the opened stack.
+    expect((await src.listItems("Device")).length).toBe(2);
+  });
+
+  it("presync without a kind warms every lib", async () => {
+    const src = await fakeCdn();
+    let total = 0;
+    await src.presync!({ onProgress: (p) => (total = p.total) });
+    expect(total).toBe(2); // Device (symbol) + Resistor_SMD (footprint)
+  });
+
   it("is read-only (no save path)", async () => {
     const src = await fakeCdn();
     expect(src.saveItemBody).toBeUndefined();

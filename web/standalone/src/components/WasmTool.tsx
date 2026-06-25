@@ -51,6 +51,16 @@ import { SourceChip } from "@/components/SourceChip";
 
 // Tools with the v2 items bridge (kicadCollabSnapshotItems/ApplyItems embind exports).
 const COLLAB_TOOLS = new Set<Tool>(["pl_editor", "eeschema", "pcbnew"]);
+
+// Which library item kind each tool browses — drives the load-screen pre-sync
+// (warm the right bundles into IDB while the wasm downloads). Tools that don't
+// browse a library are omitted (no pre-sync).
+const LIB_KIND_FOR_TOOL: Partial<Record<Tool, "symbol" | "footprint">> = {
+  symbol_editor: "symbol",
+  eeschema: "symbol",
+  footprint_editor: "footprint",
+  pcbnew: "footprint",
+};
 const LEGACY_EXTENSION_TOOL: Record<string, Tool> = {
   ".sch": "eeschema",
   ".brd": "pcbnew",
@@ -560,6 +570,9 @@ export function WasmTool({
   const [ready, setReady] = React.useState(false);
   // A library item currently being fetched (open/save), for a transient spinner.
   const [libBusy, setLibBusy] = React.useState<string | null>(null);
+  // Load-screen pre-sync progress: warming the project's lib bundles into IDB in
+  // parallel with the wasm download. Null when idle/done.
+  const [libSync, setLibSync] = React.useState<string | null>(null);
   // Last lib error (e.g. a backend 404 on open), shown as a dismissible toast.
   const [libError, setLibError] = React.useState<string | null>(null);
 
@@ -653,6 +666,33 @@ export function WasmTool({
         // Resolve the per-tool asset base at runtime (CDN manifest → versioned
         // folder, or the flat local /wasm in dev). See wasm/wasm-assets.ts.
         const base = await resolveWasmBase(tool, assetBaseUrl);
+        // One source instance, shared by the wasm provider AND the pre-sync below
+        // (libsSourceConfig builds a fresh one each call — their SyncStack caches
+        // must be the same object for the warm-up to benefit the editor).
+        const source =
+          libsSource !== undefined ? libsSource : libsSourceConfig(projectId);
+        // Pre-warm the lib bundles into IDB in PARALLEL with the wasm download, so
+        // the editor's first enumerate reads a warm cache instead of freezing on N
+        // cold bundle fetches. Non-blocking + best-effort; the SyncStack dedups, so
+        // a lib the wasm reaches mid-presync just awaits the same in-flight fetch.
+        const libKind = LIB_KIND_FOR_TOOL[tool];
+        if (source?.presync && libKind) {
+          void source
+            .presync({
+              kind: libKind,
+              onProgress: ({ done, total, current }) =>
+                setLibSync(
+                  done >= total
+                    ? null
+                    : `Syncing ${libKind}s — ${current} (${done}/${total})`,
+                ),
+            })
+            .then(() => setLibSync(null))
+            .catch((e) => {
+              append(`[presync] ${String(e)}`);
+              setLibSync(null);
+            });
+        }
         await bootKicadTool({
           tool,
           base,
@@ -660,8 +700,7 @@ export function WasmTool({
           log: append,
           onStatus: setStatus,
           onAbort: oom.onAbort,
-          libsSource:
-            libsSource !== undefined ? libsSource : libsSourceConfig(projectId),
+          libsSource: source,
         });
         // Register the save sink before the file opens: from here on, every
         // editor File→Save (MEMFS write) is routed onward through saveBytes.
@@ -824,6 +863,9 @@ export function WasmTool({
               <p className="font-mono text-sm text-white/80">
                 {status || "Loading…"}
               </p>
+              {libSync && (
+                <p className="font-mono text-xs text-emerald-300/90">{libSync}</p>
+              )}
               <p className="font-mono text-xs text-white/40">
                 First load downloads the tool (large) — this can take a moment.
               </p>
@@ -843,6 +885,14 @@ export function WasmTool({
       {ready && sourceDescriptor && (
         <div className="absolute right-3 top-3 z-20">
           <SourceChip descriptor={sourceDescriptor} />
+        </div>
+      )}
+
+      {/* Lib pre-sync still warming IDB after the editor opened (big set) — small
+          unobtrusive indicator so the user knows browsing is still filling in. */}
+      {ready && libSync && (
+        <div className="pointer-events-none absolute bottom-9 left-3 z-20 flex items-center gap-2 rounded bg-black/80 px-3 py-1.5 text-xs text-emerald-200">
+          <Loader2 className="animate-spin" size={14} /> {libSync}
         </div>
       )}
 

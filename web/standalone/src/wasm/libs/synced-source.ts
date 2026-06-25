@@ -42,6 +42,29 @@ export function syncedLibsSource(
       const { stack } = await ensure();
       return (await stack.list()).map((e) => splitPath(e.path));
     },
+    async presync(opts): Promise<void> {
+      // One lib: resolving + opening its stack warms the IDB cache.
+      opts?.onProgress?.({ done: 0, total: 1, current: "library" });
+      try {
+        const { info } = await ensure();
+        opts?.onProgress?.({ done: 1, total: 1, current: info.name });
+      } catch {
+        opts?.onProgress?.({ done: 1, total: 1, current: "library" });
+      }
+    },
+    async getAllItems(): Promise<
+      Array<{ kind: string; name: string; body: string }>
+    > {
+      // Bulk merged read across the opaque layer stack (origin + mirror overlay),
+      // top-wins — the mirror invariant readAll() preserves. One crossing, no
+      // per-item gets.
+      const { stack } = await ensure();
+      const dec = new TextDecoder();
+      return [...(await stack.readAll())].map(([path, bytes]) => {
+        const { kind, name } = splitPath(path);
+        return { kind, name, body: dec.decode(bytes) };
+      });
+    },
     async getItemBody(_id, kind, name): Promise<string | null> {
       const { stack } = await ensure();
       const bytes = await stack.read(pathOf(kind, name));

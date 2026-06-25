@@ -40,12 +40,36 @@ export function cdnLibsSource(
   const fetchImpl = opts?.fetchImpl ?? fetch;
 
   let manifestP: Promise<CdnLibsManifest> | null = null;
-  const loadManifest = () =>
-    (manifestP ??= (async () => {
-      const r = await fetchImpl(manifestUrl, { cache: "no-store" });
-      if (!r.ok) throw new Error(`cdn libs manifest ${r.status}: ${manifestUrl}`);
-      return (await r.json()) as CdnLibsManifest;
-    })());
+  const fetchManifest = async (): Promise<CdnLibsManifest> => {
+    // Retry with backoff. Firefox can fail a cross-origin fetch issued in the
+    // first moments after navigation under COEP (the lazy path runs seconds
+    // later and succeeds); a short retry rides past that window. The pre-sync
+    // warm-up, which fires this earliest, is what surfaced it.
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 200 * attempt));
+      try {
+        const r = await fetchImpl(manifestUrl, { cache: "no-store" });
+        if (!r.ok)
+          throw new Error(`cdn libs manifest ${r.status}: ${manifestUrl}`);
+        return (await r.json()) as CdnLibsManifest;
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    throw lastErr;
+  };
+  const loadManifest = (): Promise<CdnLibsManifest> => {
+    if (!manifestP) {
+      // NEVER cache a rejection: a transient failure must not poison every later
+      // listLibs/getItemBody — the next call retries from scratch.
+      manifestP = fetchManifest().catch((e) => {
+        manifestP = null;
+        throw e;
+      });
+    }
+    return manifestP;
+  };
 
   // One lazily-opened SyncStack per lib (its IDB store is keyed by namespace, so
   // a lib is cached once and reused across opens).
@@ -67,7 +91,12 @@ export function cdnLibsSource(
         });
         await stack.open();
         return stack;
-      })();
+      })().catch((e) => {
+        // Don't cache a failed open (e.g. an early-boot fetch blip) — the lazy
+        // path must be able to retry this lib instead of inheriting the failure.
+        stacks.delete(libId);
+        throw e;
+      });
       stacks.set(libId, p);
     }
     return p;
@@ -88,6 +117,54 @@ export function cdnLibsSource(
     async listItems(libId: string): Promise<LibItemInfo[]> {
       const stack = await openStack(libId);
       return (await stack.list()).map((e) => splitPath(e.path));
+    },
+    async presync(opts): Promise<void> {
+      const { kind, concurrency = 6, onProgress, signal } = opts ?? {};
+      let m: CdnLibsManifest;
+      try {
+        m = await loadManifest();
+      } catch {
+        // Best-effort warm-up: a manifest hiccup here (e.g. the early-boot
+        // Firefox/COEP fetch blip) is non-fatal — skip quietly and let the lazy
+        // path fetch on demand (loadManifest no longer caches the failure).
+        return;
+      }
+      const libs = m.libs.filter((l) => !kind || l.kind === kind);
+      const total = libs.length;
+      let done = 0;
+      onProgress?.({ done, total, current: "" });
+      // Concurrency-limited pool: each openStack cold-fetches one bundle into IDB
+      // (warm ⇒ a cheap manifest diff). Tolerate per-lib failures so one bad lib
+      // doesn't abort the warm-up.
+      let idx = 0;
+      const worker = async (): Promise<void> => {
+        while (idx < libs.length) {
+          if (signal?.aborted) return;
+          const lib = libs[idx++]!;
+          onProgress?.({ done, total, current: lib.name });
+          try {
+            await openStack(lib.id);
+          } catch {
+            // best-effort: the lib still loads lazily on demand
+          }
+          onProgress?.({ done: ++done, total, current: lib.name });
+        }
+      };
+      await Promise.all(
+        Array.from({ length: Math.min(concurrency, total) }, () => worker()),
+      );
+    },
+    async getAllItems(
+      libId: string,
+    ): Promise<Array<{ kind: string; name: string; body: string }>> {
+      // One bulk merged read of the whole lib (the IDB cache after cold bundle),
+      // so the WASM plugin hydrates in a single crossing instead of N gets.
+      const stack = await openStack(libId);
+      const dec = new TextDecoder();
+      return [...(await stack.readAll())].map(([path, bytes]) => {
+        const { kind, name } = splitPath(path);
+        return { kind, name, body: dec.decode(bytes) };
+      });
     },
     async getItemBody(
       libId: string,

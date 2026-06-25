@@ -20,6 +20,14 @@ export interface LibItemInfo {
   name: string;
 }
 
+/** Per-lib progress for {@link LibsSource.presync} (drives the load screen). */
+export interface LibPresyncProgress {
+  done: number;
+  total: number;
+  /** Display name of the lib currently being synced (one of the in-flight set). */
+  current: string;
+}
+
 export interface LibsSource {
   /**
    * Libraries to expose to the editor (one lib-table row each). `kind` (the
@@ -35,6 +43,34 @@ export interface LibsSource {
    * null if absent. `kind` is 'symbol' for now.
    */
   getItemBody(libId: string, kind: string, name: string): Promise<string | null>;
+  /**
+   * ALL items in a library with their bodies, in one shot — the "fat list" that
+   * lets the WASM plugin hydrate a whole library in a single bridge crossing
+   * instead of N per-item `get`s (see docs/features/libs/0011). Optional: sources
+   * that can't bulk-read omit it and the provider falls back to listItems + N
+   * getItemBody (the old slow path, kept working for the example backend).
+   */
+  getAllItems?(
+    libId: string,
+  ): Promise<Array<{ kind: string; name: string; body: string }>>;
+  /**
+   * Pre-warm this source's per-lib caches (IndexedDB bundles) WITHOUT touching the
+   * WASM runtime — call it in parallel with the wasm download so the editor's
+   * first enumerate reads a warm cache instead of freezing on N cold bundle
+   * fetches. Best-effort: a lib that fails to presync is skipped (it still loads
+   * lazily later); the SyncStack dedups, so a lib the wasm reaches mid-presync
+   * just awaits the same in-flight fetch. `onProgress` reports per-lib so the load
+   * screen can name what's syncing. Optional: sources without a client-side cache
+   * (per-item remote) omit it.
+   */
+  presync?(opts?: {
+    /** Limit to libs holding this item kind ("symbol" | "footprint"). */
+    kind?: string;
+    /** Max concurrent bundle fetches (default 6). */
+    concurrency?: number;
+    onProgress?: (p: LibPresyncProgress) => void;
+    signal?: AbortSignal;
+  }): Promise<void>;
   /**
    * Persist one item body into a writable (user) lib. Optional: read-only
    * sources omit it (a save into a non-writable source resolves false).
@@ -112,6 +148,25 @@ function artificialDelayMs(): number {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Slow-path "fat list" for sources without a bulk `getAllItems` (the example
+ * backend / per-item remote): just listItems + one getItemBody each. Same N
+ * round-trips as before — but it keeps the single WASM-side code path (the plugin
+ * always asks for bodies once) working against every source.
+ */
+async function fallbackGetAllItems(
+  source: LibsSource,
+  libId: string,
+): Promise<Array<{ kind: string; name: string; body: string }>> {
+  const items = await source.listItems(libId);
+  const out: Array<{ kind: string; name: string; body: string }> = [];
+  for (const it of items) {
+    const body = await source.getItemBody(libId, it.kind, it.name);
+    if (body != null) out.push({ kind: it.kind, name: it.name, body });
+  }
+  return out;
+}
+
 /** Escape a string for a KiCad s-expr quoted token. */
 function sexprEscape(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
@@ -179,12 +234,24 @@ export function installLibsProvider(
     try {
       switch (op) {
         case "list": {
+          // Each plugin parses its own key: footprints / symbols.
+          const key = kind === "footprint" ? "footprints" : "symbols";
+          // "bodies" (arg) = the fat list: every item's body in one crossing, so
+          // the plugin pre-fills its cache and never per-item `get`s. Falls back
+          // to listItems + N getItemBody for sources without bulk read.
+          if (arg === "bodies") {
+            const all = source.getAllItems
+              ? await source.getAllItems(id)
+              : await fallbackGetAllItems(source, id);
+            const items = all
+              .filter((i) => i.kind === kind)
+              .map((i) => ({ name: i.name, body: i.body }));
+            return JSON.stringify({ [key]: items });
+          }
           const items = await source.listItems(id);
           const names = items
             .filter((i) => i.kind === kind)
             .map((i) => i.name);
-          // Each plugin parses its own key: footprints / symbols.
-          const key = kind === "footprint" ? "footprints" : "symbols";
           return JSON.stringify({ [key]: names });
         }
         case "get": {
