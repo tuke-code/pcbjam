@@ -44,10 +44,18 @@ done
 # --- 1. dynCall_<sig> bindings -------------------------------------------------
 echo "Extracting dynCall signatures from $JS_FILE..."
 SIGNATURES=$(grep -oE 'dynCall_[a-zA-Z0-9]+' "$JS_FILE" | sort -u | sed 's/dynCall_//')
+NATIVE_EH=0
 if [ -z "$SIGNATURES" ]; then
-    echo "No dynCall signatures found - nothing to inject"
-    exit 0
+    # Native wasm-EH eliminates the invoke_* wrappers, so there are NO dynCall_<sig> trampolines to
+    # bind. Skip §1 — but DO NOT exit: the fiber-entry / empty-callback fixes (§2), handleSleep (§3)
+    # and the fiber trampoline self-heal (§3c) are still required (without §2 the libcontext fiber
+    # entry stays the empty (a1=>{}) stub, so tool coroutines never start and every GAL app stalls
+    # mid-construction at InvokeTool). In this mode §2 wires the stubs via getWasmTableEntry instead.
+    NATIVE_EH=1
+    echo "No dynCall signatures (native wasm-EH) - skipping dynCall bindings; wiring stubs via getWasmTableEntry"
 fi
+
+if [ "$NATIVE_EH" = 0 ]; then
 SIG_COUNT=$(echo "$SIGNATURES" | wc -l | tr -d ' ')
 echo "Found $SIG_COUNT unique signatures"
 
@@ -96,6 +104,7 @@ tail -n +$((INSERT_LINE + 1)) "$JS_FILE" >> "${JS_FILE}.tmp"
 mv "${JS_FILE}.tmp" "$JS_FILE"
 rm "$SHIM_FILE"
 echo "Injected $SIG_COUNT dynCall bindings"
+fi   # end "$NATIVE_EH" = 0 (dynCall bindings)
 
 # --- 2. Empty-callback fixes ---------------------------------------------------
 # Emscripten+pthreads emits some direct-call paths as no-op ((a1)=>{}) stubs that
@@ -112,12 +121,28 @@ apply_fix() { # <grep/sed pattern> <sed replacement> <label>
         TOTAL_FIXED=$((TOTAL_FIXED + before - after))
     fi
 }
-apply_fix '((a1, a2, a3) => {})(eventTypeId,' '((a1, a2, a3) => dynCall_iiii(callbackfunc, a1, a2, a3))(eventTypeId,' "HTML5 event callback(s) (dynCall_iiii)"
-apply_fix 'var result = (a1 => {})(arg);' 'var result = dynCall_ii(ptr, arg);' "pthread entry callback(s) (dynCall_ii)"
-apply_fix 'return (a1 => {})(sig);' 'return dynCall_vi(fp, sig);' "signal handler callback(s) (dynCall_vi)"
-apply_fix 'var wrapper = () => (a1 => {})(arg);' 'var wrapper = () => dynCall_vi(func, arg);' "async timer callback(s) (dynCall_vi)"
-apply_fix 'var iterFunc = (() => {});' 'var iterFunc = () => dynCall_v(func);' "main loop callback(s) (dynCall_v)"
-apply_fix '(a1 => {})(userData);' 'dynCall_vi(entryPoint, userData);' "fiber entry callback(s) (dynCall_vi)"
+if [ "$NATIVE_EH" = 1 ]; then
+    # Native wasm-EH: the .js text has no dynCall_<sig> references (no invoke_* wrappers), but the
+    # DYNCALLS=1 trampolines are still EXPORTED on the wasm — call each function-pointer stub through
+    # wasmExports["dynCall_<sig>"]. This MUST be the wasm trampoline, NOT getWasmTableEntry: the fiber
+    # entry runs a coroutine that suspends+rewinds via Asyncify, and an Asyncify rewind cannot resume
+    # through getWasmTableEntry's JS wrapper — the fiber would re-enter from the top and the tool's
+    # Wait() re-runs (tool_manager ScheduleWait "!pendingWait" assert + busy-loop). The instrumented
+    # dynCall_<sig> export rewinds correctly. Same pointers in scope (callbackfunc/ptr/fp/func/entryPoint).
+    apply_fix '((a1, a2, a3) => {})(eventTypeId,' '((a1, a2, a3) => wasmExports["dynCall_iiii"](callbackfunc, a1, a2, a3))(eventTypeId,' "HTML5 event callback(s) (wasmExports.dynCall_iiii)"
+    apply_fix 'var result = (a1 => {})(arg);' 'var result = wasmExports["dynCall_ii"](ptr, arg);' "pthread entry callback(s) (wasmExports.dynCall_ii)"
+    apply_fix 'return (a1 => {})(sig);' 'return wasmExports["dynCall_vi"](fp, sig);' "signal handler callback(s) (wasmExports.dynCall_vi)"
+    apply_fix 'var wrapper = () => (a1 => {})(arg);' 'var wrapper = () => wasmExports["dynCall_vi"](func, arg);' "async timer callback(s) (wasmExports.dynCall_vi)"
+    apply_fix 'var iterFunc = (() => {});' 'var iterFunc = () => wasmExports["dynCall_v"](func);' "main loop callback(s) (wasmExports.dynCall_v)"
+    apply_fix '(a1 => {})(userData);' 'wasmExports["dynCall_vi"](entryPoint, userData);' "fiber entry callback(s) (wasmExports.dynCall_vi)"
+else
+    apply_fix '((a1, a2, a3) => {})(eventTypeId,' '((a1, a2, a3) => dynCall_iiii(callbackfunc, a1, a2, a3))(eventTypeId,' "HTML5 event callback(s) (dynCall_iiii)"
+    apply_fix 'var result = (a1 => {})(arg);' 'var result = dynCall_ii(ptr, arg);' "pthread entry callback(s) (dynCall_ii)"
+    apply_fix 'return (a1 => {})(sig);' 'return dynCall_vi(fp, sig);' "signal handler callback(s) (dynCall_vi)"
+    apply_fix 'var wrapper = () => (a1 => {})(arg);' 'var wrapper = () => dynCall_vi(func, arg);' "async timer callback(s) (dynCall_vi)"
+    apply_fix 'var iterFunc = (() => {});' 'var iterFunc = () => dynCall_v(func);' "main loop callback(s) (dynCall_v)"
+    apply_fix '(a1 => {})(userData);' 'dynCall_vi(entryPoint, userData);' "fiber entry callback(s) (dynCall_vi)"
+fi
 echo "Total: Fixed $TOTAL_FIXED empty callback(s)"
 
 # --- 3. Nested-Asyncify handleSleep fix ---------------------------------------
