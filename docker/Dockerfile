@@ -25,10 +25,13 @@ RUN apt-get update && apt-get install -y \
     unzip \
     && rm -rf /var/lib/apt/lists/*
 
-# Install emsdk from source (same approach as scripts/setup-emsdk.sh)
-# EMSCRIPTEN_VERSION must match scripts/common/versions.sh
-ARG EMSCRIPTEN_VERSION=4.0.2
-RUN git clone https://github.com/emscripten-core/emsdk.git /emsdk \
+# Install emsdk from source (same approach as scripts/setup-emsdk.sh). The version is the SINGLE
+# source of truth in scripts/common/versions.sh, passed in as a build arg by docker/build.sh (via the
+# compose build.args). Do NOT hardcode it here — fail fast if the arg is missing so a stale image can
+# never silently use the wrong toolchain.
+ARG EMSCRIPTEN_VERSION
+RUN test -n "${EMSCRIPTEN_VERSION}" || { echo "EMSCRIPTEN_VERSION build-arg required (scripts/common/versions.sh)"; exit 1; }; \
+    git clone https://github.com/emscripten-core/emsdk.git /emsdk \
     && cd /emsdk \
     && ./emsdk install ${EMSCRIPTEN_VERSION} \
     && ./emsdk activate ${EMSCRIPTEN_VERSION}

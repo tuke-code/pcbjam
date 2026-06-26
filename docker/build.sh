@@ -49,6 +49,11 @@ source "$(dirname "$0")/../scripts/common/logging.sh"
 # Build-progress markers (parsed by scripts/build-monitor.sh).
 source "$(dirname "$0")/../scripts/common/stages.sh"
 
+# Pinned toolchain version (single source of truth). Exported so the compose build.args can pass it
+# into the Docker image's emsdk install — bumping the toolchain is then a one-line edit in versions.sh.
+source "$(dirname "$0")/../scripts/common/versions.sh"
+export EMSCRIPTEN_VERSION
+
 set -e
 
 # Emit a completion/failure marker no matter how the build ends, so the monitor
@@ -116,8 +121,9 @@ if [[ ! " ${ARGS[*]} " =~ " -j " ]]; then
     ARGS+=("-j" "10")
 fi
 
-# Start container if not running
-docker compose -f docker/docker-compose.yml up -d
+# Start container if not running. --build so the image is rebuilt when the pinned EMSCRIPTEN_VERSION
+# (build-arg from versions.sh) changes; Docker layer-caches it to a near no-op when unchanged.
+docker compose -f docker/docker-compose.yml up -d --build
 
 # Sync source code to container volume (fixes macOS Docker VirtioFS issues)
 # Use --checksum to only transfer files with different CONTENT, not timestamps.
