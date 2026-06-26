@@ -191,6 +191,23 @@ else
     echo "Warning: dynCallLegacy pattern not found - skipping embind dynCall fallback"
 fi
 
+# --- 3d. Embind invoker: don't Promise-wrap a SYNCHRONOUS call when the main loop is parked --------
+# Emscripten's embind invoker returns a Promise iff Asyncify.currData is set AFTER the wasm call. But
+# the native-EH per-frame-yield main loop parks via Asyncify (currData stays SET between frames), so a
+# JS-initiated embind call (e.g. kicadCollabSnapshot from a test or the UI) that does NOT itself
+# suspend is mis-detected as async and returns "[object Promise]" instead of the value -> the caller's
+# JSON.parse(...) gets "[object Promise]". Capture currData before the call and only treat it as async
+# if THIS call left a NEW currData. Harmless under legacy/JS-EH (currData is null when the app is idle).
+if grep -q 'Asyncify.currData !== __ehPrev' "$JS_FILE"; then
+    echo "embind invoker currData re-entrancy fix already present - skipping"
+elif grep -q 'return Asyncify.currData ? Asyncify.whenDone' "$JS_FILE"; then
+    perl -0pi -e 's/(invokerFnBody \+= \(returns \|\| isAsync \? "var rv = " : ""\))/invokerFnBody += "var __ehPrev = Asyncify.currData;\\n";\n  $1/' "$JS_FILE"
+    perl -0pi -e 's/return Asyncify\.currData \? Asyncify\.whenDone/return (Asyncify.currData && Asyncify.currData !== __ehPrev) ? Asyncify.whenDone/' "$JS_FILE"
+    echo "Injected embind invoker currData re-entrancy fix"
+else
+    echo "Warning: embind invoker currData pattern not found - skipping embind re-entrancy fix"
+fi
+
 # --- 3c. Fiber trampoline self-heal -------------------------------------------
 # emscripten_set_main_loop(...,1) throws "unwind" during startup to establish the
 # main loop. KiCad establishes that loop from inside a tool coroutine, so the throw
