@@ -1,5 +1,5 @@
-import { Github } from "lucide-react";
-import { APP_GIT_SHA, APP_TAG, REPO_URL } from "@/lib/config";
+import { ExternalLink, Github } from "lucide-react";
+import { APP_GIT_SHA, APP_TAG, LANDING_URL, REPO_URL } from "@/lib/config";
 
 /**
  * Small bottom-right overlay showing this build's version + a link to the
@@ -43,6 +43,16 @@ export function VersionBadge() {
         className="inline-flex items-center gap-1 hover:text-white"
       >
         <Github size={12} /> source
+      </a>
+      <span className="text-white/30">·</span>
+      <a
+        href={LANDING_URL}
+        target="_blank"
+        rel="noreferrer"
+        title="PCBJam — product page"
+        className="inline-flex items-center gap-1 hover:text-white"
+      >
+        pcbjam.com <ExternalLink size={11} />
       </a>
     </div>
   );

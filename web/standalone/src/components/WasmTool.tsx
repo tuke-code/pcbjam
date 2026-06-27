@@ -568,6 +568,13 @@ export function WasmTool({
   // Editor lifecycle for the loading chrome: false until the tool has booted +
   // opened (covers the big WASM-compile freeze with a full-screen overlay).
   const [ready, setReady] = React.useState(false);
+  // Download progress for the (large) wasm, and a "this is taking too long" flag
+  // the overlay raises after a while so a stuck load doesn't read as a silent hang.
+  const [progress, setProgress] = React.useState<{
+    loaded: number;
+    total: number;
+  } | null>(null);
+  const [slow, setSlow] = React.useState(false);
   // A library item currently being fetched (open/save), for a transient spinner.
   const [libBusy, setLibBusy] = React.useState<string | null>(null);
   // Load-screen pre-sync progress: warming the project's lib bundles into IDB in
@@ -614,6 +621,15 @@ export function WasmTool({
     const t = setTimeout(() => setLibError(null), 6000);
     return () => clearTimeout(t);
   }, [libError]);
+
+  // "Taking too long": once the tool has been loading for a while without
+  // becoming ready, surface a hint (slow link / something may be wrong) + a
+  // reload, so a stalled boot doesn't look like a frozen blank screen.
+  React.useEffect(() => {
+    if (ready) return;
+    const t = setTimeout(() => setSlow(true), 60_000);
+    return () => clearTimeout(t);
+  }, [ready]);
 
   React.useEffect(() => {
     const removeNavigationHook = installToolNavigationHook(window as ToolWindow, {
@@ -700,6 +716,7 @@ export function WasmTool({
           log: append,
           onStatus: setStatus,
           onAbort: oom.onAbort,
+          onProgress: (loaded, total) => setProgress({ loaded, total }),
           libsSource: source,
         });
         // Register the save sink before the file opens: from here on, every
@@ -863,12 +880,27 @@ export function WasmTool({
               <p className="font-mono text-sm text-white/80">
                 {status || "Loading…"}
               </p>
+              <DownloadProgress progress={progress} />
               {libSync && (
                 <p className="font-mono text-xs text-emerald-300/90">{libSync}</p>
               )}
               <p className="font-mono text-xs text-white/40">
                 First load downloads the tool (large) — this can take a moment.
               </p>
+              {slow && (
+                <>
+                  <p className="max-w-sm px-6 text-center font-mono text-xs text-amber-300/90">
+                    This is taking longer than usual — a slow connection, or
+                    something may be wrong. You can keep waiting, or reload.
+                  </p>
+                  <button
+                    className="rounded border border-white/30 px-3 py-1 text-xs hover:bg-white/10"
+                    onClick={() => window.location.reload()}
+                  >
+                    Reload
+                  </button>
+                </>
+              )}
             </>
           )}
         </div>
@@ -928,6 +960,45 @@ export function WasmTool({
           </pre>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * WASM download progress for the boot overlay. A determinate bar when the server
+ * sent a Content-Length the decoded stream agrees with; otherwise just MB so far
+ * (gzip/br makes Content-Length the COMPRESSED size, so `loaded` can pass it).
+ */
+function DownloadProgress({
+  progress,
+}: {
+  progress: { loaded: number; total: number } | null;
+}) {
+  if (!progress) return null;
+  const mb = (n: number) => `${(n / 1e6).toFixed(1)} MB`;
+  const determinate = progress.total > 0 && progress.loaded <= progress.total;
+  const pct = determinate
+    ? Math.round((progress.loaded / progress.total) * 100)
+    : 0;
+  return (
+    <div className="w-64 max-w-[80vw]">
+      {determinate ? (
+        <>
+          <div className="h-1.5 w-full overflow-hidden rounded bg-white/15">
+            <div
+              className="h-full rounded bg-white/70 transition-[width]"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <p className="mt-1 text-center font-mono text-xs text-white/50">
+            {mb(progress.loaded)} / {mb(progress.total)} ({pct}%)
+          </p>
+        </>
+      ) : (
+        <p className="text-center font-mono text-xs text-white/50">
+          {mb(progress.loaded)} downloaded…
+        </p>
+      )}
     </div>
   );
 }

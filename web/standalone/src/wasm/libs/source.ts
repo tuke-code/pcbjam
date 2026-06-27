@@ -13,6 +13,9 @@ export interface LibInfo {
   description?: string | null;
   /** 'origin' | 'mirror' | 'user' — drives "ensure a user lib exists" at boot. */
   type?: string;
+  /** Item count, when the source knows it cheaply (manifest/backend) — shown as a
+   *  badge in the home-page library list. Omitted ⇒ no badge. */
+  itemCount?: number;
 }
 
 export interface LibItemInfo {

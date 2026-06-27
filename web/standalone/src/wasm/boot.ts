@@ -53,6 +53,10 @@ export interface BootOptions {
   /** OOM recovery hook (feature 0002): emscripten `abort()` routes here so a
    *  soft OOM can respawn a fresh tab. Optional — boot works without it. */
   onAbort?: (what: string) => void;
+  /** Download progress for the (large) `.wasm`, so the loading overlay can show a
+   *  real bar. `total` is 0 when the server sends no usable Content-Length (or it
+   *  disagrees with the decoded stream under gzip/br) — then show bytes, not a %. */
+  onProgress?: (loaded: number, total: number) => void;
   /** Library source backing `window.kicadLibs`. Null/omitted disables libs
    *  (an empty sym-lib-table is seeded). Its libs become sym-lib-table rows. */
   libsSource?: LibsSource | null;
@@ -114,8 +118,49 @@ function pthreadWorkerScript(base: string, tool: Tool): string | Blob {
   });
 }
 
+/**
+ * Fetch the tool's `.wasm` ourselves so we can report download progress (the big,
+ * slow asset — 175–338 MB). Emscripten otherwise fetches it internally with no
+ * hook. We wrap the body in a byte-counting stream and return a fresh `Response`,
+ * so `WebAssembly.instantiateStreaming` still compiles AS IT DOWNLOADS — no full
+ * buffer, no extra peak memory (which would risk the very OOM we recover from).
+ *
+ * `Content-Length` is the COMPRESSED size when the CDN gzip/br-encodes the wasm,
+ * while the stream yields DECODED bytes — so `loaded` can exceed `total`. The
+ * caller treats `total` as unknown in that case and shows MB rather than a %.
+ */
+async function fetchWasmWithProgress(
+  url: string,
+  onProgress?: (loaded: number, total: number) => void,
+): Promise<Response> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
+  if (!res.body || !onProgress) return res;
+  const total = Number(res.headers.get("content-length")) || 0;
+  let loaded = 0;
+  const reader = res.body.getReader();
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const { done, value } = await reader.read();
+      if (done) {
+        controller.close();
+        return;
+      }
+      loaded += value.byteLength;
+      onProgress(loaded, total);
+      controller.enqueue(value);
+    },
+    cancel(reason) {
+      return reader.cancel(reason);
+    },
+  });
+  // Preserve content-type (application/wasm) so instantiateStreaming accepts it.
+  return new Response(stream, { headers: res.headers });
+}
+
 async function doBoot(opts: BootOptions): Promise<void> {
-  const { tool, base, container, log, onStatus, onAbort, libsSource } = opts;
+  const { tool, base, container, log, onStatus, onAbort, onProgress, libsSource } =
+    opts;
   const w = window as ToolWindow;
 
   // The wasm reads the top-level frame geometry from a GLOBAL `mainWindow`
@@ -302,6 +347,38 @@ async function doBoot(opts: BootOptions): Promise<void> {
     // Pin the pthread worker script. Same-origin → direct URL; cross-origin CDN
     // → a same-origin blob shim that importScripts the glue (see helper above).
     mainScriptUrlOrBlob: pthreadWorkerScript(base, tool),
+    // Own the wasm fetch so we can report download progress (see helper). Streams
+    // straight into the compiler; passing `module` to the callback lets emscripten
+    // share it with the pthread workers (this hook fires on the main thread only).
+    instantiateWasm: (
+      imports: WebAssembly.Imports,
+      success: (instance: WebAssembly.Instance, module: WebAssembly.Module) => void,
+    ): Record<string, never> => {
+      void (async () => {
+        try {
+          onStatus("Downloading…");
+          const resp = await fetchWasmWithProgress(`${base}/${tool}.wasm`, onProgress);
+          const ct = resp.headers.get("content-type") ?? "";
+          if (ct.includes("application/wasm") && WebAssembly.instantiateStreaming) {
+            const { instance, module } = await WebAssembly.instantiateStreaming(
+              resp,
+              imports,
+            );
+            success(instance, module);
+          } else {
+            // Fallback (no streaming, or a server that mislabels the MIME type):
+            // buffer then compile. Costs peak memory but always works.
+            const bytes = await resp.arrayBuffer();
+            const { instance, module } = await WebAssembly.instantiate(bytes, imports);
+            success(instance, module);
+          }
+        } catch (e) {
+          log(`[boot] wasm instantiate failed: ${String(e)}`);
+          onStatus(`Error: ${String(e)}`);
+        }
+      })();
+      return {}; // signal async instantiation (we call `success` ourselves)
+    },
   };
 
   // Load order mirrors the harness HTML (tests/apps/kicad/<tool>.html):

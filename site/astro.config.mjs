@@ -42,6 +42,15 @@ export default defineConfig({
         optional: true,
         default: 'PCBJam <hello@pcbjam.com>',
       }),
+      // Comma-separated origins allowed to cross-post the waitlist form (e.g. the
+      // static demo at demo.pcbjam.com, which has no backend of its own). Not a
+      // secret — just config. Same-origin submits never hit this.
+      WAITLIST_ALLOWED_ORIGINS: envField.string({
+        context: 'server',
+        access: 'public',
+        optional: true,
+        default: 'https://demo.pcbjam.com',
+      }),
     },
   },
 });

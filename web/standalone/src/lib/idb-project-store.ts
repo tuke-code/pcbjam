@@ -48,8 +48,18 @@ export interface NewFile {
  *  read interface doesn't cover (home-page project management). */
 export interface LocalProjectStore extends ProjectSource {
   hasProject(slug: string): Promise<boolean>;
-  /** Import/create a project from files; returns it with its (deduped) slug. */
-  createProject(name: string, files: NewFile[]): Promise<Project>;
+  /**
+   * Import/create a project from files; returns it with its slug. A slug is
+   * derived from the name and deduped (`-2`, `-3`…) unless `opts.slug` pins an
+   * explicit one — used by the gallery "move to local" shadow fork, which reuses
+   * the gallery's slug so the composite source routes that `/p/:slug` to the
+   * local copy (caller guarantees it isn't already taken).
+   */
+  createProject(
+    name: string,
+    files: NewFile[],
+    opts?: { slug?: string },
+  ): Promise<Project>;
   deleteProject(slug: string): Promise<void>;
   renameProject(slug: string, name: string): Promise<void>;
   /** All of a project's files with bytes, in one read transaction (for export). */
@@ -195,15 +205,25 @@ export function idbProjectStore(): LocalProjectStore {
       return (await getRecord(slug)) !== null;
     },
 
-    async createProject(name: string, files: NewFile[]): Promise<Project> {
+    async createProject(
+      name: string,
+      files: NewFile[],
+      opts?: { slug?: string },
+    ): Promise<Project> {
       const d = await db();
       const existing = (await reqDone(
         d.transaction(PROJECTS, "readonly").objectStore(PROJECTS).getAllKeys(),
       )) as string[];
       const taken = new Set(existing);
-      const baseSlug = slugify(name);
-      let slug = baseSlug;
-      for (let i = 2; taken.has(slug); i++) slug = `${baseSlug}-${i}`;
+      let slug: string;
+      if (opts?.slug) {
+        // Caller pins the slug (shadow fork) — use verbatim, no dedup.
+        slug = opts.slug;
+      } else {
+        const baseSlug = slugify(name);
+        slug = baseSlug;
+        for (let i = 2; taken.has(slug); i++) slug = `${baseSlug}-${i}`;
+      }
 
       const ts = nowIso();
       const rec: ProjectRecord = { slug, name, createdAt: ts, updatedAt: ts };

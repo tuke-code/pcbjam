@@ -9,21 +9,19 @@ import {
 } from "@pcbjam/shared";
 import {
   ArrowLeft,
-  Copy,
   Download,
   ExternalLink,
-  FilePlus,
   Loader2,
   Trash2,
 } from "lucide-react";
 import { fetchFileBytes, useProject, useSourceDescriptor } from "@/lib/api";
 import { downloadBytes } from "@/lib/download";
 import { localProjectStore } from "@/lib/project-source";
-import { DOCUMENT_TOOLS } from "@/lib/new-file";
 import { zipFiles } from "@/lib/zip";
-import { formatBytes } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { SourceChip } from "@/components/SourceChip";
+import { ToolGrid } from "@/components/ToolGrid";
+import { FileTree } from "@/components/FileTree";
 import { NewFileDialog } from "@/components/NewFileDialog";
 
 function toolForPath(path: string): Tool | null {
@@ -33,11 +31,11 @@ function toolForPath(path: string): Tool | null {
 }
 
 /**
- * Project-centric view (mirrors the closed app): Files + a "New file" row whose
- * document-tool buttons create a templated file in THIS project and open it, so
- * you always edit a real file that saves back. Writable projects (local IDB or a
- * remote-rw backend) get New / export; a read-only gallery project gets "Save a
- * copy to browser" (fork into editable IDB). The source chip says where edits go.
+ * Project-centric view (mirrors the closed app): an iconed tool launcher (same
+ * cards as the home page) + the project's files as a navigable folder tree.
+ * Opening a read-only GALLERY project auto-"moves it to local" — it's copied
+ * into a writable browser-local project at the same slug, so the composite source
+ * shadows the gallery and this view re-resolves as a local, editable project.
  */
 export function ProjectView() {
   const { project: slug = "" } = useParams();
@@ -46,12 +44,41 @@ export function ProjectView() {
   const { data, isLoading, error } = useProject(slug);
   const { data: descriptor } = useSourceDescriptor(slug);
   const isLocal = descriptor?.kind === "local";
-  const canFork = descriptor?.kind === "remote-ro" && !!localProjectStore();
+  const isRemoteRo = descriptor?.kind === "remote-ro";
+  const store = localProjectStore();
   const [busy, setBusy] = React.useState(false);
   const [newFileTool, setNewFileTool] = React.useState<Tool | null>(null);
+  const [forkError, setForkError] = React.useState<string | null>(null);
+  const forkStartedRef = React.useRef(false);
+
+  // Auto "move to local": a read-only gallery project is copied into a writable
+  // browser-local project at the SAME slug. The composite source then routes this
+  // /p/:slug to the local copy (local wins), and invalidating the queries re-
+  // resolves this view as local — no button, no URL change. Runs once.
+  React.useEffect(() => {
+    if (!isRemoteRo || !store || !data || forkStartedRef.current) return;
+    forkStartedRef.current = true;
+    void (async () => {
+      try {
+        if (!(await store.hasProject(slug))) {
+          const files = await Promise.all(
+            data.files.map(async (f) => ({
+              path: f.path,
+              bytes: await fetchFileBytes(slug, f.path),
+            })),
+          );
+          await store.createProject(data.project.name, files, { slug });
+        }
+        await qc.invalidateQueries({ queryKey: ["local-projects"] });
+        await qc.invalidateQueries({ queryKey: ["source-descriptor", slug] });
+        await qc.invalidateQueries({ queryKey: ["project", slug] });
+      } catch (e) {
+        setForkError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+  }, [isRemoteRo, store, data, slug, qc]);
 
   const exportZip = async () => {
-    const store = localProjectStore();
     if (!store) return;
     setBusy(true);
     try {
@@ -66,7 +93,6 @@ export function ProjectView() {
   };
 
   const remove = async () => {
-    const store = localProjectStore();
     if (!store || !data) return;
     if (!window.confirm(`Delete "${data.project.name}" from this browser? This can't be undone.`))
       return;
@@ -75,25 +101,43 @@ export function ProjectView() {
     navigate("/");
   };
 
-  // Copy a read-only gallery project into an editable browser-local project.
-  const fork = async () => {
-    const store = localProjectStore();
-    if (!store || !data) return;
-    setBusy(true);
-    try {
-      const files = await Promise.all(
-        data.files.map(async (f) => ({
-          path: f.path,
-          bytes: await fetchFileBytes(slug, f.path),
-        })),
-      );
-      const created = await store.createProject(data.project.name, files);
-      await qc.invalidateQueries({ queryKey: ["local-projects"] });
-      window.location.assign(`/p/${created.slug}`);
-    } catch {
-      setBusy(false);
+  // A tool launched from the grid: file-less tools (gerber/calculator + the
+  // symbol/footprint editors, which load the full project lib set) open project-
+  // scoped with a full reload; document tools create a templated file first.
+  const launchTool = (tool: Tool) => {
+    if (FILELESS_TOOLS.has(tool)) {
+      window.location.assign(`/p/${encodeURIComponent(slug)}/${tool}/`);
+    } else {
+      setNewFileTool(tool);
     }
   };
+
+  const renderFileActions = (path: string) => {
+    const tool = toolForPath(path);
+    return (
+      <>
+        {isLocal && (
+          <button
+            className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-sm hover:bg-accent"
+            title="Download this file"
+            onClick={() => void downloadOne(path)}
+          >
+            <Download size={14} />
+          </button>
+        )}
+        {tool && (
+          <a
+            className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm hover:bg-accent"
+            href={`/p/${slug}/${tool}/${path}`}
+          >
+            <ExternalLink size={14} /> Open in {TOOL_LABELS[tool]}
+          </a>
+        )}
+      </>
+    );
+  };
+
+  const movingToLocal = isRemoteRo && !!store && !forkError;
 
   return (
     <div className="container py-10">
@@ -120,110 +164,52 @@ export function ProjectView() {
             <p className="text-sm text-muted-foreground">/p/{data.project.slug}</p>
           </div>
 
-          {/* New file (writable projects): a templated doc, created then opened. */}
-          {descriptor?.writable && (
-            <div className="mb-6">
-              <h2 className="mb-2 text-sm font-medium text-muted-foreground">
-                New file
-              </h2>
-              <div className="flex flex-wrap gap-2">
-                {DOCUMENT_TOOLS.map((tool) => (
-                  <Button
-                    key={tool}
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setNewFileTool(tool)}
-                  >
-                    <FilePlus size={14} /> {TOOL_LABELS[tool]}
+          {movingToLocal ? (
+            <p className="flex items-center gap-2 text-muted-foreground">
+              <Loader2 className="animate-spin" /> Preparing your editable copy…
+            </p>
+          ) : (
+            <>
+              {forkError && (
+                <p className="mb-4 text-sm text-destructive">
+                  Couldn't prepare a local copy: {forkError}
+                </p>
+              )}
+
+              {/* Tools — same iconed launcher as the home page. */}
+              <section className="mb-8">
+                <h2 className="mb-3 text-lg font-medium">Tools</h2>
+                <ToolGrid onLaunch={launchTool} />
+              </section>
+
+              {/* Project-level actions (local projects). */}
+              {isLocal && (
+                <div className="mb-6 flex flex-wrap gap-3">
+                  <Button variant="outline" size="sm" disabled={busy} onClick={() => void exportZip()}>
+                    {busy ? <Loader2 className="animate-spin" size={15} /> : <Download size={15} />}
+                    Download .zip
                   </Button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Project-level actions. */}
-          <div className="mb-6 flex flex-wrap gap-3">
-            {canFork && (
-              <Button variant="outline" size="sm" disabled={busy} onClick={() => void fork()}>
-                {busy ? <Loader2 className="animate-spin" size={15} /> : <Copy size={15} />}
-                Save a copy to browser
-              </Button>
-            )}
-            {isLocal && (
-              <>
-                <Button variant="outline" size="sm" disabled={busy} onClick={() => void exportZip()}>
-                  {busy ? <Loader2 className="animate-spin" size={15} /> : <Download size={15} />}
-                  Download .zip
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-destructive hover:text-destructive"
-                  onClick={() => void remove()}
-                >
-                  <Trash2 size={15} /> Delete
-                </Button>
-              </>
-            )}
-          </div>
-
-          {/* File-less tools (gerber viewer, calculator, lib editors) — still
-              project-scoped, opened without a target file. Full reload. */}
-          <div className="mb-6 flex flex-wrap gap-3">
-            {[...FILELESS_TOOLS].map((tool) => (
-              <a
-                key={tool}
-                className="text-sm underline underline-offset-4"
-                href={`/p/${slug}/${tool}/`}
-              >
-                Open {TOOL_LABELS[tool]}
-              </a>
-            ))}
-          </div>
-
-          <h2 className="mb-3 text-lg font-medium">Files ({data.files.length})</h2>
-          <div className="divide-y rounded-lg border">
-            {data.files.map((f) => {
-              const tool = toolForPath(f.path);
-              return (
-                <div
-                  key={f.id}
-                  className="flex items-center justify-between gap-4 px-4 py-2.5"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate font-mono text-sm">{f.path}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatBytes(f.size)}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    {isLocal && (
-                      <button
-                        className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-sm hover:bg-accent"
-                        title="Download this file"
-                        onClick={() => void downloadOne(f.path)}
-                      >
-                        <Download size={14} />
-                      </button>
-                    )}
-                    {tool && (
-                      <a
-                        className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm hover:bg-accent"
-                        href={`/p/${slug}/${tool}/${f.path}`}
-                      >
-                        <ExternalLink size={14} /> Open in {TOOL_LABELS[tool]}
-                      </a>
-                    )}
-                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => void remove()}
+                  >
+                    <Trash2 size={15} /> Delete
+                  </Button>
                 </div>
-              );
-            })}
-            {data.files.length === 0 && (
-              <div className="px-4 py-6 text-sm text-muted-foreground">
-                No files yet — use “New file” above to create one.
-              </div>
-            )}
-          </div>
+              )}
+
+              <h2 className="mb-3 text-lg font-medium">
+                Files ({data.files.length})
+              </h2>
+              <FileTree
+                files={data.files}
+                renderActions={renderFileActions}
+                emptyText="No files yet — use the Tools above to create one."
+              />
+            </>
+          )}
 
           <NewFileDialog
             tool={newFileTool}

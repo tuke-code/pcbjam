@@ -12,8 +12,10 @@ import { importFileList, importFsaFolder } from "@/lib/import-folder";
 import { localProjectStore } from "@/lib/project-source";
 import { isDocumentTool } from "@/lib/new-file";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ToolGrid } from "@/components/ToolGrid";
 import { ProjectsSection } from "@/components/ProjectsSection";
+import { WaitlistForm } from "@/components/WaitlistForm";
 import { NewFileDialog } from "@/components/NewFileDialog";
 import type { SaveBytes } from "@/wasm/save-flow";
 import { LocalProjectView, type LocalFile } from "@/components/LocalProjectView";
@@ -280,6 +282,9 @@ export function HomePage() {
               a per-row source chip) --- */}
       <ProjectsSection />
 
+      {/* --- Waitlist signup (sits between projects and tools) --- */}
+      <WaitlistForm />
+
       {/* --- Tools (KiCad-style launcher for the standalone tools) --- */}
       <section className="mb-10">
         <h2 className="mb-3 text-lg font-medium">Tools</h2>
@@ -294,34 +299,35 @@ export function HomePage() {
 
       <NewFileDialog tool={newFileTool} onClose={() => setNewFileTool(null)} />
 
-      {/* --- Backend libraries (hidden in the no-backend static demo) --- */}
-      {!staticMode && (
-        <section>
-          <h2 className="mb-3 text-lg font-medium">Libraries from the backend</h2>
-          <div className="space-y-3">
-            <LibGroup
-              icon={<Library size={16} />}
-              label="Symbols"
-              query={symbolLibs}
-              tool="symbol_editor"
-            />
-            <LibGroup
-              icon={<Package size={16} />}
-              label="Footprints"
-              query={footprintLibs}
-              tool="footprint_editor"
-            />
-          </div>
-        </section>
-      )}
+      {/* --- Libraries (the configured source: the read-only CDN/R2 set in the
+              demo, or a backend's libs). Each lib opens scoped in its editor. --- */}
+      <section>
+        <h2 className="mb-3 text-lg font-medium">Libraries</h2>
+        <div className="space-y-3">
+          <LibGroup
+            icon={<Library size={16} />}
+            label="Symbols"
+            query={symbolLibs}
+            tool="symbol_editor"
+          />
+          <LibGroup
+            icon={<Package size={16} />}
+            label="Footprints"
+            query={footprintLibs}
+            tool="footprint_editor"
+          />
+        </div>
+      </section>
     </div>
   );
 }
 
 /**
- * One backend-library group (Symbols / Footprints): each lib is a deep-link to
+ * One library group (Symbols / Footprints): each lib is a deep-link to
  * `/l/<libId>/<tool>` (LibToolPage), which boots the editor scoped to that one
- * library. A full navigation (anchor) gives Emscripten a clean page.
+ * library. A full navigation (anchor) gives Emscripten a clean page. The full
+ * KiCad set is hundreds of libs, so past a threshold we add a name filter and
+ * scroll the chip list.
  */
 function LibGroup({
   icon,
@@ -335,10 +341,22 @@ function LibGroup({
   tool: Tool;
 }) {
   const { data: libs, isLoading, error } = query;
+  const [filter, setFilter] = React.useState("");
+  const showFilter = (libs?.length ?? 0) > 12;
+  const needle = filter.trim().toLowerCase();
+  const shown = needle
+    ? (libs ?? []).filter((l) => l.name.toLowerCase().includes(needle))
+    : libs ?? [];
+
   return (
     <div className="rounded-lg border p-4">
       <h3 className="mb-2 flex items-center gap-2 text-sm font-medium">
         {icon} {label}
+        {libs && libs.length > 0 && (
+          <span className="text-xs font-normal text-muted-foreground">
+            {libs.length}
+          </span>
+        )}
       </h3>
       {isLoading && (
         <p className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -346,31 +364,47 @@ function LibGroup({
         </p>
       )}
       {error && (
-        <p className="text-sm text-muted-foreground">No backend reachable.</p>
+        <p className="text-sm text-muted-foreground">
+          Couldn't load libraries.
+        </p>
       )}
-      {libs && libs.length === 0 && (
+      {libs && libs.length === 0 && !isLoading && (
         <p className="text-sm text-muted-foreground">
           No {label.toLowerCase()} libraries.
         </p>
       )}
       {libs && libs.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {libs.map((lib) => (
-            <a
-              key={lib.id}
-              href={`/l/${encodeURIComponent(lib.id)}/${tool}`}
-              title={lib.description ?? undefined}
-              className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm hover:bg-accent"
-            >
-              {lib.name}
-              {lib.itemCount !== undefined && (
-                <span className="text-xs text-muted-foreground">
-                  {lib.itemCount}
-                </span>
-              )}
-            </a>
-          ))}
-        </div>
+        <>
+          {showFilter && (
+            <Input
+              type="search"
+              value={filter}
+              placeholder={`Filter ${libs.length} ${label.toLowerCase()}…`}
+              onChange={(e) => setFilter(e.target.value)}
+              className="mb-2 h-8"
+            />
+          )}
+          <div className="flex max-h-72 flex-wrap gap-2 overflow-y-auto">
+            {shown.map((lib) => (
+              <a
+                key={lib.id}
+                href={`/l/${encodeURIComponent(lib.id)}/${tool}`}
+                title={lib.description ?? undefined}
+                className="inline-flex h-fit items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm hover:bg-accent"
+              >
+                {lib.name}
+                {lib.itemCount !== undefined && (
+                  <span className="text-xs text-muted-foreground">
+                    {lib.itemCount}
+                  </span>
+                )}
+              </a>
+            ))}
+            {shown.length === 0 && (
+              <p className="text-sm text-muted-foreground">No matches.</p>
+            )}
+          </div>
+        </>
       )}
     </div>
   );

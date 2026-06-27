@@ -112,9 +112,12 @@ jobs:
       # Standalone pinned to the CDN + this tag's manifest-<tag>.json (written by
       # publish-wasm above) + the full library set at libs/kicad/$LIB_TAG.
       - name: Build demo
+        # Plausible: set the repo Actions VARIABLE `PLAUSIBLE_DOMAIN` (e.g.
+        # demo.pcbjam.com) to enable analytics; unset ⇒ "" ⇒ build-demo leaves it off.
         run: >
           node scripts/deploy/build-demo.mjs --tag "${{ needs.meta.outputs.tag }}"
           --cdn "$CDN" --lib-tag "$LIB_TAG"
+          --plausible "${{ vars.PLAUSIBLE_DOMAIN }}"
 
       - name: Ensure Pages project exists
         run: >

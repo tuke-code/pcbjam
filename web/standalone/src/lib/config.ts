@@ -44,6 +44,31 @@ export const REPO_URL = (
   import.meta.env.VITE_REPO_URL || "https://github.com/emergence-engineering/pcbjam"
 ).replace(/\/+$/, "");
 
+/** Marketing / landing page (no trailing slash). The version badge links here so
+ *  someone in the editor can reach the product page. */
+export const LANDING_URL = (
+  import.meta.env.VITE_LANDING_URL || "https://pcbjam.com"
+).replace(/\/+$/, "");
+
+/**
+ * Where the in-editor waitlist form POSTs. The demo is a fully static deploy with
+ * no backend, so it cross-posts to the landing site's serverless endpoint (which
+ * sends CORS for this origin). Same JSON contract as site/src/pages/api/waitlist.ts.
+ */
+export const WAITLIST_URL =
+  import.meta.env.VITE_WAITLIST_URL || "https://pcbjam.com/api/waitlist";
+
+/**
+ * Plausible analytics (privacy-friendly, cookieless). Off unless a domain is set
+ * (plain dev/checkout stays untracked). `PLAUSIBLE_DOMAIN` is the `data-domain`
+ * the dashboard is keyed by; `PLAUSIBLE_SRC` is the script URL (override to a
+ * self-hosted/proxied script — e.g. on cdn.pcbjam.com — if plausible.io won't
+ * load under the demo's COEP `require-corp`). See main.tsx for the injection.
+ */
+export const PLAUSIBLE_DOMAIN = import.meta.env.VITE_PLAUSIBLE_DOMAIN || null;
+export const PLAUSIBLE_SRC =
+  import.meta.env.VITE_PLAUSIBLE_SRC || "https://plausible.io/js/script.js";
+
 /**
  * Where the standalone reads PROJECTS from (env VITE_PROJECT_SOURCE):
  *   "remote" (default) — the @pcbjam/shared REST backend at API_BASE_URL.

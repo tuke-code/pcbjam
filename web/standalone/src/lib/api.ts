@@ -1,7 +1,8 @@
-import type { DriftReportBody, Lib, Project } from "@pcbjam/shared";
+import type { DriftReportBody, Project } from "@pcbjam/shared";
 import { useQuery } from "@tanstack/react-query";
-import { API_BASE_URL, PROJECT_SOURCE_KIND } from "./config";
+import { API_BASE_URL, libsSourceConfig } from "./config";
 import { client } from "./contract-client";
+import type { LibInfo } from "@/wasm/libs/source";
 import { downloadBytes } from "./download";
 import {
   ReadOnlyProjectError,
@@ -48,18 +49,18 @@ export function useSourceDescriptor(slug: string) {
 }
 
 /**
- * Libraries the backend serves, optionally filtered to a kind. In static (no
- * backend) mode there are none, so we short-circuit to an empty list rather than
- * fire a doomed request.
+ * Libraries the editor can browse, optionally filtered to a kind — sourced from
+ * the ACTIVE libs source (lib/config `libsSourceConfig`), not the REST backend
+ * directly. So the demo's read-only CDN/R2 set (VITE_LIBS_SOURCE=cdn) lists here
+ * the same as a backend's libs would; "off" ⇒ none. Each lib deep-links to
+ * /l/<id>/<tool> (LibToolPage), which boots the editor scoped to that one lib.
  */
 export function useLibs(kind?: "symbol" | "footprint") {
   return useQuery({
     queryKey: ["libs", kind ?? "all"],
-    queryFn: async (): Promise<Lib[]> => {
-      if (PROJECT_SOURCE_KIND === "static") return [];
-      const res = await client.listLibs({ query: { kind } });
-      if (res.status !== 200) throw new Error("failed to list libraries");
-      return res.body;
+    queryFn: async (): Promise<LibInfo[]> => {
+      const source = libsSourceConfig();
+      return source ? source.listLibs(kind) : [];
     },
   });
 }

@@ -112,6 +112,7 @@ export function cdnLibsSource(
           name: l.name,
           description: l.description ?? null,
           type: "origin",
+          itemCount: l.itemCount,
         }));
     },
     async listItems(libId: string): Promise<LibItemInfo[]> {

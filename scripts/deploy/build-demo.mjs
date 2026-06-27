@@ -27,6 +27,13 @@ function parseArgs(argv) {
     cdn: "https://cdn.pcbjam.com",
     repo: "https://github.com/emergence-engineering/pcbjam",
     libTag: null,
+    // Marketing site the version badge links to; the in-editor waitlist form
+    // cross-posts to <landing>/api/waitlist unless --waitlist overrides it.
+    landing: "https://pcbjam.com",
+    waitlist: null,
+    // Plausible analytics data-domain. Off unless given (or VITE_PLAUSIBLE_DOMAIN
+    // is already in the environment, which passes straight through).
+    plausible: null,
   };
   for (let i = 2; i < argv.length; i++) {
     const next = () => argv[++i];
@@ -37,12 +44,17 @@ function parseArgs(argv) {
       // KiCad library snapshot tag (published once to libs/kicad/<libTag>/).
       // Omitted ⇒ the offline built-in example symbols (back-compat).
       case "--lib-tag": a.libTag = next(); break;
+      case "--landing": a.landing = next(); break;
+      case "--waitlist": a.waitlist = next(); break;
+      case "--plausible": a.plausible = next(); break;
       default: throw new Error(`unknown arg: ${argv[i]}`);
     }
   }
   if (!a.tag) throw new Error("--tag <release tag> is required");
   a.cdn = a.cdn.replace(/\/+$/, "");
   a.repo = a.repo.replace(/\/+$/, "");
+  a.landing = a.landing.replace(/\/+$/, "");
+  a.waitlist = a.waitlist || `${a.landing}/api/waitlist`;
   return a;
 }
 
@@ -92,6 +104,11 @@ function main() {
     VITE_APP_TAG: a.tag,
     VITE_GIT_SHA: gitSha(repoRoot),
     VITE_REPO_URL: a.repo,
+    // Version-badge "pcbjam.com" link + the in-editor waitlist form's POST target.
+    VITE_LANDING_URL: a.landing,
+    VITE_WAITLIST_URL: a.waitlist,
+    // Plausible analytics: explicit --plausible wins, else any env-provided value.
+    ...(a.plausible ? { VITE_PLAUSIBLE_DOMAIN: a.plausible } : {}),
   };
 
   console.log(`build-demo: tag=${a.tag} cdn=${a.cdn}`);
@@ -100,6 +117,8 @@ function main() {
   console.log(`  VITE_PROJECT_MANIFEST_URL=${env.VITE_PROJECT_MANIFEST_URL}`);
   console.log(`  VITE_APP_TAG=${env.VITE_APP_TAG} VITE_GIT_SHA=${env.VITE_GIT_SHA || "(none)"}`);
   console.log(`  VITE_LIBS_SOURCE=${env.VITE_LIBS_SOURCE}${env.VITE_LIBS_MANIFEST_URL ? ` (${env.VITE_LIBS_MANIFEST_URL})` : ""}`);
+  console.log(`  VITE_LANDING_URL=${env.VITE_LANDING_URL} VITE_WAITLIST_URL=${env.VITE_WAITLIST_URL}`);
+  console.log(`  VITE_PLAUSIBLE_DOMAIN=${env.VITE_PLAUSIBLE_DOMAIN || "(off)"}`);
 
   // Keep the dev-only WASM symlink out of the bundle (it'd copy 100s of MB into
   // dist/; the CDN serves it). In CI it isn't present, so this is a no-op there.

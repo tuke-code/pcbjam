@@ -38,6 +38,7 @@ export function remoteLibsSource(
         name: l.name,
         description: l.description ?? null,
         type: l.type,
+        itemCount: l.itemCount,
       }));
     },
 
