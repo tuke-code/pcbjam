@@ -60,7 +60,7 @@ test.describe( 'Real BS::thread_pool (GetKiCadThreadPool) — multi-core under n
     await page.goto( `${APP}#m=6` );
     // A worker throw is a mode-c crash under JS-EH and only safe under native wasm-EH, so this
     // assertion is native-EH-only. The app reports its EH model early; skip on a JS-EH build
-    // (e.g. CI, which builds without WX_NATIVE_EH) rather than asserting a crash.
+    // (builds are always native-EH now, so this never skips) rather than asserting a crash.
     await waitForLog( testLogger, '[POOL] EH=' );
     test.skip( !testLogger.consoleLogs.some( l => l.includes( '[POOL] EH=native' ) ),
                'throw-on-worker (mode-c) is native-EH-only; JS-EH build skips this assertion' );

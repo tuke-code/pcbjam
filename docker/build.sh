@@ -194,7 +194,7 @@ compile_app() {
     # emsdk_env.sh, so the build shell would lack emcc/embuilder on PATH. Setting
     # EMSDK lets scripts/common/env.sh source /emsdk/emsdk_env.sh and activate the toolchain.
     docker compose -f docker/docker-compose.yml exec -e EMSDK=/emsdk \
-        -e BUILD_3D_VIEWER="${BUILD_3D_VIEWER:-OFF}" \
+        -e BUILD_3D_VIEWER="${BUILD_3D_VIEWER:-ON}" \
         kicad-wasm-builder \
         "/workspace/scripts/kicad/build-${app}.sh" "${ARGS[@]}"
 
@@ -243,14 +243,11 @@ postprocess_app() {
 
     # Apply asyncify transformation on host. The converter is a synchronous node
     # CLI built with ASYNCIFY=0, so asyncify is unnecessary and would be wrong.
-    # Native wasm-EH (the default; WX_LEGACY_EH=1 opts into legacy) additionally needs the
-    # --hoist-cpp-catches pass FIRST so Asyncify can suspend from inside C++ catch arms.
-    # The KiCad removelist is kept either way (large functions blow V8's per-function locals limit).
+    # apply-asyncify always runs the --hoist-cpp-catches pass FIRST (native wasm-EH is the only build
+    # mode) so Asyncify can suspend from inside C++ catch arms, then asyncify + removelist + -O2.
     if [ "$app" != "sym_convert" ]; then
         kw_stage asyncify
-        ASYNCIFY_HOIST=()
-        [ "${WX_LEGACY_EH:-0}" != "1" ] && ASYNCIFY_HOIST=(--hoist)
-        ./scripts/common/apply-asyncify.sh "${ASYNCIFY_HOIST[@]}" "${out_dir}/${app}.wasm" "${out_dir}/${app}.wasm"
+        ./scripts/common/apply-asyncify.sh "${out_dir}/${app}.wasm" "${out_dir}/${app}.wasm"
     fi
 }
 

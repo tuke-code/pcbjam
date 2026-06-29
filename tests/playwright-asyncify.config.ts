@@ -41,7 +41,7 @@ const port = resolvePort();
 export default defineConfig({
   globalSetup: './global-setup.ts',
   testDir: './asyncify',
-  testMatch: /(asyncify-races|eh-spike).*\.spec\.ts$/,
+  testMatch: /asyncify-races.*\.spec\.ts$/,
   fullyParallel: false, // one heavy WASM app at a time
   forbidOnly: !!process.env.CI,
   retries: 0,

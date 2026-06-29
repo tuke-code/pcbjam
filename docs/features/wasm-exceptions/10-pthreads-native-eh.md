@@ -11,8 +11,8 @@
 KiCad-WASM uses native WebAssembly exceptions instead of Emscripten JS exceptions for the bundle-size
 win (pcbnew ~64.5 → ~36 MB gz). **Native-EH is the default build** — `build-wx-wasm.sh`,
 `build-wasm-test.sh`, and `tests/apps/Makefile.wasm` compile `-fwasm-exceptions -sSUPPORT_LONGJMP=wasm
--sWASM_LEGACY_EXCEPTIONS=1` with no flag; `WX_LEGACY_EH=1` opts into legacy `-fexceptions`. CI builds
-native. The threading question this doc answers: which pthread patterns work under native-EH, what is
+-sWASM_LEGACY_EXCEPTIONS=1` (single-sourced from `scripts/common/env.sh`). It is the only build mode —
+the legacy `-fexceptions` path has been removed. CI builds native. The threading question this doc answers: which pthread patterns work under native-EH, what is
 the one exception-related risk it removes, and what is the (optional) upstreamable follow-up.
 
 ## TL;DR

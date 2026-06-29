@@ -177,8 +177,28 @@ test.describe('Asyncify races — green targets (full shims)', () => {
   });
 });
 
-test.describe('Asyncify races — ablation pins (the disease stays reproducible)', () => {
-  test('no trampoline heal: the park wedges the guard and the post-park swap hangs', async ({
+// These two were "ablation pins": they ablated a JS-shim fix (via SHIM_DISABLE_*,
+// see tests/apps/Makefile.wasm) and asserted the LEGACY-EH disease came back — a
+// stuck Fibers.trampoline guard (trampolineRunning=true) / a clobbered parked-sleep
+// buffer. Under native wasm-EH the top loop is a per-frame-yield while-loop with NO
+// park-throw (docs/features/wasm-exceptions; native-EH top-loop redesign), so the
+// disease's *trigger* is gone at the root: ablating the shim no longer reproduces
+// it. (The green "battery" above already runs both scenarios full-shim.)
+//
+// So they are flipped red->green: each now pins that the native-EH path stays clean
+// EVEN with the legacy shim ablated — i.e. the scenario completes with no disease
+// signature. That keeps them as the live signal for the open question below.
+//
+// TODO(research): are these shims still needed AT ALL under native-EH-only? The
+// fiber trampoline self-heal (§3c) and the nested-Asyncify handleSleep save/restore
+// (§3) in scripts/common/inject-dyncall-shims.sh were written for the legacy
+// park-throw model; ablating either no longer breaks the scenario it guarded. If a
+// full sweep of the real apps (modals / nested fibers / long sleeps / pthread pool)
+// confirms they're dead weight under native-EH, drop the shim injection AND these
+// pins. Until then they stay injected (belt-and-suspenders). Tracked in
+// tests/README.md "Open tasks".
+test.describe('Asyncify races — shim-redundancy pins (native-EH stays clean with the legacy shim ablated)', () => {
+  test('trampoline-heal ablated: native-EH post-park swap still completes (no stuck guard)', async ({
     page,
     testLogger,
   }) => {
@@ -187,39 +207,28 @@ test.describe('Asyncify races — ablation pins (the disease stays reproducible)
     );
     await tryLoadApp(page, 30000);
 
-    // The scenario's JS watchdog fires after 2.5s with a state dump.
     await expect
-      .poll(
-        () =>
-          testLogger.consoleLogs.find((l) =>
-            l.includes('[ASYNCIFY_RACES] WATCHDOG post_park_fiber_swap')
-          ) ?? null,
-        { timeout: 30000, message: 'watchdog should fire in the ablated build' }
-      )
+      .poll(() => findSummary(testLogger.consoleLogs) ?? null, {
+        timeout: 45000,
+        message: 'post-park swap should complete even with the trampoline self-heal ablated',
+      })
       .not.toBeNull();
 
-    const watchdog = testLogger.consoleLogs.find((l) =>
-      l.includes('[ASYNCIFY_RACES] WATCHDOG post_park_fiber_swap')
-    )!;
+    const { passed, failed } = parseSummary(findSummary(testLogger.consoleLogs)!);
+    expect(passed).toBe(1);
+    expect(failed).toBe(0);
 
-    // The exact stuck-guard signature traced in docs/features/async/: the park throw
-    // tore through Fibers.trampoline()'s do/while, leaving the guard true.
-    expect(watchdog, 'stuck trampoline guard should be visible').toContain(
-      'trampolineRunning=true'
-    );
-
+    // The legacy disease signature must be ABSENT: no stuck-trampoline watchdog dump.
     expect(
       testLogger.consoleLogs.some((l) =>
-        l.includes('[ASYNCIFY_RACES] FAIL post_park_fiber_swap')
+        l.includes('[ASYNCIFY_RACES] WATCHDOG post_park_fiber_swap')
       ),
-      'scenario should be reported FAILED by the watchdog'
-    ).toBe(true);
-
-    // And the suite never completes — the swap is stranded forever.
-    expect(findSummary(testLogger.consoleLogs)).toBeUndefined();
+      'no stuck-trampoline watchdog should fire under native-EH'
+    ).toBe(false);
+    expect(crashLines(testLogger), 'no crash signatures in console').toHaveLength(0);
   });
 
-  test('no handleSleep fix: fiber swaps clobber the parked sleep buffer', async ({
+  test('handleSleep ablated: native-EH long parked sleep is not clobbered by a swap', async ({
     page,
     testLogger,
   }) => {
@@ -228,32 +237,17 @@ test.describe('Asyncify races — ablation pins (the disease stays reproducible)
     );
     await tryLoadApp(page, 30000);
 
-    // Either the wakeUp crashes (index out of bounds family) or the rewind is
-    // lost and the watchdog reports the stall — both are the recorded disease.
     await expect
-      .poll(
-        () => {
-          const crashed = [...testLogger.errors, ...testLogger.consoleLogs].some(
-            (l) =>
-              l.toLowerCase().includes('index out of bounds') ||
-              l.toLowerCase().includes('indirect call to null') ||
-              l.toLowerCase().includes('invalid state')
-          );
-          const stalled = testLogger.consoleLogs.some((l) =>
-            l.includes('[ASYNCIFY_RACES] FAIL long_parked_sleep_clobbered_by_swap')
-          );
-          return crashed || stalled ? 'reproduced' : null;
-        },
-        { timeout: 30000, message: 'ablated build should reproduce the clobber bug' }
-      )
+      .poll(() => findSummary(testLogger.consoleLogs) ?? null, {
+        timeout: 45000,
+        message: 'long parked sleep should resolve even with the handleSleep fix ablated',
+      })
       .not.toBeNull();
 
-    // It must NOT have quietly passed.
-    expect(
-      testLogger.consoleLogs.some((l) =>
-        l.includes('[ASYNCIFY_RACES] PASS long_parked_sleep_clobbered_by_swap')
-      ),
-      'ablated build must not pass the clobber scenario'
-    ).toBe(false);
+    const { passed, failed } = parseSummary(findSummary(testLogger.consoleLogs)!);
+    expect(passed).toBe(1);
+    expect(failed).toBe(0);
+    expect(crashLines(testLogger), 'no crash signatures in console').toHaveLength(0);
+    expect(realErrors(testLogger), 'no page errors').toHaveLength(0);
   });
 });

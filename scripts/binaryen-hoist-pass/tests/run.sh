@@ -2,7 +2,7 @@
 # Regression test for the value-typed (concrete-result) path of --hoist-cpp-catches.
 #
 # Value-typed cpp-catch tries do not arise from normal C++ EH lowering (LLVM keeps catch values in
-# locals → void/unreachable tries), so this case can't live in the C++ eh-spike toy. These
+# locals → void/unreachable tries), so this case can't live in a C++ EH toy. These
 # hand-written modules exercise it directly:
 #   (1) fuzz-exec — the pass must preserve the result value of value-typed cpp-catch tries
 #       (exception path, no-exception path, and exception-payload routing).

@@ -15,7 +15,6 @@ env.emscripten_wget_data
 env.emscripten_idb_*
 #
 # --- Project suspending imports ---
-env.invoke_*
 env.__asyncjs__*
 env.emscripten_fiber_swap
 env.startModal

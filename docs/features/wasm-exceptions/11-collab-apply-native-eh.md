@@ -1,5 +1,9 @@
 # Collaborative editing under native wasm-EH — the virtual-call mis-dispatch: root cause & fix
 
+> **Finalization note:** the `futex_yield.c` shim and the `vcall_*` / `pool-callafter` investigation
+> repros referenced below were **removed** during feature finalization — native-EH needs none of them.
+> This doc is retained as the root-cause record.
+
 > **Status: RESOLVED 2026-06-28.** Fixed with a one-line build flag.
 > **One-line:** native-EH pcbnew's collab **apply** hung at virtual method calls because the **embind
 > translation unit was compiled without `-DDEBUG` while the core TU had it**. A `#if defined(DEBUG)`

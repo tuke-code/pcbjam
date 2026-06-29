@@ -231,17 +231,11 @@ log_info "Building wxWidgets..."
 log_info "Building KiCad ${APP_NAME} ${KICAD_VERSION} for WASM..."
 
 # Step 5: Set build type
-# Exception model. KiCad and wxWidgets must agree (mixing -fexceptions and -fwasm-exceptions
-# objects link-fails / traps), so this reads the SAME WX_LEGACY_EH switch as build-wx-wasm.sh:
-#   default        native WebAssembly exceptions (legacy encoding) + wasm setjmp/longjmp.
-#   WX_LEGACY_EH=1 legacy Emscripten JS exceptions (-fexceptions).
-# Either way wxWidgets is built with exceptions enabled, so the app must carry the matching flag.
-# -matomics -mbulk-memory are required for shared memory (pthreads).
-if [ "${WX_LEGACY_EH:-0}" = "1" ]; then
-    KICAD_EH_FLAGS="-fexceptions"
-else
-    KICAD_EH_FLAGS="-fwasm-exceptions -sSUPPORT_LONGJMP=wasm -sWASM_LEGACY_EXCEPTIONS=1"
-fi
+# Exception model: native WebAssembly exceptions (legacy binary encoding) + wasm setjmp/longjmp,
+# single-sourced from scripts/common/env.sh (KiCad and wxWidgets must agree — mixing EH models
+# link-fails / traps; both build with exceptions enabled). -matomics -mbulk-memory are required for
+# shared memory (pthreads).
+KICAD_EH_FLAGS="$DEPS_EH_FLAGS"
 log_info "KiCad EH model flags: ${KICAD_EH_FLAGS}"
 
 # Use environment DEBUG_BUILD if set, otherwise check local --debug flag
@@ -311,25 +305,6 @@ emar rcs "${STUBS_BUILD}/libcurl_stub.a" "${STUBS_BUILD}/curl_stub.o"
 # Compile NNG stub (IPC API requires NNG but sockets don't work in WASM)
 emcc -c -I"${STUBS_DIR}" "${STUBS_DIR}/nng_stub.c" -o "${STUBS_BUILD}/nng_stub.o"
 emar rcs "${STUBS_BUILD}/libnng_stub.a" "${STUBS_BUILD}/nng_stub.o"
-
-# Main-thread futex-wait yield shim — AVAILABLE BUT NOT COMPILED/LINKED (task #54, 2026-06-29).
-# wasm/shims/futex_yield.c is a strong emscripten_futex_wait override that makes a blocking main-thread
-# futex wait (std::future::wait/_for -> pthread_cond_wait) Asyncify-yield to the JS event loop so an
-# on-demand pthread-Worker can boot. It addresses a REAL deadlock (validated in the pool-callafter repro)
-# where a threaded recompute spins forever because the on-demand Worker can't boot during the main-thread
-# busy-spin futex wait. It was added during the collab-apply hunt under the (mistaken) theory that the
-# apply hung on this futex; the real cause was a vtable-slot skew, fixed by the -DDEBUG embind define
-# (EMBIND_CONFIG_DEFINES above). With that fix the collab apply passes WITHOUT this shim
-# (pcbnew + eeschema collab specs green on a no-futex build), because the connectivity recompute is
-# bounded by the pre-warmed pthread pool (PTHREAD_POOL_SIZE=hardwareConcurrency) and never needs an
-# on-demand Worker. So it is intentionally left OUT of the build to keep the diff minimal.
-#
-# RE-ENABLE if the on-demand-Worker futex deadlock ever surfaces (symptom: collab/edit hangs at
-# commit.Push's RecalculateRatsnest on a heavy board or cold pool — the recompute needs more threads
-# than the pool): uncomment the emcc line below AND re-append " ${STUBS_BUILD}/futex_yield.o" to
-# CMAKE_EXE_LINKER_FLAGS (the link line below, right after ${EMBIND_OBJ}). The shim is a no-op on worker
-# threads and only changes main-thread behaviour, so re-enabling it is safe.
-# emcc -c -pthread -matomics -mbulk-memory "${PROJECT_ROOT}/wasm/shims/futex_yield.c" -o "${STUBS_BUILD}/futex_yield.o"
 
 # wx flags for any C++ stubs that include wx headers
 WX_CXXFLAGS=$("${WX_BUILD}/wx-config" --cxxflags 2>/dev/null || echo "-I${WX_BUILD}/lib/wx/include/emscripten-unicode-static-3.2 -I${PROJECT_ROOT}/wxwidgets/include")
@@ -435,14 +410,14 @@ if [ "${APP_NAME}" = "sym_convert" ]; then
     SYM_CONVERTER_CMAKE_FLAG="-DKICAD_SYM_CONVERTER_WASM=ON"
 fi
 
-# 3D viewer (experimental): opt in with BUILD_3D_VIEWER=ON. Default OFF keeps
-# existing/CI builds unchanged and the 3D stubs in place. When ON, the 3D viewer
-# renders with the GL-free CPU raytracer (RENDER_3D_RAYTRACE_RAM) blitted to the
-# canvas through a plain WebGL2 textured quad — no -sLEGACY_GL_EMULATION. KiCad's
-# fixed-function OpenGL renderer is still compiled (shared files reference it) but
-# never executed on WASM, so its FFP/GLU entry points are satisfied at link time
-# by no-op stubs (gl_ffp_stub.c). See docs/features/fork-cleanup/10-3d-viewer.md.
-BUILD_3D_VIEWER="${BUILD_3D_VIEWER:-OFF}"
+# 3D viewer: built by DEFAULT (BUILD_3D_VIEWER=ON). Opt out with BUILD_3D_VIEWER=OFF, which links the
+# 3D stubs instead. The 3D viewer renders with the GL-free CPU raytracer (RENDER_3D_RAYTRACE_RAM)
+# blitted to the canvas through a plain WebGL2 textured quad — no -sLEGACY_GL_EMULATION. KiCad's
+# fixed-function OpenGL renderer is still compiled (shared files reference it) but never executed on
+# WASM, so its FFP/GLU entry points are satisfied at link time by no-op stubs (gl_ffp_stub.c). The
+# KiCad CMake option KICAD_BUILD_3D_VIEWER_WASM stays OFF upstream; our build passes it explicitly.
+# See docs/features/fork-cleanup/10-3d-viewer.md.
+BUILD_3D_VIEWER="${BUILD_3D_VIEWER:-ON}"
 GL3D_LINK_FLAGS=""
 if [ "${BUILD_3D_VIEWER}" = "ON" ]; then
     log_info "3D viewer ENABLED for WASM (BUILD_3D_VIEWER=ON)"

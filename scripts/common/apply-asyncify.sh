@@ -1,13 +1,11 @@
 #!/bin/bash
 # Unified post-link Asyncify pass for KiCad AND the wx test apps.
 #
-# Usage: apply-asyncify.sh [--hoist] [--no-removelist] <input.wasm> [output.wasm]
+# Usage: apply-asyncify.sh [--no-removelist] <input.wasm> [output.wasm]
 #
-#   (default)         KiCad / JS-EH: --asyncify + remove-list + -O2.
-#   --hoist           native wasm-EH: run our --hoist-cpp-catches fork pass FIRST (lets Asyncify
-#                     suspend from inside C++ catch blocks) and enable all wasm features (-all) so
-#                     binaryen understands the EH instructions. Used by build-wasm-test.sh for the
-#                     default native-EH build (gate JS-EH via WX_LEGACY_EH=1) + the native-EH KiCad build.
+#   Always: run our --hoist-cpp-catches fork pass FIRST (lets Asyncify suspend from inside C++ catch
+#           blocks under native wasm-EH) with all wasm features enabled (-all, so binaryen parses the
+#           EH instructions), then --asyncify + remove-list + -O2. Native wasm-EH is the only build mode.
 #   --no-removelist   skip the KiCad big-function remove-list (the small wx test apps don't contain
 #                     those symbols, and one bare entry — "match" — could collide).
 #
@@ -26,11 +24,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 # --- flags ---
-DO_HOIST=0
+# Native wasm-EH is the only build mode, so the catch-arm hoist pass always runs.
+DO_HOIST=1
 USE_REMOVELIST=1
 while [[ "${1:-}" == --* ]]; do
     case "$1" in
-        --hoist)         DO_HOIST=1; shift ;;
         --no-removelist) USE_REMOVELIST=0; shift ;;
         *) echo "apply-asyncify: unknown flag: $1" >&2; exit 1 ;;
     esac

@@ -51,28 +51,12 @@ endif
 # crashes apps at startup with "RuntimeError: function signature mismatch".
 CXXFLAGS += -MMD -MP
 
-# Native wasm-EH is the DEFAULT (this branch IS the native-EH migration): compile + link with
-# -fwasm-exceptions (legacy encoding) + wasm setjmp/longjmp, matching the libwx build
-# (scripts/build-wx-wasm.sh). Set WX_LEGACY_EH=1 for the legacy Emscripten JS exceptions. The
-# in-link Asyncify (emsdk Binaryen v121) crashes on wasm-EH, so build-wasm-test.sh stubs it and
-# runs the real pipeline (--hoist-cpp-catches + --asyncify, apply-asyncify.sh --hoist) post-link.
-ifeq ($(WX_LEGACY_EH),1)
-EH_FLAGS =
-else
+# Native wasm-EH is the only build mode: compile + link with -fwasm-exceptions (legacy encoding) +
+# wasm setjmp/longjmp, matching the libwx build (scripts/build-wx-wasm.sh) and scripts/common/env.sh.
+# The in-link Asyncify (emsdk Binaryen v121) crashes on wasm-EH, so build-wasm-test.sh stubs it and
+# runs the real pipeline (--hoist-cpp-catches + --asyncify via apply-asyncify.sh) post-link.
 EH_FLAGS = -fwasm-exceptions -sSUPPORT_LONGJMP=wasm -sWASM_LEGACY_EXCEPTIONS=1 -sDYNCALLS=1
-endif
 CXXFLAGS += $(EH_FLAGS)
-
-# Standalone coroutine "repro" apps below historically hardcoded -fexceptions (they throw
-# and do not link libwx, so they do not pick it up from the global EH model). Under native
-# wasm-EH they must use $(EH_FLAGS) instead; JSEH_FEXC carries -fexceptions ONLY in the JS-EH
-# build, so each repro follows the active EH model in both worlds (paired with $(EH_FLAGS) on
-# their links). This keeps them building+running as real tests in the default native-EH build.
-ifeq ($(WX_LEGACY_EH),1)
-JSEH_FEXC = -fexceptions
-else
-JSEH_FEXC =
-endif
 
 # Base Emscripten flags (for all apps)
 # ASYNCIFY enables blocking modal dialogs (ShowModal waits for user)
@@ -238,13 +222,13 @@ minimal_test.html: minimal_test.o $(WX_CORE_LIB) $(JS_FILES)
 
 # --- DOM-port bug reproductions (docs/features/wx-dom-port/branch-review.md) ---
 
-# wxTextCtrl reentry-guard repro. Needs -fexceptions: it throws from a wxEVT_TEXT
-# handler to prove the OnDomEvent m_inDomInput reset must be exception-safe.
+# wxTextCtrl reentry-guard repro: it throws from a wxEVT_TEXT handler to prove the
+# OnDomEvent m_inDomInput reset must be exception-safe (works under native -fwasm-exceptions).
 $(S)/textctrl-reentry/textctrl-reentry_test.o: $(S)/textctrl-reentry/textctrl-reentry_test.cpp
-	$(CXX) -c $(CXXFLAGS) $(JSEH_FEXC) $< -o $@
+	$(CXX) -c $(CXXFLAGS) $< -o $@
 
 $(S)/textctrl-reentry/textctrl-reentry_test.html: $(S)/textctrl-reentry/textctrl-reentry_test.o $(WX_CORE_LIB) $(JS_FILES)
-	$(CXX) $< $(LDFLAGS_NOGL) $(JSEH_FEXC) --pre-js $(JS) --shell-file $(HTML) -o $@
+	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 textctrl-reentry: $(S)/textctrl-reentry/textctrl-reentry_test.html
 
@@ -624,7 +608,7 @@ $(shell mkdir -p $(POOL_UNSHIMMED); sed 's/$(HASH)ifdef __EMSCRIPTEN__/$(HASH)if
 # stubs; the pool is un-shimmed via a generated bs_thread_pool.hpp (POOL_UNSHIMMED below) so
 # tasks run on workers.
 TP_REAL = $(S)/threadpool-real
-TP_REAL_INC = $(JSEH_FEXC) -std=c++20 \
+TP_REAL_INC = -std=c++20 \
               -I$(TP_REAL)/stubs -I$(POOL_UNSHIMMED) -I$(KICAD_ROOT)/include -I$(KICAD_ROOT)/thirdparty/thread-pool
 
 $(TP_REAL)/threadpool_real_test.o: $(TP_REAL)/threadpool_real_test.cpp
@@ -650,7 +634,7 @@ all: $(TP_REAL)/threadpool_real_test.html
 # makes the main-thread sleep_for join Asyncify-yield so the on-demand Workers boot.
 # Reuses threadpool-real's pool stubs.
 OD = $(S)/pthread-ondemand
-OD_INC = $(JSEH_FEXC) -std=c++20 \
+OD_INC = -std=c++20 \
          -I$(S)/threadpool-real/stubs -I$(POOL_UNSHIMMED) -I$(KICAD_ROOT)/include -I$(KICAD_ROOT)/thirdparty/thread-pool
 SHIMS = ../../wasm/shims
 
@@ -679,7 +663,7 @@ all: $(OD)/pthread_ondemand_test.html
 # and proxies a fetch to main (emscripten_proxy_*) — mirrors the KiCad-10 PCBJAM preload shape.
 # No KiCad source. Uses the system proxying queue (built into the pthread runtime).
 $(S)/async-preload/async_preload_test.o: $(S)/async-preload/async_preload_test.cpp
-	$(CXX) -c $(CXXFLAGS) -pthread $(JSEH_FEXC) $< -o $@
+	$(CXX) -c $(CXXFLAGS) -pthread $< -o $@
 
 $(S)/async-preload/async_preload_test.html: $(S)/async-preload/async_preload_test.o $(WX_CORE_LIB) $(JS_FILES)
 	$(CXX) $< $(LDFLAGS_RAYTRACE) --pre-js $(JS) --shell-file $(HTML) -o $@
@@ -751,20 +735,6 @@ $(S)/asyncify-races/races_test_nosleepfix.html: $(S)/asyncify-races/races_test.o
 	$(CXX) $^ $(LDFLAGS_RACES) --pre-js $(JS) --shell-file $(HTML) -o $@
 	SHIM_DISABLE_HANDLESLEEP=1 ../../scripts/common/inject-dyncall-shims.sh $(basename $@).js
 
-# --- native wasm-EH spike (docs/features/wasm-exceptions/06-spike-plan.md) ---
-# Phase 0 probe: does em 4.0.2 emit *parseable* legacy wasm-EH? One source, built two
-# ways — JS-EH baseline (-fexceptions) vs native wasm-EH (-fwasm-exceptions, legacy
-# encoding =1). wx-free, no Asyncify; run with node. Deliberately NOT in `all`.
-EH_PROBE_BASE = -O2 -sEXIT_RUNTIME=1
-
-$(S)/eh-spike/eh_probe_jseh.js: $(S)/eh-spike/eh_probe.cpp
-	$(CXX) $(EH_PROBE_BASE) -fexceptions $< -o $@
-
-$(S)/eh-spike/eh_probe_wasmeh.js: $(S)/eh-spike/eh_probe.cpp
-	$(CXX) $(EH_PROBE_BASE) -fwasm-exceptions -sSUPPORT_LONGJMP=wasm -sWASM_LEGACY_EXCEPTIONS=1 $< -o $@
-
-eh-probe: $(S)/eh-spike/eh_probe_jseh.js $(S)/eh-spike/eh_probe_wasmeh.js
-.PHONY: eh-probe
 
 # Convenience targets
 menu: $(S)/menu/menu_test.html
@@ -892,16 +862,16 @@ coroutine-pthread-nested: $(S)/coroutine-pthread/nested_repro.html
 LDFLAGS_COROUTINE_INVOKE = $(EH_FLAGS) $(DEBUG_LDFLAGS) -sALLOW_MEMORY_GROWTH -sERROR_ON_UNDEFINED_SYMBOLS=0 \
                   -sASYNCIFY=1 -sASYNCIFY_STACK_SIZE=65536 \
                   -sASYNCIFY_IMPORTS=['invoke_vi','invoke_v','invoke_ii','invoke_iii','emscripten_fiber_swap'] \
-                  -sDYNCALLS=1 $(JSEH_FEXC) -pthread -sPTHREAD_POOL_SIZE='navigator.hardwareConcurrency' \
+                  -sDYNCALLS=1 -pthread -sPTHREAD_POOL_SIZE='navigator.hardwareConcurrency' \
                   -sPTHREAD_POOL_SIZE_STRICT=0 -sEXPORTED_RUNTIME_METHODS=['ccall']
 
 $(S)/coroutine-pthread/nested_repro_ex.o: $(S)/coroutine-pthread/nested_repro.cpp $(S)/coroutine/kicad_coroutine_harness.h
 	@mkdir -p $(S)/coroutine-pthread
-	$(CXX) -c $(CXXFLAGS) -pthread $(JSEH_FEXC) -I$(KICAD_ROOT)/thirdparty/libcontext -I$(S)/coroutine $< -o $@
+	$(CXX) -c $(CXXFLAGS) -pthread -I$(KICAD_ROOT)/thirdparty/libcontext -I$(S)/coroutine $< -o $@
 
 $(S)/coroutine-pthread/libcontext_ex.o: $(KICAD_ROOT)/thirdparty/libcontext/libcontext.cpp $(KICAD_ROOT)/thirdparty/libcontext/libcontext.h
 	@mkdir -p $(S)/coroutine-pthread
-	$(CXX) -c $(CXXFLAGS) -pthread $(JSEH_FEXC) -I$(KICAD_ROOT)/thirdparty/libcontext $< -o $@
+	$(CXX) -c $(CXXFLAGS) -pthread -I$(KICAD_ROOT)/thirdparty/libcontext $< -o $@
 
 $(S)/coroutine-pthread/nested_repro_ex.html: $(S)/coroutine-pthread/nested_repro_ex.o $(S)/coroutine-pthread/libcontext_ex.o
 	$(CXX) $(filter %.o %.a,$^) $(LDFLAGS_COROUTINE_INVOKE) -o $@
@@ -924,7 +894,7 @@ LDFLAGS_COROUTINE_EMBIND = $(LDFLAGS_COROUTINE_INVOKE) --bind
 
 $(S)/coroutine-pthread/embind_repro.o: $(S)/coroutine-pthread/embind_repro.cpp $(S)/coroutine/kicad_coroutine_harness.h
 	@mkdir -p $(S)/coroutine-pthread
-	$(CXX) -c $(CXXFLAGS) -pthread $(JSEH_FEXC) -I$(KICAD_ROOT)/thirdparty/libcontext -I$(S)/coroutine $< -o $@
+	$(CXX) -c $(CXXFLAGS) -pthread -I$(KICAD_ROOT)/thirdparty/libcontext -I$(S)/coroutine $< -o $@
 
 $(S)/coroutine-pthread/embind_repro.html: $(S)/coroutine-pthread/embind_repro.o $(S)/coroutine-pthread/libcontext_ex.o
 	$(CXX) $(filter %.o %.a,$^) $(LDFLAGS_COROUTINE_EMBIND) -o $@
