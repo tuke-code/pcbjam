@@ -21,10 +21,6 @@ on:
     paths-ignore: ["docs/**", "**.md"]
   workflow_dispatch:
     inputs:
-      binaryen_version:
-        description: "Binaryen version for the host asyncify step"
-        required: false
-        default: "130"
       no_cache:
         description: "Bypass the KiCad WASM output cache (force a full rebuild this run)"
         type: boolean
@@ -44,6 +40,5 @@ jobs:
       # -O2 via release.yml). 3D viewer ON so 3d-viewer.spec.ts has a viewer.
       opt_level: "-O1"
       build_3d_viewer: "ON"
-      binaryen_version: ${{ inputs.binaryen_version || '130' }}
       run_tests: true
       no_cache: ${{ inputs.no_cache || false }}

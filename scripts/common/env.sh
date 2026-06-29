@@ -36,6 +36,15 @@ export WX_BUILD="$BUILD_ROOT/wxwidgets"
 # Emscripten settings
 export EMSDK_QUIET=1
 
+# Exception model for ALL WASM translation units — the C/C++ dependencies, wxWidgets, and KiCad
+# (build-wx-wasm.sh and build-kicad-target.sh source this file and reuse DEPS_EH_FLAGS). Native
+# WebAssembly exceptions (legacy binary encoding) are the only build mode. -sSUPPORT_LONGJMP=wasm is
+# required because the deps that use setjmp/longjmp (freetype, cairo, OpenCASCADE) must use wasm
+# setjmp — emscripten's JS-longjmp implementation cannot coexist with -fwasm-exceptions (it would
+# leave emscripten_longjmp undefined). -sWASM_LEGACY_EXCEPTIONS=1 selects the EH binary encoding our
+# post-link Asyncify + catch-arm-hoisting pass can consume (Asyncify can't handle exnref).
+export DEPS_EH_FLAGS="-fwasm-exceptions -sSUPPORT_LONGJMP=wasm -sWASM_LEGACY_EXCEPTIONS=1"
+
 # Emscripten SDK setup
 # If EMSDK is already set (e.g. Docker entrypoint sourced emsdk_env.sh), use it.
 # Otherwise auto-install a local copy under tools/emsdk/.

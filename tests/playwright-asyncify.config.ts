@@ -70,6 +70,12 @@ export default defineConfig({
         permissions: ['clipboard-read', 'clipboard-write'],
       },
     },
+    {
+      // WebKit (Safari's engine) — headless OK on macOS. Project policy: every spec must be
+      // green in all three engines (Firefox + Chrome + Safari). Run via npm run test:asyncify:safari.
+      name: 'webkit',
+      use: { ...devices['Desktop Safari'], viewport: { width: 1280, height: 720 } },
+    },
   ],
 
   webServer: {

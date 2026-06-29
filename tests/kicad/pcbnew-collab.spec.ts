@@ -266,6 +266,45 @@ test.describe("pcbnew collab bridge — single page", () => {
     });
   }
 
+  // REGRESSION (native-EH vtable-slot skew, task #54): a second consecutive collab apply must also
+  // take effect. Root cause: the embind TU was compiled without -DDEBUG while the core TU (CMake
+  // Config=Debug) had it, so a DEBUG-gated virtual (EDA_ITEM::Show) occupied a vtable slot the embind
+  // didn't account for, shifting every later slot by one. Embind virtual calls in the apply
+  // (SetWidth/GetPosition/the rebaseline snapshot getters) then read the wrong slot → call_indirect
+  // signature-mismatch trap, swallowed by the apply coroutine's catch_all → silent loop, so the apply
+  // never completed. Fixed by building the embind TU with -DDEBUG in Debug builds
+  // (scripts/kicad/build-kicad-target.sh). RED before the fix (move times out), GREEN after.
+  test("native-EH: a second consecutive collab apply also takes effect", async ({ page, testLogger }) => {
+    await bootAndOpen(page, "apply");
+
+    const before = await page.evaluate((id) => window.Module.kicadCollabGetPos(id), SEG1);
+    const [bx, by] = before.split(",").map(Number);
+
+    const moveTo = async (x: number) => {
+      await page.evaluate(
+        ({ id, x, by }) =>
+          window.Module.kicadCollabApply(
+            JSON.stringify({
+              changed: [{ id, type: "PCB_TRACK", sx: x, sy: by, ex: x + 50_800_000, ey: by, width: 200000 }],
+              added: [],
+              removed: [],
+            }),
+          ),
+        { id: SEG1, x, by },
+      );
+      await expect
+        .poll(() => page.evaluate((id) => window.Module.kicadCollabGetPos(id), SEG1), {
+          timeout: 10000,
+          intervals: [200],
+        })
+        .toBe(`${x},${by}`);
+    };
+
+    await moveTo(bx + 5_000_000); // 1st apply
+    await moveTo(bx + 8_000_000); // 2nd apply — RED before the -DDEBUG fix (apply mis-dispatches), GREEN after
+    expect(hasAbort(testLogger), "no WASM abort").toBe(false);
+  });
+
   // Apply mutates the model headless: kicadOpenFile returns false (the incomplete-project load
   // skips some late steps) but the board IS built, so BOARD_COMMIT::Push takes effect. Rendering
   // still needs the real app. (Same headless reality as the eeschema apply test.)

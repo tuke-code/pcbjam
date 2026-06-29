@@ -51,16 +51,23 @@ endif
 # crashes apps at startup with "RuntimeError: function signature mismatch".
 CXXFLAGS += -MMD -MP
 
+# Native wasm-EH is the only build mode: compile + link with -fwasm-exceptions (legacy encoding) +
+# wasm setjmp/longjmp, matching the libwx build (scripts/build-wx-wasm.sh) and scripts/common/env.sh.
+# The in-link Asyncify (emsdk Binaryen v121) crashes on wasm-EH, so build-wasm-test.sh stubs it and
+# runs the real pipeline (--hoist-cpp-catches + --asyncify via apply-asyncify.sh) post-link.
+EH_FLAGS = -fwasm-exceptions -sSUPPORT_LONGJMP=wasm -sWASM_LEGACY_EXCEPTIONS=1 -sDYNCALLS=1
+CXXFLAGS += $(EH_FLAGS)
+
 # Base Emscripten flags (for all apps)
 # ASYNCIFY enables blocking modal dialogs (ShowModal waits for user)
 # ASYNCIFY_IMPORTS tells Emscripten which imported JS functions can unwind the stack
 # - startModal: for modal dialogs
 # - js_writeTextToClipboard, js_readTextFromClipboard, js_clipboardHasText, js_clearClipboard: for clipboard
 # - js_enumerateFonts: for font enumeration via Local Font Access API
-BASE_LDFLAGS = -sALLOW_MEMORY_GROWTH -sERROR_ON_UNDEFINED_SYMBOLS=0 \
+BASE_LDFLAGS = $(EH_FLAGS) -sALLOW_MEMORY_GROWTH -sERROR_ON_UNDEFINED_SYMBOLS=0 \
                -s "EXPORTED_RUNTIME_METHODS=['HEAPU8','HEAP8','HEAP32','ccall']" \
                -sASYNCIFY=1 \
-               -sASYNCIFY_STACK_SIZE=8192 \
+               -sASYNCIFY_STACK_SIZE=65536 \
                -sASYNCIFY_IMPORTS=['startModal','js_writeTextToClipboard','js_readTextFromClipboard','js_clipboardHasText','js_clearClipboard','js_enumerateFonts']
 
 # LDFLAGS for non-GL apps (standalone tests)
@@ -92,7 +99,7 @@ LDFLAGS_PTHREAD = $(DEBUG_LDFLAGS) $(BASE_LDFLAGS) -pthread \
                   $(WX_LDFLAGS_NOGL)
 
 # Coroutine harness flags - mirror KiCad's fiber-related runtime needs
-COROUTINE_BASE_LDFLAGS = -sALLOW_MEMORY_GROWTH -sERROR_ON_UNDEFINED_SYMBOLS=0 \
+COROUTINE_BASE_LDFLAGS = $(EH_FLAGS) -sALLOW_MEMORY_GROWTH -sERROR_ON_UNDEFINED_SYMBOLS=0 \
                -s "EXPORTED_RUNTIME_METHODS=['HEAPU8','HEAP8','HEAP32','ccall']" \
                -sASYNCIFY=1 \
                -sASYNCIFY_STACK_SIZE=65536 \
@@ -110,6 +117,13 @@ LDFLAGS_RACES = $(DEBUG_LDFLAGS) $(COROUTINE_BASE_LDFLAGS) -sASSERTIONS=0 $(WX_L
 # stack KiCad actually ships (emscripten_sleep needs Asyncify to yield).
 LDFLAGS_RAYTRACE = $(DEBUG_LDFLAGS) $(COROUTINE_BASE_LDFLAGS) -pthread \
                   -sPTHREAD_POOL_SIZE='navigator.hardwareConcurrency' \
+                  -sPTHREAD_POOL_SIZE_STRICT=0 \
+                  $(WX_LDFLAGS_NOGL)
+
+# LDFLAGS for the real-pool test (Phase 1a). Like LDFLAGS_RAYTRACE but pre-warm +2 workers so
+# the lifecycle mode's small BS::pause_thread_pool(2) gets pre-warmed workers (no on-demand spawn).
+LDFLAGS_REALPOOL = $(DEBUG_LDFLAGS) $(COROUTINE_BASE_LDFLAGS) -pthread \
+                  -sPTHREAD_POOL_SIZE='navigator.hardwareConcurrency + 2' \
                   -sPTHREAD_POOL_SIZE_STRICT=0 \
                   $(WX_LDFLAGS_NOGL)
 
@@ -209,13 +223,13 @@ minimal_test.html: minimal_test.o $(WX_CORE_LIB) $(JS_FILES)
 
 # --- DOM-port bug reproductions (docs/features/wx-dom-port/branch-review.md) ---
 
-# wxTextCtrl reentry-guard repro. Needs -fexceptions: it throws from a wxEVT_TEXT
-# handler to prove the OnDomEvent m_inDomInput reset must be exception-safe.
+# wxTextCtrl reentry-guard repro: it throws from a wxEVT_TEXT handler to prove the
+# OnDomEvent m_inDomInput reset must be exception-safe (works under native -fwasm-exceptions).
 $(S)/textctrl-reentry/textctrl-reentry_test.o: $(S)/textctrl-reentry/textctrl-reentry_test.cpp
-	$(CXX) -c $(CXXFLAGS) -fexceptions $< -o $@
+	$(CXX) -c $(CXXFLAGS) $< -o $@
 
 $(S)/textctrl-reentry/textctrl-reentry_test.html: $(S)/textctrl-reentry/textctrl-reentry_test.o $(WX_CORE_LIB) $(JS_FILES)
-	$(CXX) $< $(LDFLAGS_NOGL) -fexceptions --pre-js $(JS) --shell-file $(HTML) -o $@
+	$(CXX) $< $(LDFLAGS_NOGL) --pre-js $(JS) --shell-file $(HTML) -o $@
 
 textctrl-reentry: $(S)/textctrl-reentry/textctrl-reentry_test.html
 
@@ -589,6 +603,100 @@ raytrace-threads: $(S)/raytrace-threads/raytrace_threads_test.html
 # Include the raytracer-threading repro in the default `all` build (prereqs accumulate).
 all: $(S)/raytrace-threads/raytrace_threads_test.html
 
+# Un-shimmed copy of KiCad's BS::thread_pool: the single-thread #ifdef __EMSCRIPTEN__ shim in
+# detach_task is disabled (-> #if 0) so the pool tests exercise REAL multithreading WITHOUT
+# modifying the pristine KiCad header and WITHOUT a compile macro. Regenerated at parse time to
+# stay in sync. (HASH is a literal '#', escaped so make does not treat it as a comment.)
+HASH := \#
+POOL_UNSHIMMED := $(S)/_pool_unshimmed
+$(shell mkdir -p $(POOL_UNSHIMMED); sed 's/$(HASH)ifdef __EMSCRIPTEN__/$(HASH)if 0/' $(KICAD_ROOT)/thirdparty/thread-pool/bs_thread_pool.hpp > $(POOL_UNSHIMMED)/bs_thread_pool.hpp)
+
+# Real KiCad thread-pool test (Phase 1a / native-EH). Compiles the REAL
+# kicad/common/thread_pool.cpp (GetKiCadThreadPool) with minimal pgm_base/advanced_config
+# stubs; the pool is un-shimmed via a generated bs_thread_pool.hpp (POOL_UNSHIMMED below) so
+# tasks run on workers.
+TP_REAL = $(S)/threadpool-real
+TP_REAL_INC = -std=c++20 \
+              -I$(TP_REAL)/stubs -I$(POOL_UNSHIMMED) -I$(KICAD_ROOT)/include -I$(KICAD_ROOT)/thirdparty/thread-pool
+
+$(TP_REAL)/threadpool_real_test.o: $(TP_REAL)/threadpool_real_test.cpp
+	$(CXX) -c $(CXXFLAGS) -pthread $(TP_REAL_INC) $< -o $@
+
+$(TP_REAL)/thread_pool.o: $(KICAD_ROOT)/common/thread_pool.cpp
+	$(CXX) -c $(CXXFLAGS) -pthread $(TP_REAL_INC) $< -o $@
+
+$(TP_REAL)/kicad_pool_stubs.o: $(TP_REAL)/stubs/kicad_pool_stubs.cpp
+	$(CXX) -c $(CXXFLAGS) -pthread $(TP_REAL_INC) $< -o $@
+
+$(TP_REAL)/threadpool_real_test.html: $(TP_REAL)/threadpool_real_test.o $(TP_REAL)/thread_pool.o $(TP_REAL)/kicad_pool_stubs.o $(WX_CORE_LIB) $(JS_FILES)
+	$(CXX) $(filter %.o %.a,$^) $(LDFLAGS_REALPOOL) --pre-js $(JS) --shell-file $(HTML) -o $@
+
+threadpool-real: $(TP_REAL)/threadpool_real_test.html
+.PHONY: threadpool-real
+
+all: $(TP_REAL)/threadpool_real_test.html
+
+# On-demand non-warm Worker test (Phase 2). The real pool (compiled-in thread_pool.cpp)
+# consumes the pre-warmed Workers, then raw fly-threads force on-demand creation;
+# wasm/shims/nanosleep_yield.c (a strong nanosleep override; -Wl,--wrap crashes wasm-ld)
+# makes the main-thread sleep_for join Asyncify-yield so the on-demand Workers boot.
+# Reuses threadpool-real's pool stubs.
+OD = $(S)/pthread-ondemand
+OD_INC = -std=c++20 \
+         -I$(S)/threadpool-real/stubs -I$(POOL_UNSHIMMED) -I$(KICAD_ROOT)/include -I$(KICAD_ROOT)/thirdparty/thread-pool
+SHIMS = ../../wasm/shims
+
+$(OD)/pthread_ondemand_test.o: $(OD)/pthread_ondemand_test.cpp
+	$(CXX) -c $(CXXFLAGS) -pthread $(OD_INC) $< -o $@
+
+$(OD)/thread_pool.o: $(KICAD_ROOT)/common/thread_pool.cpp
+	$(CXX) -c $(CXXFLAGS) -pthread $(OD_INC) $< -o $@
+
+$(OD)/kicad_pool_stubs.o: $(S)/threadpool-real/stubs/kicad_pool_stubs.cpp
+	$(CXX) -c $(CXXFLAGS) -pthread $(OD_INC) $< -o $@
+
+# Compiled as C (no -std=c++): em++ keys language off the .c extension.
+$(OD)/nanosleep_yield.o: $(SHIMS)/nanosleep_yield.c
+	$(CXX) -c -pthread $< -o $@
+
+$(OD)/pthread_ondemand_test.html: $(OD)/pthread_ondemand_test.o $(OD)/thread_pool.o $(OD)/kicad_pool_stubs.o $(OD)/nanosleep_yield.o $(WX_CORE_LIB) $(JS_FILES)
+	$(CXX) $(filter %.o %.a,$^) $(LDFLAGS_RAYTRACE) --pre-js $(JS) --shell-file $(HTML) -o $@
+
+pthread-ondemand: $(OD)/pthread_ondemand_test.html
+.PHONY: pthread-ondemand
+
+all: $(OD)/pthread_ondemand_test.html
+
+# Library-preload native-EH repro (1b). Standalone std::async worker that parses+throws (mode-c)
+# and proxies a fetch to main (emscripten_proxy_*) — mirrors the KiCad-10 PCBJAM preload shape.
+# No KiCad source. Uses the system proxying queue (built into the pthread runtime).
+$(S)/async-preload/async_preload_test.o: $(S)/async-preload/async_preload_test.cpp
+	$(CXX) -c $(CXXFLAGS) -pthread $< -o $@
+
+$(S)/async-preload/async_preload_test.html: $(S)/async-preload/async_preload_test.o $(WX_CORE_LIB) $(JS_FILES)
+	$(CXX) $< $(LDFLAGS_RAYTRACE) --pre-js $(JS) --shell-file $(HTML) -o $@
+	../../scripts/common/inject-dyncall-shims.sh $(basename $@).js
+
+async-preload: $(S)/async-preload/async_preload_test.html
+.PHONY: async-preload
+
+all: $(S)/async-preload/async_preload_test.html
+
+# A raytracer worker-join run inside a wx modal pump. The pump dispatches the work via
+# ProcessEvents (ccall async:true) at Asyncify state==Normal, so both joins complete:
+# m=0 sleep_for busy-wait, m=1 emscripten_sleep yield.
+$(S)/raytrace-modal/raytrace_modal_test.o: $(S)/raytrace-modal/raytrace_modal_test.cpp
+	$(CXX) -c $(CXXFLAGS) -pthread $< -o $@
+
+$(S)/raytrace-modal/raytrace_modal_test.html: $(S)/raytrace-modal/raytrace_modal_test.o $(WX_CORE_LIB) $(JS_FILES)
+	$(CXX) $< $(LDFLAGS_RAYTRACE) --pre-js $(JS) --shell-file $(HTML) -o $@
+	../../scripts/common/inject-dyncall-shims.sh $(basename $@).js
+
+raytrace-modal: $(S)/raytrace-modal/raytrace_modal_test.html
+.PHONY: raytrace-modal
+
+all: $(S)/raytrace-modal/raytrace_modal_test.html
+
 # Log Error test (no GL) - reproduces KiCad's kiface error dialog
 $(S)/logerror/logerror_test.o: $(S)/logerror/logerror_test.cpp
 	$(CXX) -c $(CXXFLAGS) $< -o $@
@@ -634,6 +742,7 @@ $(S)/asyncify-races/races_test_noheal.html: $(S)/asyncify-races/races_test.o $(S
 $(S)/asyncify-races/races_test_nosleepfix.html: $(S)/asyncify-races/races_test.o $(S)/coroutine/libcontext.o $(WX_CORE_LIB)
 	$(CXX) $^ $(LDFLAGS_RACES) --pre-js $(JS) --shell-file $(HTML) -o $@
 	SHIM_DISABLE_HANDLESLEEP=1 ../../scripts/common/inject-dyncall-shims.sh $(basename $@).js
+
 
 # Convenience targets
 menu: $(S)/menu/menu_test.html
@@ -730,7 +839,7 @@ coroutine-pthread: $(S)/coroutine-pthread/coroutine_test.html
 .PHONY: coroutine-pthread
 
 # === No-wx pthread main() reproduction: fiber pattern in main + pthreads, no wxWidgets ===
-LDFLAGS_COROUTINE_PTHREAD_NOWX = $(DEBUG_LDFLAGS) -sALLOW_MEMORY_GROWTH -sERROR_ON_UNDEFINED_SYMBOLS=0 \
+LDFLAGS_COROUTINE_PTHREAD_NOWX = $(EH_FLAGS) $(DEBUG_LDFLAGS) -sALLOW_MEMORY_GROWTH -sERROR_ON_UNDEFINED_SYMBOLS=0 \
                   -sASYNCIFY=1 -sASYNCIFY_STACK_SIZE=65536 -sASYNCIFY_IMPORTS=['emscripten_fiber_swap'] \
                   -sDYNCALLS=1 -pthread -sPTHREAD_POOL_SIZE='navigator.hardwareConcurrency' \
                   -sPTHREAD_POOL_SIZE_STRICT=0 -sEXPORTED_RUNTIME_METHODS=['ccall']
@@ -759,19 +868,19 @@ coroutine-pthread-nested: $(S)/coroutine-pthread/nested_repro.html
 .PHONY: coroutine-pthread-nested
 
 # Nested invoke_/dynCall reproduction WITH exceptions (invoke_* boundaries, asyncify-unwindable)
-LDFLAGS_COROUTINE_INVOKE = $(DEBUG_LDFLAGS) -sALLOW_MEMORY_GROWTH -sERROR_ON_UNDEFINED_SYMBOLS=0 \
+LDFLAGS_COROUTINE_INVOKE = $(EH_FLAGS) $(DEBUG_LDFLAGS) -sALLOW_MEMORY_GROWTH -sERROR_ON_UNDEFINED_SYMBOLS=0 \
                   -sASYNCIFY=1 -sASYNCIFY_STACK_SIZE=65536 \
                   -sASYNCIFY_IMPORTS=['invoke_vi','invoke_v','invoke_ii','invoke_iii','emscripten_fiber_swap'] \
-                  -sDYNCALLS=1 -fexceptions -pthread -sPTHREAD_POOL_SIZE='navigator.hardwareConcurrency' \
+                  -sDYNCALLS=1 -pthread -sPTHREAD_POOL_SIZE='navigator.hardwareConcurrency' \
                   -sPTHREAD_POOL_SIZE_STRICT=0 -sEXPORTED_RUNTIME_METHODS=['ccall']
 
 $(S)/coroutine-pthread/nested_repro_ex.o: $(S)/coroutine-pthread/nested_repro.cpp $(S)/coroutine/kicad_coroutine_harness.h
 	@mkdir -p $(S)/coroutine-pthread
-	$(CXX) -c $(CXXFLAGS) -pthread -fexceptions -I$(KICAD_ROOT)/thirdparty/libcontext -I$(S)/coroutine $< -o $@
+	$(CXX) -c $(CXXFLAGS) -pthread -I$(KICAD_ROOT)/thirdparty/libcontext -I$(S)/coroutine $< -o $@
 
 $(S)/coroutine-pthread/libcontext_ex.o: $(KICAD_ROOT)/thirdparty/libcontext/libcontext.cpp $(KICAD_ROOT)/thirdparty/libcontext/libcontext.h
 	@mkdir -p $(S)/coroutine-pthread
-	$(CXX) -c $(CXXFLAGS) -pthread -fexceptions -I$(KICAD_ROOT)/thirdparty/libcontext $< -o $@
+	$(CXX) -c $(CXXFLAGS) -pthread -I$(KICAD_ROOT)/thirdparty/libcontext $< -o $@
 
 $(S)/coroutine-pthread/nested_repro_ex.html: $(S)/coroutine-pthread/nested_repro_ex.o $(S)/coroutine-pthread/libcontext_ex.o
 	$(CXX) $(filter %.o %.a,$^) $(LDFLAGS_COROUTINE_INVOKE) -o $@
@@ -794,7 +903,7 @@ LDFLAGS_COROUTINE_EMBIND = $(LDFLAGS_COROUTINE_INVOKE) --bind
 
 $(S)/coroutine-pthread/embind_repro.o: $(S)/coroutine-pthread/embind_repro.cpp $(S)/coroutine/kicad_coroutine_harness.h
 	@mkdir -p $(S)/coroutine-pthread
-	$(CXX) -c $(CXXFLAGS) -pthread -fexceptions -I$(KICAD_ROOT)/thirdparty/libcontext -I$(S)/coroutine $< -o $@
+	$(CXX) -c $(CXXFLAGS) -pthread -I$(KICAD_ROOT)/thirdparty/libcontext -I$(S)/coroutine $< -o $@
 
 $(S)/coroutine-pthread/embind_repro.html: $(S)/coroutine-pthread/embind_repro.o $(S)/coroutine-pthread/libcontext_ex.o
 	$(CXX) $(filter %.o %.a,$^) $(LDFLAGS_COROUTINE_EMBIND) -o $@
@@ -816,7 +925,7 @@ coroutine-pthread-mainloop: $(S)/coroutine-pthread/mainloop_repro.html
 .PHONY: coroutine-pthread-mainloop
 
 # WebGL2 + coroutine reproduction (no wx, no pthreads, default shell with #canvas)
-LDFLAGS_COROUTINE_GL = $(DEBUG_LDFLAGS) -sALLOW_MEMORY_GROWTH -sERROR_ON_UNDEFINED_SYMBOLS=0 \
+LDFLAGS_COROUTINE_GL = $(EH_FLAGS) $(DEBUG_LDFLAGS) -sALLOW_MEMORY_GROWTH -sERROR_ON_UNDEFINED_SYMBOLS=0 \
                   -sASYNCIFY=1 -sASYNCIFY_STACK_SIZE=65536 -sASYNCIFY_IMPORTS=['emscripten_fiber_swap'] \
                   -sDYNCALLS=1 -sMAX_WEBGL_VERSION=2 -sMIN_WEBGL_VERSION=2 -sEXPORTED_RUNTIME_METHODS=['ccall']
 

@@ -1,5 +1,9 @@
 # `-fexceptions` vs `-fwasm-exceptions` in KiCad-WASM — research dossier
 
+> **✅ FINALIZED:** native wasm-EH is now the **only** build mode — there is no `-fexceptions` /
+> `WX_LEGACY_EH` path, and the 3D viewer builds by default. The migration plan, audit, and spike
+> notes below are retained as the historical research/decision record.
+
 > **Status:** research / decision record. A parallel session attempted the migration
 > end-to-end and **parked it** on an emscripten-4.0.2 LLVM codegen bug — see
 > [`docs/wasm-exceptions-experiment.md`](../../wasm-exceptions-experiment.md) (full
@@ -10,6 +14,15 @@
 > Authored 2026-06-11/12. Companion to [`docs/features/async/`](../async/) (the Asyncify
 > `currData` contention dossier) — this dossier covers the *exception-handling* axis of
 > the same machine.
+
+> **UPDATE 2026-06-22 (see [`06-spike-plan.md`](06-spike-plan.md)).** A 5-agent spike refreshed
+> this dossier and corrected three things below: (1) **the encoding is resolved to LEGACY**
+> (`WASM_LEGACY_EXCEPTIONS=1`) — Asyncify can't consume exnref in any released Binaryen, so the
+> "exnref → TryTable variant" fork is closed; the experiment's `=0` was a dead end. (2) **Binaryen
+> is not a blocker** — CI/publish already pin `BINARYEN_VERSION=130` (the "v121 locally" note below
+> is only the finalize/in-link copy). (3) The long pole is the **emsdk/LLVM compiler bump** for
+> parseable legacy wasm-EH + the OCC `br_table` fix, *not* a newer wasm-opt. The phased red-green
+> plan lives in 06.
 
 ## Why this exists
 
@@ -60,10 +73,12 @@ KiCad at all.
 | [`01-background-two-eh-models.md`](01-background-two-eh-models.md) | How JS-EH (`invoke_*`) and wasm-EH actually work, and the three concrete couplings into our Asyncify machine. |
 | [`02-measurements.md`](02-measurements.md) | Our controlled size experiment on pcbnew (methodology + numbers) and the published third-party benchmarks. |
 | [`03-toolchain-status.md`](03-toolchain-status.md) | Compatibility matrix: emcc checks, binaryen history (what merged in v125, what didn't), JSPI/fibers, setjmp/longjmp, mixing modes. |
-| [`04-kicad-audit.md`](04-kicad-audit.md) | The brace-matching catch-block audit: 85 direct / 93 review / 458 trivial of 636; libpng/libjpeg setjmp story; refactor effort if done by hand. |
 | [`05-asyncify-fork-design.md`](05-asyncify-fork-design.md) | Asyncify.cpp internals, why catch arms are structurally hard, and the catch-arm-hoisting fork design with limits and effort. |
-| [`catch_audit.py`](catch_audit.py) | The audit tool (re-runnable; suitable as a CI gate on the kicad submodule). |
-| [`audit-results.txt`](audit-results.txt) | Full audit output incl. all 85 direct-suspend sites. |
+| [`06-spike-plan.md`](06-spike-plan.md) | **(2026-06-22)** Refreshed findings + the phased red-green spike plan; supersedes the encoding/Binaryen-version framing above. |
+| [`07-spike-results-and-opinion.md`](07-spike-results-and-opinion.md) | **(2026-06-22)** Toy-spike results: asyncify + legacy-wasm-EH works; the `HoistCppCatches` Binaryen pass flips suspend-in-catch green on all 3 engines; go/no-go opinion. |
+| [`08-wx-app-render-rootcause.md`](08-wx-app-render-rootcause.md) | Why a native-EH wx app rendered blank: the `set_main_loop` `"unwind"` throw caught by native-EH `catch_all` cleanup pads tore down the main frame. |
+| [`09-event-loop-deparking-plan.md`](09-event-loop-deparking-plan.md) | The EH-agnostic main-loop rework (de-park → per-frame-yield `while`-loop) fixing the blank render + the coroutine/menu regressions. |
+| [`10-pthreads-native-eh.md`](10-pthreads-native-eh.md) | **(2026-06-24)** Native-EH × pthreads: the main-thread thread-spawn regression (`invalid state: 1` / re-entrant `main()`); the pool pattern survives; the KiCad raw→pool refactor plan + the test gap. |
 
 ## Relationship to docs/features/async/
 

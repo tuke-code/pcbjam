@@ -28,10 +28,6 @@ on:
         description: "Build the WASM 3D viewer into pcbnew (ON/OFF)"
         type: string
         default: "ON"
-      binaryen_version:
-        description: "Binaryen version for the host asyncify step"
-        type: string
-        default: "130"
       run_tests:
         description: "Run the wxWidgets + KiCad e2e suites after building"
         type: boolean
@@ -55,7 +51,6 @@ jobs:
     timeout-minutes: 300
     env:
       KICAD_LOG_NESTED: "1"
-      BINARYEN_VERSION: ${{ inputs.binaryen_version }}
       # Opt level for the asyncify shrink pass (the only opt-dependent step).
       BINARYEN_OPT_LEVEL: ${{ inputs.opt_level }}
       BUILD_3D_VIEWER: ${{ inputs.build_3d_viewer }}
@@ -77,19 +72,23 @@ jobs:
         with: { node-version: 20 }
 
       # --- cache keys --------------------------------------------------------
-      # base  = opt-INDEPENDENT (no binaryen ver / opt level): docker compile out.
-      # final = opt-SPECIFIC: post-processed (asyncify + wasm-opt -O) out.
+      # base  = opt-INDEPENDENT (no binaryen / opt level): docker compile out.
+      # final = opt-SPECIFIC: post-processed (asyncify + wasm-opt -O) out, keyed
+      #   on the binaryen submodule SHA — the host post-process uses that fork's
+      #   wasm-opt (--hoist-cpp-catches + --asyncify + -O), so bumping the fork
+      #   must bust this cache — plus the opt level.
       # Both include the 3D flag so 3D-on/off never share an entry.
       - name: Compute build inputs
         id: keys
         run: |
           KICAD=$(git -C kicad rev-parse HEAD)
           WX=$(git -C wxwidgets rev-parse HEAD)
+          BIN=$(git -C binaryen rev-parse --short HEAD)
           SC=$(node scripts/deploy/wasm-cache-hash.mjs)
           EPOCH=$(cat .ci-cache-epoch 2>/dev/null || echo 0)
           THREED='${{ inputs.build_3d_viewer }}'
           BASE="kbase-${{ runner.os }}-k${KICAD}-wx${WX}-sc${SC}-3d${THREED}-e${EPOCH}"
-          FINAL="kwasm-${{ runner.os }}-bin${{ inputs.binaryen_version }}${{ inputs.opt_level }}-k${KICAD}-wx${WX}-sc${SC}-3d${THREED}-e${EPOCH}"
+          FINAL="kwasm-${{ runner.os }}-bin${BIN}${{ inputs.opt_level }}-k${KICAD}-wx${WX}-sc${SC}-3d${THREED}-e${EPOCH}"
           {
             echo "kicad=$KICAD"; echo "wx=$WX"; echo "sc=$SC"; echo "epoch=$EPOCH"
             echo "base_key=$BASE"; echo "final_key=$FINAL"
@@ -167,7 +166,6 @@ jobs:
         if: steps.final-cache.outputs.cache-hit != 'true' && steps.base-cache.outputs.cache-hit != 'true'
         run: |
           export KICAD_DOCKER_CPUS="$(( $(nproc) - 1 ))" KICAD_DOCKER_MEM=110G
-          export BINARYEN_BUILD_FROM_SOURCE=1
           echo "Compiling ALL tools (base wasm), 3D viewer=${BUILD_3D_VIEWER}, -j $(nproc)"
           ./docker/build.sh all --compile-only --build-deps -j "$(nproc)"
           ls -lh output/*.wasm
@@ -207,14 +205,15 @@ jobs:
 
       # PHASE 2 (any final miss): pure-host post-process on the base wasm —
       # dyncall + finalize + asyncify + `wasm-opt ${opt_level}`. The ONLY
-      # opt-dependent work. No container; get-wasm-opt self-provisions Binaryen.
+      # opt-dependent work. No container; the binaryen submodule fork's wasm-opt
+      # is built on demand via scripts/binaryen-hoist-pass/build-wasm-opt.sh.
       - name: Host post-process (asyncify + wasm-opt ${{ inputs.opt_level }})
         if: steps.final-cache.outputs.cache-hit != 'true'
         run: |
-          export KICAD_PIPELINE=1 BINARYEN_CORES=16 BINARYEN_BUILD_FROM_SOURCE=1
-          echo "Post-processing ALL tools with ${BINARYEN_OPT_LEVEL}, BINARYEN_VERSION=${BINARYEN_VERSION}"
+          export KICAD_PIPELINE=1 BINARYEN_CORES=16
+          echo "Post-processing ALL tools with ${BINARYEN_OPT_LEVEL}"
           ./docker/build.sh all --postprocess-only
-          echo "wasm-opt used:"; ./scripts/common/get-wasm-opt.sh --version 2>/dev/null || true
+          echo "wasm-opt used:"; "$(./scripts/binaryen-hoist-pass/build-wasm-opt.sh 2>/dev/null)" --version || true
           ls -lh output/*.wasm
 
       - name: Save FINAL WASM output cache

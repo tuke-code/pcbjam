@@ -158,9 +158,15 @@ if [ $NEEDS_CONFIGURE -eq 1 ]; then
         echo "Building wxWidgets in RELEASE mode"
     fi
 
+    # Exception model: native WebAssembly exceptions (legacy binary encoding) + wasm setjmp/longjmp,
+    # single-sourced from scripts/common/env.sh. The catch-arm-hoisting pass (run post-link, see
+    # build-wasm-test.sh) lets Asyncify suspend from inside C++ catch blocks. See docs/features/wasm-exceptions/.
+    WX_EH_FLAGS="$DEPS_EH_FLAGS"
+    echo "wx EH model flags: ${WX_EH_FLAGS}"
+
     # Include emscripten cache sysroot for zlib headers
-    export CFLAGS="-DZ_HAVE_UNISTD_H=1 -I$EM_CACHE_SYSROOT/include ${WX_DEBUG_FLAGS} -fexceptions -pthread -matomics -mbulk-memory"
-    export CXXFLAGS="-DZ_HAVE_UNISTD_H=1 -I$EM_CACHE_SYSROOT/include -I$PCRE2_INCLUDE ${WX_DEBUG_FLAGS} -fexceptions -pthread -matomics -mbulk-memory"
+    export CFLAGS="-DZ_HAVE_UNISTD_H=1 -I$EM_CACHE_SYSROOT/include ${WX_DEBUG_FLAGS} ${WX_EH_FLAGS} -pthread -matomics -mbulk-memory"
+    export CXXFLAGS="-DZ_HAVE_UNISTD_H=1 -I$EM_CACHE_SYSROOT/include -I$PCRE2_INCLUDE ${WX_DEBUG_FLAGS} ${WX_EH_FLAGS} -pthread -matomics -mbulk-memory"
     export LDFLAGS="-L$EM_CACHE_SYSROOT/lib/wasm32-emscripten"
 
     emconfigure "$WX_SOURCE/configure" \

@@ -22,7 +22,7 @@
 #
 # The build is split into two phases:
 # 1. Docker: Compile KiCad to WASM (without asyncify)
-# 2. Host: dyncall shims + finalize + asyncify + -O2 (Binaryen via get-wasm-opt.sh)
+# 2. Host: dyncall shims + finalize + asyncify + -O2 (Binaryen submodule via build-wasm-opt.sh)
 #
 # KICAD_PIPELINE=1 (multi-app builds only): run phase 2 of each app in the
 # background while the next app compiles in the container. wasm-opt is
@@ -48,6 +48,11 @@ source "$(dirname "$0")/../scripts/common/logging.sh"
 
 # Build-progress markers (parsed by scripts/build-monitor.sh).
 source "$(dirname "$0")/../scripts/common/stages.sh"
+
+# Pinned toolchain version (single source of truth). Exported so the compose build.args can pass it
+# into the Docker image's emsdk install — bumping the toolchain is then a one-line edit in versions.sh.
+source "$(dirname "$0")/../scripts/common/versions.sh"
+export EMSCRIPTEN_VERSION
 
 set -e
 
@@ -120,7 +125,7 @@ echo "Building app: ${APP_NAME}"
 #   --postprocess-only   — only the host post-process (dyncall + finalize +
 #                          asyncify + wasm-opt -O$BINARYEN_OPT_LEVEL) on the
 #                          existing output/ base wasm; NO container needed
-#                          (get-wasm-opt.sh self-provisions Binaryen).
+#                          (build-wasm-opt.sh self-provisions the Binaryen submodule).
 # Extracted here so they are NOT forwarded to the inner build-<app>.sh scripts.
 PHASE="both"
 _FILTERED=()
@@ -143,8 +148,9 @@ fi
 # which is pure host work on the already-built base wasm in output/.
 if [[ "$PHASE" != "postprocess" ]]; then
 
-# Start container if not running
-docker compose -f docker/docker-compose.yml up -d
+# Start container if not running. --build so the image is rebuilt when the pinned EMSCRIPTEN_VERSION
+# (build-arg from versions.sh) changes; Docker layer-caches it to a near no-op when unchanged.
+docker compose -f docker/docker-compose.yml up -d --build
 
 # Sync source code to container volume (fixes macOS Docker VirtioFS issues)
 # Use --checksum to only transfer files with different CONTENT, not timestamps.
@@ -217,7 +223,7 @@ compile_app() {
     # emsdk_env.sh, so the build shell would lack emcc/embuilder on PATH. Setting
     # EMSDK lets scripts/common/env.sh source /emsdk/emsdk_env.sh and activate the toolchain.
     docker compose -f docker/docker-compose.yml exec -e EMSDK=/emsdk \
-        -e BUILD_3D_VIEWER="${BUILD_3D_VIEWER:-OFF}" \
+        -e BUILD_3D_VIEWER="${BUILD_3D_VIEWER:-ON}" \
         kicad-wasm-builder \
         "/workspace/scripts/kicad/build-${app}.sh" "${ARGS[@]}"
 
@@ -266,6 +272,8 @@ postprocess_app() {
 
     # Apply asyncify transformation on host. The converter is a synchronous node
     # CLI built with ASYNCIFY=0, so asyncify is unnecessary and would be wrong.
+    # apply-asyncify always runs the --hoist-cpp-catches pass FIRST (native wasm-EH is the only build
+    # mode) so Asyncify can suspend from inside C++ catch arms, then asyncify + removelist + -O2.
     if [ "$app" != "sym_convert" ]; then
         kw_stage asyncify
         ./scripts/common/apply-asyncify.sh "${out_dir}/${app}.wasm" "${out_dir}/${app}.wasm"
@@ -349,7 +357,7 @@ elif [[ "$PHASE" == "postprocess" ]]; then
     # wasm (no container). Parallelize across apps when pipelining.
     if [[ "${KICAD_PIPELINE:-0}" == "1" ]] && [ "$TOTAL_APPS" -gt 1 ]; then
         mkdir -p "$PIPELINE_LOG_DIR"
-        ./scripts/common/get-wasm-opt.sh >/dev/null  # pre-warm Binaryen once
+        ./scripts/binaryen-hoist-pass/build-wasm-opt.sh >/dev/null  # pre-warm Binaryen (submodule) once
         _install_pipeline_trap
         for app in "${APPS[@]}"; do
             pipeline_postprocess "$app"
@@ -364,9 +372,9 @@ elif [[ "${KICAD_PIPELINE:-0}" == "1" ]] && [ "$TOTAL_APPS" -gt 1 ]; then
     # both, pipelined: overlap app[i+1]'s container compile with app[i]'s host
     # post-process (KICAD_PIPELINE=1).
     mkdir -p "$PIPELINE_LOG_DIR"
-    # Pre-warm the Binaryen download once — two concurrent postprocesses racing
-    # the first download would collide on the extract/mv.
-    ./scripts/common/get-wasm-opt.sh >/dev/null
+    # Pre-build the Binaryen submodule once — two concurrent postprocesses racing
+    # the first from-source build would collide.
+    ./scripts/binaryen-hoist-pass/build-wasm-opt.sh >/dev/null
     _install_pipeline_trap
     idx=1
     for app in "${APPS[@]}"; do

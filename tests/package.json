@@ -39,7 +39,9 @@
     "test:coroutine:firefox": "playwright test --config=playwright-coroutine.config.ts --project=firefox",
     "test:coroutine:chrome": "playwright test --config=playwright-coroutine.config.ts --project=chromium --headed",
     "test:asyncify:firefox": "playwright test --config=playwright-asyncify.config.ts --project=firefox",
-    "test:asyncify:chrome": "playwright test --config=playwright-asyncify.config.ts --project=chromium --headed"
+    "test:asyncify:chrome": "playwright test --config=playwright-asyncify.config.ts --project=chromium --headed",
+    "test:asyncify:safari": "playwright test --config=playwright-asyncify.config.ts --project=webkit",
+    "test:asyncify:all": "npm run test:asyncify:firefox && npm run test:asyncify:safari && npm run test:asyncify:chrome"
   },
   "devDependencies": {
     "@playwright/test": "^1.40.0",

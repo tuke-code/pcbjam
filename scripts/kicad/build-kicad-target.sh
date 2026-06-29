@@ -231,26 +231,40 @@ log_info "Building wxWidgets..."
 log_info "Building KiCad ${APP_NAME} ${KICAD_VERSION} for WASM..."
 
 # Step 5: Set build type
+# Exception model: native WebAssembly exceptions (legacy binary encoding) + wasm setjmp/longjmp,
+# single-sourced from scripts/common/env.sh (KiCad and wxWidgets must agree — mixing EH models
+# link-fails / traps; both build with exceptions enabled). -matomics -mbulk-memory are required for
+# shared memory (pthreads).
+KICAD_EH_FLAGS="$DEPS_EH_FLAGS"
+log_info "KiCad EH model flags: ${KICAD_EH_FLAGS}"
+
 # Use environment DEBUG_BUILD if set, otherwise check local --debug flag
-# -fexceptions is required because wxWidgets is built with exceptions enabled
-# -matomics -mbulk-memory are required for shared memory (pthreads)
 # NOTE: We use -O1 for debug builds because -O0 produces WASM with too many
 # locals for V8/Chrome to compile (error: "local count too large").
 # -O1 keeps debug info but optimizes enough to stay under V8's limits.
 if [ "${DEBUG_BUILD:-0}" = "1" ] || [ $DEBUG -eq 1 ]; then
     BUILD_TYPE="Debug"
-    EXTRA_FLAGS="-g -O1 -fexceptions -matomics -mbulk-memory"
+    EXTRA_FLAGS="-g -O1 ${KICAD_EH_FLAGS} -matomics -mbulk-memory"
+    # CMake defines DEBUG for Config=Debug (kicad/CMakeLists.txt:351). The embind TU (Step 7) is
+    # compiled OUTSIDE CMake, so it must define DEBUG too — otherwise a DEBUG-gated virtual
+    # (EDA_ITEM::Show, eda_item.h:471) occupies a vtable slot in the core's emitted vtable that the
+    # embind TU doesn't account for, shifting every later slot by one. Then every virtual call made
+    # from the embind TU past that slot (SetWidth/GetPosition/...) reads the wrong vtable offset and
+    # mis-dispatches at runtime (call_indirect signature-mismatch trap; under native-EH the trap is
+    # swallowed by the apply coroutine's catch_all → silent hang). See task #54 root-cause analysis.
+    EMBIND_CONFIG_DEFINES="-DDEBUG"
     # -gseparate-dwarf puts debug info in a separate .debug.wasm file
     # This keeps the main WASM small (~200MB) while preserving full debug info
     # DevTools loads the debug file on-demand when debugging
-    LINKER_DEBUG_FLAGS="-O1 -g -gseparate-dwarf -fexceptions"
+    LINKER_DEBUG_FLAGS="-O1 -g -gseparate-dwarf ${KICAD_EH_FLAGS}"
     log_info "Building KiCad in DEBUG mode (separate DWARF for smaller main binary)"
 else
     BUILD_TYPE="Release"
-    EXTRA_FLAGS="-O2 -fexceptions -matomics -mbulk-memory"
+    EXTRA_FLAGS="-O2 ${KICAD_EH_FLAGS} -matomics -mbulk-memory"
+    EMBIND_CONFIG_DEFINES=""   # Release defines no DEBUG in either TU → vtable layouts already match
     # -O0 at link time skips wasm-opt (which can OOM on large WASM files)
     # Compilation is still -O2 for optimized code, but we skip post-link wasm-opt
-    LINKER_DEBUG_FLAGS="-O0 -fexceptions"
+    LINKER_DEBUG_FLAGS="-O0 ${KICAD_EH_FLAGS}"
     log_info "Building KiCad in RELEASE mode (skipping wasm-opt due to memory limits)"
 fi
 
@@ -265,6 +279,15 @@ cd "${KICAD_BUILD}"
 STUBS_DIR="${PROJECT_ROOT}/wasm/stubs"
 STUBS_BUILD="${BUILD_ROOT}/stubs"
 mkdir -p "${STUBS_BUILD}"
+
+# ABI-affecting flags shared by EVERY C++ TU compiled OUTSIDE CMake (the embind + the app stubs below).
+# The core CMake TUs get all of these (DEBUG via Config=Debug -> kicad/CMakeLists.txt:351;
+# KICAD_USE_PLATFORM_WASM; the char16_t char_traits force-include). A TU that misses any of them can
+# diverge in vtable layout / ABI from the core — task #54: the embind missing -DDEBUG shifted its vtable
+# slot offsets by one and hung the collab apply (call_indirect signature-mismatch). Keep them in ONE
+# place so no out-of-CMake C++ TU can skew again. (EMBIND_CONFIG_DEFINES holds the build-config -DDEBUG,
+# set in the BUILD_TYPE block above; empty in Release where neither side defines DEBUG.)
+KICAD_TU_ABI_FLAGS="${EMBIND_CONFIG_DEFINES} -DKICAD_USE_PLATFORM_WASM=1 -include ${STUBS_DIR}/char_traits_uint16_workaround.h"
 
 kw_stage kicad-stubs
 log_info "Building stub libraries..."
@@ -293,7 +316,7 @@ APP_STUB_LINK=""
 APP_SCRIPTING_STUB_SRC="${STUBS_DIR}/${STUB_APP}_scripting_stub.cpp"
 if [ -f "${APP_SCRIPTING_STUB_SRC}" ]; then
     log_info "Building app scripting stub: ${STUB_APP}_scripting_stub.cpp"
-    em++ -c ${WX_CXXFLAGS} "${APP_SCRIPTING_STUB_SRC}" -o "${STUBS_BUILD}/${STUB_APP}_scripting_stub.o"
+    em++ -c ${KICAD_TU_ABI_FLAGS} ${WX_CXXFLAGS} "${APP_SCRIPTING_STUB_SRC}" -o "${STUBS_BUILD}/${STUB_APP}_scripting_stub.o"
     emar rcs "${STUBS_BUILD}/lib${STUB_APP}_scripting_stub.a" "${STUBS_BUILD}/${STUB_APP}_scripting_stub.o"
     APP_STUB_LINK="${APP_STUB_LINK} ${STUBS_BUILD}/lib${STUB_APP}_scripting_stub.a"
 fi
@@ -301,7 +324,7 @@ fi
 APP_FRAME_STUB_SRC="${STUBS_DIR}/${STUB_APP}_frame_stub.cpp"
 if [ -f "${APP_FRAME_STUB_SRC}" ] && [ -s "${APP_FRAME_STUB_SRC}" ]; then
     log_info "Building app frame stub: ${STUB_APP}_frame_stub.cpp"
-    em++ -c ${WX_CXXFLAGS} "${APP_FRAME_STUB_SRC}" -o "${STUBS_BUILD}/${STUB_APP}_frame_stub.o"
+    em++ -c ${KICAD_TU_ABI_FLAGS} ${WX_CXXFLAGS} "${APP_FRAME_STUB_SRC}" -o "${STUBS_BUILD}/${STUB_APP}_frame_stub.o"
     emar rcs "${STUBS_BUILD}/lib${STUB_APP}_frame_stub.a" "${STUBS_BUILD}/${STUB_APP}_frame_stub.o"
     APP_STUB_LINK="${APP_STUB_LINK} ${STUBS_BUILD}/lib${STUB_APP}_frame_stub.a"
 fi
@@ -387,14 +410,14 @@ if [ "${APP_NAME}" = "sym_convert" ]; then
     SYM_CONVERTER_CMAKE_FLAG="-DKICAD_SYM_CONVERTER_WASM=ON"
 fi
 
-# 3D viewer (experimental): opt in with BUILD_3D_VIEWER=ON. Default OFF keeps
-# existing/CI builds unchanged and the 3D stubs in place. When ON, the 3D viewer
-# renders with the GL-free CPU raytracer (RENDER_3D_RAYTRACE_RAM) blitted to the
-# canvas through a plain WebGL2 textured quad — no -sLEGACY_GL_EMULATION. KiCad's
-# fixed-function OpenGL renderer is still compiled (shared files reference it) but
-# never executed on WASM, so its FFP/GLU entry points are satisfied at link time
-# by no-op stubs (gl_ffp_stub.c). See docs/features/fork-cleanup/10-3d-viewer.md.
-BUILD_3D_VIEWER="${BUILD_3D_VIEWER:-OFF}"
+# 3D viewer: built by DEFAULT (BUILD_3D_VIEWER=ON). Opt out with BUILD_3D_VIEWER=OFF, which links the
+# 3D stubs instead. The 3D viewer renders with the GL-free CPU raytracer (RENDER_3D_RAYTRACE_RAM)
+# blitted to the canvas through a plain WebGL2 textured quad — no -sLEGACY_GL_EMULATION. KiCad's
+# fixed-function OpenGL renderer is still compiled (shared files reference it) but never executed on
+# WASM, so its FFP/GLU entry points are satisfied at link time by no-op stubs (gl_ffp_stub.c). The
+# KiCad CMake option KICAD_BUILD_3D_VIEWER_WASM stays OFF upstream; our build passes it explicitly.
+# See docs/features/fork-cleanup/10-3d-viewer.md.
+BUILD_3D_VIEWER="${BUILD_3D_VIEWER:-ON}"
 GL3D_LINK_FLAGS=""
 if [ "${BUILD_3D_VIEWER}" = "ON" ]; then
     log_info "3D viewer ENABLED for WASM (BUILD_3D_VIEWER=ON)"
@@ -410,7 +433,7 @@ emcmake cmake "${KICAD_DIR}" \
     -DCMAKE_MODULE_PATH="${WASM_LAYER}/cmake" \
     -DSYSROOT="${SYSROOT}" \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-    -DCMAKE_CXX_FLAGS="${EXTRA_FLAGS} -pthread -sUSE_ZLIB=1 -DKICAD_USE_PLATFORM_WASM=1${DIAG_DEFINES} -I${SYSROOT}/include -I${STUBS_DIR} -include ${STUBS_DIR}/char_traits_uint16_workaround.h" \
+    -DCMAKE_CXX_FLAGS="${EXTRA_FLAGS} -Xclang -fno-pch-timestamp -pthread -sUSE_ZLIB=1 -DKICAD_USE_PLATFORM_WASM=1${DIAG_DEFINES} -I${SYSROOT}/include -I${STUBS_DIR} -include ${STUBS_DIR}/char_traits_uint16_workaround.h" \
     -DCMAKE_C_FLAGS="${EXTRA_FLAGS} -pthread -sUSE_ZLIB=1 -I${SYSROOT}/include -I${STUBS_DIR}" \
     -DCMAKE_EXE_LINKER_FLAGS="${LINKER_DEBUG_FLAGS} -pthread -sUSE_ZLIB=1 -sASYNCIFY=1 -sDYNCALLS=1 -sASYNCIFY_STACK_SIZE=65536 -sUSE_PTHREADS=1 -sPTHREAD_POOL_SIZE='navigator.hardwareConcurrency' -sPTHREAD_POOL_SIZE_STRICT=0 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=256MB -sMAXIMUM_MEMORY=4GB -sMAX_WEBGL_VERSION=2 ${GL3D_LINK_FLAGS} -sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','UTF8ToString','stringToUTF8','lengthBytesUTF8','dynCall'] -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=['\$dynCall'] --bind -L${SYSROOT}/lib ${STUBS_BUILD}/libgit2_stub.a ${STUBS_BUILD}/libcurl_stub.a${APP_STUB_LINK} ${STUBS_BUILD}/libnng_stub.a ${EMBIND_OBJ}" \
     -DCMAKE_PREFIX_PATH="${SYSROOT};${WX_BUILD}" \
@@ -490,7 +513,7 @@ if [ -f "${EMBIND_SRC}" ]; then
     KICAD_INCLUDES+=" -I${KICAD_DIR}/thirdparty/libcontext"
     KICAD_INCLUDES+=" -I${SYSROOT}/include"
     # KiCad requires C++20 for concepts
-    em++ -std=c++20 -c ${EXTRA_FLAGS} ${WX_CXXFLAGS} ${KICAD_INCLUDES} "${EMBIND_SRC}" -o "${EMBIND_OBJ}"
+    em++ -std=c++20 -c ${EXTRA_FLAGS} ${KICAD_TU_ABI_FLAGS} ${WX_CXXFLAGS} ${KICAD_INCLUDES} "${EMBIND_SRC}" -o "${EMBIND_OBJ}"
 else
     log_info "No embind source for ${APP_NAME} (expected at ${EMBIND_SRC}); using empty placeholder"
     EMPTY_C="${STUBS_BUILD}/${APP_NAME}_embind_empty.c"

@@ -5,6 +5,14 @@ codegen bug in emscripten 4.0.2 — see "The blocker" below. The code changes we
 locally and then dropped; the full patch is preserved in the appendix of this doc,
 together with everything needed to resume.
 
+> **Correction 2026-06-22 — see `docs/features/wasm-exceptions/06-spike-plan.md`.** This
+> experiment switched to `-sWASM_LEGACY_EXCEPTIONS=0` (exnref) to dodge the legacy-encoding
+> parse failure — but that is a **dead end**: Binaryen's Asyncify cannot instrument
+> `try_table`/exnref in any released version (incl. v130), so an exnref build would die at
+> the `--asyncify` step even after the `br_table` bug is fixed. **Resume with `=1` (legacy),
+> not `=0`.** The legacy parse failure is almost certainly an em-4.0.2 LLVM-codegen artifact;
+> the fix is the emsdk/LLVM bump, not the encoding switch.
+
 ## Why this matters
 
 After the 3.3x CI win (see `ci-build-slowness-findings.md`), the critical path of the

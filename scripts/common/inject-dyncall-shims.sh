@@ -4,17 +4,15 @@
 #
 # The actual JavaScript that gets injected lives in readable, standalone files in
 # scripts/common/shims/ (not inline heredocs):
-#   - dyncall-binding.js.tmpl  per-signature dynCall_<sig> binding (templated)
 #   - handlesleep.js           nested-Asyncify handleSleep currData save/restore (#9153)
 #   - diagnostics.js           optional logging-only instrumentation (see SHIM_DIAGNOSTICS)
 #
-# Why bind dynCall_* to the real wasm exports: the build links -sDYNCALLS=1, so
-# asyncify-INSTRUMENTED dynCall_* trampolines exist as wasm exports. The bare
-# dynCall_<sig>(index, ...) call sites (invoke_* wrappers, the empty-callback fixes
-# below) aren't bound to top-level names, so we bind them to wasmExports["dynCall_<sig>"].
-# Binding to getWasmTableEntry() instead bypasses the instrumentation and breaks
-# unwind/rewind through indirect calls ("indirect call signature mismatch" — caught
-# every frame in Firefox; a hard renderer crash in Chrome/V8).
+# Native wasm-EH is the only build mode, so the .js has no invoke_* wrappers / dynCall_<sig> call
+# sites to bind. The build still links -sDYNCALLS=1, so asyncify-INSTRUMENTED dynCall_* trampolines
+# exist as wasm EXPORTS; the empty-callback fixes below route function-pointer stubs through
+# wasmExports["dynCall_<sig>"]. This MUST be the wasm trampoline, NOT getWasmTableEntry — the latter
+# bypasses the instrumentation and breaks unwind/rewind through indirect calls ("indirect call
+# signature mismatch" — caught every frame in Firefox; a hard renderer crash in Chrome/V8).
 #
 # Usage:
 #   inject-dyncall-shims.sh <pcbnew.js>
@@ -34,72 +32,23 @@ if [ -z "$JS_FILE" ] || [ ! -f "$JS_FILE" ]; then
     echo "Usage: $0 <path/to/pcbnew.js>"
     exit 1
 fi
-for f in dyncall-binding.js.tmpl handlesleep.js diagnostics.js; do
+for f in handlesleep.js diagnostics.js; do
     if [ ! -f "$SHIM_DIR/$f" ]; then
         echo "Error: missing shim source $SHIM_DIR/$f"
         exit 1
     fi
 done
 
-# --- 1. dynCall_<sig> bindings -------------------------------------------------
-echo "Extracting dynCall signatures from $JS_FILE..."
-SIGNATURES=$(grep -oE 'dynCall_[a-zA-Z0-9]+' "$JS_FILE" | sort -u | sed 's/dynCall_//')
-if [ -z "$SIGNATURES" ]; then
-    echo "No dynCall signatures found - nothing to inject"
-    exit 0
-fi
-SIG_COUNT=$(echo "$SIGNATURES" | wc -l | tr -d ' ')
-echo "Found $SIG_COUNT unique signatures"
-
-# The template body is everything from the `function` line onward (skip its comments).
-TEMPLATE_BODY=$(sed -n '/^function /,$p' "$SHIM_DIR/dyncall-binding.js.tmpl")
-
-SHIM_FILE=$(mktemp)
-{
-    echo ""
-    echo "// === dynCall bindings (bind bare names to the real DYNCALLS=1 wasm exports) ==="
-} > "$SHIM_FILE"
-
-for sig in $SIGNATURES; do
-    argcount=$((${#sig} - 1))
-    args="index"
-    call_args=""
-    for ((i=0; i<argcount; i++)); do
-        args="$args, a$i"
-        if [ $i -gt 0 ]; then call_args="$call_args, "; fi
-        call_args="${call_args}a$i"
-    done
-    echo "$TEMPLATE_BODY" \
-        | sed -e "s/@SIG@/$sig/g" -e "s/@ARGS@/$args/g" -e "s/@CALLARGS@/$call_args/g" \
-        >> "$SHIM_FILE"
-done
-echo "// === End dynCall bindings ===" >> "$SHIM_FILE"
-
-# Insert right after the getWasmTableEntry definition.
-GWTL_LINE=$(grep -n '^var getWasmTableEntry = funcPtr => {' "$JS_FILE" | head -1 | cut -d: -f1)
-if [ -z "$GWTL_LINE" ]; then
-    GWTL_LINE=$(grep -n 'var getWasmTableEntry' "$JS_FILE" | head -1 | cut -d: -f1)
-fi
-if [ -z "$GWTL_LINE" ]; then
-    echo "Error: Could not find getWasmTableEntry in $JS_FILE"; rm "$SHIM_FILE"; exit 1
-fi
-INSERT_LINE=""
-for ((i=GWTL_LINE; i<=GWTL_LINE+10; i++)); do
-    [ "$(sed -n "${i}p" "$JS_FILE")" == "};" ] && { INSERT_LINE=$i; break; }
-done
-[ -z "$INSERT_LINE" ] && INSERT_LINE=$GWTL_LINE
-
-echo "Injecting dynCall bindings after line $INSERT_LINE..."
-head -n "$INSERT_LINE" "$JS_FILE" > "${JS_FILE}.tmp"
-cat "$SHIM_FILE" >> "${JS_FILE}.tmp"
-tail -n +$((INSERT_LINE + 1)) "$JS_FILE" >> "${JS_FILE}.tmp"
-mv "${JS_FILE}.tmp" "$JS_FILE"
-rm "$SHIM_FILE"
-echo "Injected $SIG_COUNT dynCall bindings"
-
-# --- 2. Empty-callback fixes ---------------------------------------------------
-# Emscripten+pthreads emits some direct-call paths as no-op ((a1)=>{}) stubs that
-# ARE used. Rewire each to the (now-bound) dynCall_*. (Kept inline: simple sed one-liners.)
+# --- 1. Empty-callback fixes ---------------------------------------------------
+# Emscripten+pthreads emits some direct-call paths as no-op ((a1)=>{}) stubs that ARE used. Native
+# wasm-EH eliminates the invoke_* wrappers, so the .js has no dynCall_<sig> call sites to bind — but
+# the DYNCALLS=1 trampolines are still EXPORTED on the wasm, so route each function-pointer stub
+# through wasmExports["dynCall_<sig>"]. This MUST be the wasm trampoline, NOT getWasmTableEntry: the
+# fiber entry runs a coroutine that suspends+rewinds via Asyncify, and an Asyncify rewind cannot
+# resume through getWasmTableEntry's JS wrapper — the fiber would re-enter from the top and the tool's
+# Wait() re-runs (tool_manager ScheduleWait "!pendingWait" assert + busy-loop). The instrumented
+# dynCall_<sig> export rewinds correctly. (Without these fixes the libcontext fiber entry stays the
+# empty (a1=>{}) stub, so tool coroutines never start and every GAL app stalls at InvokeTool.)
 echo "Fixing empty callback arrow functions..."
 TOTAL_FIXED=0
 apply_fix() { # <grep/sed pattern> <sed replacement> <label>
@@ -112,12 +61,12 @@ apply_fix() { # <grep/sed pattern> <sed replacement> <label>
         TOTAL_FIXED=$((TOTAL_FIXED + before - after))
     fi
 }
-apply_fix '((a1, a2, a3) => {})(eventTypeId,' '((a1, a2, a3) => dynCall_iiii(callbackfunc, a1, a2, a3))(eventTypeId,' "HTML5 event callback(s) (dynCall_iiii)"
-apply_fix 'var result = (a1 => {})(arg);' 'var result = dynCall_ii(ptr, arg);' "pthread entry callback(s) (dynCall_ii)"
-apply_fix 'return (a1 => {})(sig);' 'return dynCall_vi(fp, sig);' "signal handler callback(s) (dynCall_vi)"
-apply_fix 'var wrapper = () => (a1 => {})(arg);' 'var wrapper = () => dynCall_vi(func, arg);' "async timer callback(s) (dynCall_vi)"
-apply_fix 'var iterFunc = (() => {});' 'var iterFunc = () => dynCall_v(func);' "main loop callback(s) (dynCall_v)"
-apply_fix '(a1 => {})(userData);' 'dynCall_vi(entryPoint, userData);' "fiber entry callback(s) (dynCall_vi)"
+apply_fix '((a1, a2, a3) => {})(eventTypeId,' '((a1, a2, a3) => wasmExports["dynCall_iiii"](callbackfunc, a1, a2, a3))(eventTypeId,' "HTML5 event callback(s) (wasmExports.dynCall_iiii)"
+apply_fix 'var result = (a1 => {})(arg);' 'var result = wasmExports["dynCall_ii"](ptr, arg);' "pthread entry callback(s) (wasmExports.dynCall_ii)"
+apply_fix 'return (a1 => {})(sig);' 'return wasmExports["dynCall_vi"](fp, sig);' "signal handler callback(s) (wasmExports.dynCall_vi)"
+apply_fix 'var wrapper = () => (a1 => {})(arg);' 'var wrapper = () => wasmExports["dynCall_vi"](func, arg);' "async timer callback(s) (wasmExports.dynCall_vi)"
+apply_fix 'var iterFunc = (() => {});' 'var iterFunc = () => wasmExports["dynCall_v"](func);' "main loop callback(s) (wasmExports.dynCall_v)"
+apply_fix '(a1 => {})(userData);' 'wasmExports["dynCall_vi"](entryPoint, userData);' "fiber entry callback(s) (wasmExports.dynCall_vi)"
 echo "Total: Fixed $TOTAL_FIXED empty callback(s)"
 
 # --- 3. Nested-Asyncify handleSleep fix ---------------------------------------
@@ -131,7 +80,15 @@ elif grep -q '__nestedHandleSleepInstalled' "$JS_FILE"; then
 else
     HS_MARKER=$(grep -n '^_emscripten_fiber_swap\.isAsync = true;$' "$JS_FILE" | head -1 | cut -d: -f1)
     if [ -z "$HS_MARKER" ]; then
-        echo "Warning: _emscripten_fiber_swap.isAsync marker not found - skipping handleSleep fix"
+        # No libcontext fiber glue (a non-fiber Asyncify app — e.g. a plain wx app with
+        # modals/menus, no tool coroutines). The currData save/restore is still needed:
+        # without it a rewind resuming through a fresh wasm re-entry hits
+        # _asyncify_start_rewind(null) -> "memory access out of bounds" (the context-menu
+        # pick while the main loop is Asyncify-parked). Append at EOF — Asyncify is defined
+        # by then and the shim wraps handleSleep at load, before any runtime sleep.
+        echo "" >> "$JS_FILE"
+        cat "$SHIM_DIR/handlesleep.js" >> "$JS_FILE"
+        echo "Injected handleSleep fix at EOF (no fiber glue)"
     else
         head -n "$HS_MARKER" "$JS_FILE" > "${JS_FILE}.tmp"
         echo "" >> "${JS_FILE}.tmp"
@@ -156,6 +113,23 @@ elif grep -qF '  var f = Module["dynCall_" + sig];' "$JS_FILE"; then
     echo "Injected dynCallLegacy wasmExports fallback"
 else
     echo "Warning: dynCallLegacy pattern not found - skipping embind dynCall fallback"
+fi
+
+# --- 3d. Embind invoker: don't Promise-wrap a SYNCHRONOUS call when the main loop is parked --------
+# Emscripten's embind invoker returns a Promise iff Asyncify.currData is set AFTER the wasm call. But
+# the native-EH per-frame-yield main loop parks via Asyncify (currData stays SET between frames), so a
+# JS-initiated embind call (e.g. kicadCollabSnapshot from a test or the UI) that does NOT itself
+# suspend is mis-detected as async and returns "[object Promise]" instead of the value -> the caller's
+# JSON.parse(...) gets "[object Promise]". Capture currData before the call and only treat it as async
+# if THIS call left a NEW currData. Harmless under legacy/JS-EH (currData is null when the app is idle).
+if grep -q 'Asyncify.currData !== __ehPrev' "$JS_FILE"; then
+    echo "embind invoker currData re-entrancy fix already present - skipping"
+elif grep -q 'return Asyncify.currData ? Asyncify.whenDone' "$JS_FILE"; then
+    perl -0pi -e 's/(invokerFnBody \+= \(returns \|\| isAsync \? "var rv = " : ""\))/invokerFnBody += "var __ehPrev = Asyncify.currData;\\n";\n  $1/' "$JS_FILE"
+    perl -0pi -e 's/return Asyncify\.currData \? Asyncify\.whenDone/return (Asyncify.currData && Asyncify.currData !== __ehPrev) ? Asyncify.whenDone/' "$JS_FILE"
+    echo "Injected embind invoker currData re-entrancy fix"
+else
+    echo "Warning: embind invoker currData pattern not found - skipping embind re-entrancy fix"
 fi
 
 # --- 3c. Fiber trampoline self-heal -------------------------------------------

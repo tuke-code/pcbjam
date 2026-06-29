@@ -163,17 +163,29 @@ EM_JS( void, races_mark_done, ( const char* aName ), {
     Module.__racesDone[UTF8ToString( aName )] = true;
 } );
 
-// Quiescence invariant sampled from C++ between scenarios. NOTE: this runs on a
-// stack that may itself have been resumed via Fibers.trampoline(), in which case
-// Fibers.trampolineRunning is legitimately true — so the guard is deliberately
-// NOT part of this check (a genuinely stuck guard wedges the next fiber swap and
-// is caught by the scenario watchdogs instead).
+// Quiescence invariant sampled from C++ between scenarios.
+//
+// Two things are deliberately NOT checked:
+//   * Fibers.trampolineRunning — this can run on a stack itself resumed via
+//     Fibers.trampoline(), in which case the guard is legitimately true.
+//   * Asyncify.currData — under native wasm-EH the top-level event loop is a
+//     per-frame-yield while-loop (wxWasmYieldToBrowser, an EM_ASYNC_JS rAF
+//     suspend that re-arms every frame; see wxwidgets/src/wasm/evtloop.cpp). So
+//     the main stack is asyncify-suspended between frames and currData is
+//     legitimately churning — it is non-zero while a frame yield is pending, and
+//     can momentarily hold a freed-but-not-yet-nulled buffer right after a
+//     concurrent suspension resumes. That is a transient bookkeeping value, NOT a
+//     leak (the buffers are _malloc/_free'd each frame — addresses are reused),
+//     so requiring currData==0 here is a stale legacy assumption from the old
+//     throw-to-park loop. A genuinely stuck suspension is caught by state != 0
+//     (Suspending/Rewinding never clearing) and by the scenario watchdogs.
+// What's left is the real invariant: the asyncify machine is back to Normal and
+// no fiber is queued.
 EM_JS( int, races_quiescent, (), {
     try {
         var stOk = ( typeof Asyncify === 'undefined' ) || Asyncify.state === 0;
-        var cdOk = ( typeof Asyncify === 'undefined' ) || !Asyncify.currData;
         var nfOk = ( typeof Fibers === 'undefined' ) || !Fibers.nextFiber;
-        return ( stOk && cdOk && nfOk ) ? 1 : 0;
+        return ( stOk && nfOk ) ? 1 : 0;
     } catch( e ) {
         return 0;
     }
