@@ -251,6 +251,14 @@ log_info "KiCad EH model flags: ${KICAD_EH_FLAGS}"
 if [ "${DEBUG_BUILD:-0}" = "1" ] || [ $DEBUG -eq 1 ]; then
     BUILD_TYPE="Debug"
     EXTRA_FLAGS="-g -O1 ${KICAD_EH_FLAGS} -matomics -mbulk-memory"
+    # CMake defines DEBUG for Config=Debug (kicad/CMakeLists.txt:351). The embind TU (Step 7) is
+    # compiled OUTSIDE CMake, so it must define DEBUG too — otherwise a DEBUG-gated virtual
+    # (EDA_ITEM::Show, eda_item.h:471) occupies a vtable slot in the core's emitted vtable that the
+    # embind TU doesn't account for, shifting every later slot by one. Then every virtual call made
+    # from the embind TU past that slot (SetWidth/GetPosition/...) reads the wrong vtable offset and
+    # mis-dispatches at runtime (call_indirect signature-mismatch trap; under native-EH the trap is
+    # swallowed by the apply coroutine's catch_all → silent hang). See task #54 root-cause analysis.
+    EMBIND_CONFIG_DEFINES="-DDEBUG"
     # -gseparate-dwarf puts debug info in a separate .debug.wasm file
     # This keeps the main WASM small (~200MB) while preserving full debug info
     # DevTools loads the debug file on-demand when debugging
@@ -259,6 +267,7 @@ if [ "${DEBUG_BUILD:-0}" = "1" ] || [ $DEBUG -eq 1 ]; then
 else
     BUILD_TYPE="Release"
     EXTRA_FLAGS="-O2 ${KICAD_EH_FLAGS} -matomics -mbulk-memory"
+    EMBIND_CONFIG_DEFINES=""   # Release defines no DEBUG in either TU → vtable layouts already match
     # -O0 at link time skips wasm-opt (which can OOM on large WASM files)
     # Compilation is still -O2 for optimized code, but we skip post-link wasm-opt
     LINKER_DEBUG_FLAGS="-O0 ${KICAD_EH_FLAGS}"
@@ -293,6 +302,25 @@ emar rcs "${STUBS_BUILD}/libcurl_stub.a" "${STUBS_BUILD}/curl_stub.o"
 # Compile NNG stub (IPC API requires NNG but sockets don't work in WASM)
 emcc -c -I"${STUBS_DIR}" "${STUBS_DIR}/nng_stub.c" -o "${STUBS_BUILD}/nng_stub.o"
 emar rcs "${STUBS_BUILD}/libnng_stub.a" "${STUBS_BUILD}/nng_stub.o"
+
+# Main-thread futex-wait yield shim — AVAILABLE BUT NOT COMPILED/LINKED (task #54, 2026-06-29).
+# wasm/shims/futex_yield.c is a strong emscripten_futex_wait override that makes a blocking main-thread
+# futex wait (std::future::wait/_for -> pthread_cond_wait) Asyncify-yield to the JS event loop so an
+# on-demand pthread-Worker can boot. It addresses a REAL deadlock (validated in the pool-callafter repro)
+# where a threaded recompute spins forever because the on-demand Worker can't boot during the main-thread
+# busy-spin futex wait. It was added during the collab-apply hunt under the (mistaken) theory that the
+# apply hung on this futex; the real cause was a vtable-slot skew, fixed by the -DDEBUG embind define
+# (EMBIND_CONFIG_DEFINES above). With that fix the collab apply passes WITHOUT this shim
+# (pcbnew + eeschema collab specs green on a no-futex build), because the connectivity recompute is
+# bounded by the pre-warmed pthread pool (PTHREAD_POOL_SIZE=hardwareConcurrency) and never needs an
+# on-demand Worker. So it is intentionally left OUT of the build to keep the diff minimal.
+#
+# RE-ENABLE if the on-demand-Worker futex deadlock ever surfaces (symptom: collab/edit hangs at
+# commit.Push's RecalculateRatsnest on a heavy board or cold pool — the recompute needs more threads
+# than the pool): uncomment the emcc line below AND re-append " ${STUBS_BUILD}/futex_yield.o" to
+# CMAKE_EXE_LINKER_FLAGS (the link line below, right after ${EMBIND_OBJ}). The shim is a no-op on worker
+# threads and only changes main-thread behaviour, so re-enabling it is safe.
+# emcc -c -pthread -matomics -mbulk-memory "${PROJECT_ROOT}/wasm/shims/futex_yield.c" -o "${STUBS_BUILD}/futex_yield.o"
 
 # wx flags for any C++ stubs that include wx headers
 WX_CXXFLAGS=$("${WX_BUILD}/wx-config" --cxxflags 2>/dev/null || echo "-I${WX_BUILD}/lib/wx/include/emscripten-unicode-static-3.2 -I${PROJECT_ROOT}/wxwidgets/include")
@@ -421,7 +449,7 @@ emcmake cmake "${KICAD_DIR}" \
     -DCMAKE_MODULE_PATH="${WASM_LAYER}/cmake" \
     -DSYSROOT="${SYSROOT}" \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-    -DCMAKE_CXX_FLAGS="${EXTRA_FLAGS} -pthread -sUSE_ZLIB=1 -DKICAD_USE_PLATFORM_WASM=1${DIAG_DEFINES} -I${SYSROOT}/include -I${STUBS_DIR} -include ${STUBS_DIR}/char_traits_uint16_workaround.h" \
+    -DCMAKE_CXX_FLAGS="${EXTRA_FLAGS} -Xclang -fno-pch-timestamp -pthread -sUSE_ZLIB=1 -DKICAD_USE_PLATFORM_WASM=1${DIAG_DEFINES} -I${SYSROOT}/include -I${STUBS_DIR} -include ${STUBS_DIR}/char_traits_uint16_workaround.h" \
     -DCMAKE_C_FLAGS="${EXTRA_FLAGS} -pthread -sUSE_ZLIB=1 -I${SYSROOT}/include -I${STUBS_DIR}" \
     -DCMAKE_EXE_LINKER_FLAGS="${LINKER_DEBUG_FLAGS} -pthread -sUSE_ZLIB=1 -sASYNCIFY=1 -sDYNCALLS=1 -sASYNCIFY_STACK_SIZE=65536 -sUSE_PTHREADS=1 -sPTHREAD_POOL_SIZE='navigator.hardwareConcurrency' -sPTHREAD_POOL_SIZE_STRICT=0 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=256MB -sMAXIMUM_MEMORY=4GB -sMAX_WEBGL_VERSION=2 ${GL3D_LINK_FLAGS} -sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','UTF8ToString','stringToUTF8','lengthBytesUTF8','dynCall'] -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=['\$dynCall'] --bind -L${SYSROOT}/lib ${STUBS_BUILD}/libgit2_stub.a ${STUBS_BUILD}/libcurl_stub.a${APP_STUB_LINK} ${STUBS_BUILD}/libnng_stub.a ${EMBIND_OBJ}" \
     -DCMAKE_PREFIX_PATH="${SYSROOT};${WX_BUILD}" \
@@ -501,7 +529,7 @@ if [ -f "${EMBIND_SRC}" ]; then
     KICAD_INCLUDES+=" -I${KICAD_DIR}/thirdparty/libcontext"
     KICAD_INCLUDES+=" -I${SYSROOT}/include"
     # KiCad requires C++20 for concepts
-    em++ -std=c++20 -c ${EXTRA_FLAGS} ${WX_CXXFLAGS} ${KICAD_INCLUDES} "${EMBIND_SRC}" -o "${EMBIND_OBJ}"
+    em++ -std=c++20 -c ${EXTRA_FLAGS} ${EMBIND_CONFIG_DEFINES} ${WX_CXXFLAGS} ${KICAD_INCLUDES} "${EMBIND_SRC}" -o "${EMBIND_OBJ}"
 else
     log_info "No embind source for ${APP_NAME} (expected at ${EMBIND_SRC}); using empty placeholder"
     EMPTY_C="${STUBS_BUILD}/${APP_NAME}_embind_empty.c"
