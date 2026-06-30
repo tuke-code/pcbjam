@@ -1,9 +1,10 @@
 #!/bin/bash
-# Sourced library. Single source of truth for the 4-repo layout:
+# Sourced library. Single source of truth for the 5-repo layout:
 #
 #   root  = pcbjam                                main
 #   ├── kicad           (kicad/)                  wasm-port
 #   ├── wxwidgets       (wxwidgets/)              wasm-port
+#   ├── binaryen        (binaryen/)               wasm-port
 #   └── pcbjam-shared   (web/pcbjam-shared/)      main   [MIT contract]
 #
 # Bash variable names can't contain '-', so pcbjam-shared's KEY is
@@ -12,16 +13,18 @@
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-REPOS=(root kicad wxwidgets pcbjam_shared)
+REPOS=(root kicad wxwidgets binaryen pcbjam_shared)
 
 PATH_root="$ROOT_DIR"
 PATH_kicad="$ROOT_DIR/kicad"
 PATH_wxwidgets="$ROOT_DIR/wxwidgets"
+PATH_binaryen="$ROOT_DIR/binaryen"
 PATH_pcbjam_shared="$ROOT_DIR/web/pcbjam-shared"
 
 MAIN_root="main"
 MAIN_kicad="wasm-port"
 MAIN_wxwidgets="wasm-port"
+MAIN_binaryen="wasm-port"
 MAIN_pcbjam_shared="main"
 
 repo_path() {
