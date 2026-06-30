@@ -92,6 +92,44 @@ Output: `output/pcbnew.js`, `output/pcbnew.wasm`
 
 See [docs/build.md](docs/build.md) for detailed build documentation.
 
+#### Creating an isolated worktree (with submodule branches)
+
+For an experiment or feature you can work in a disposable git worktree so the
+main checkout stays pristine. This repo has four submodules
+(`kicad`, `wxwidgets`, `binaryen`, `web/pcbjam-shared`); a new worktree starts
+with them empty, so initialize and branch each one:
+
+```bash
+# 1. Create the worktree on a new branch (off main), at a sibling path
+git worktree add -b experiment/my-thing ../kicad-wasm-my-thing main
+
+# 2. Check out the submodules INSIDE the worktree (working trees only;
+#    git objects are shared with the main checkout)
+cd ../kicad-wasm-my-thing
+git submodule update --init kicad wxwidgets binaryen web/pcbjam-shared
+
+# 3. Create a matching branch in each submodule (they start at detached HEAD)
+git checkout -b experiment/my-thing                 # root already on it via -b above
+for sm in kicad wxwidgets binaryen web/pcbjam-shared; do
+  git -C "$sm" checkout -b experiment/my-thing
+done
+```
+
+Then build from inside the worktree. Use an **isolated** Docker project — do NOT
+set `COMPOSE_PROJECT_NAME` to another branch's project (e.g. `kicad-wasm-main`),
+which can collide with other workflows; `docker/build.sh` auto-derives an isolated
+project name from the worktree branch. The first build provisions deps
+(wxWidgets + OCC) from scratch. To keep the machine responsive / bound wasm-opt
+RAM, cap parallelism and skip the slow release optimization:
+
+```bash
+KICAD_DOCKER_CPUS=4 BINARYEN_CORES=4 BINARYEN_OPT_LEVEL=-O1 \
+  ./docker/build.sh pcbnew -j 4
+```
+
+Tear down afterward with `git worktree remove ../kicad-wasm-my-thing` (and
+`docker compose -p <project> down -v` to drop the isolated volumes).
+
 #### Fresh worktree provisioning
 
 Some test artifacts are gitignored and are NOT produced by the build pipeline,
