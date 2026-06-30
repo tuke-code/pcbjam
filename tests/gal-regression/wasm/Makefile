@@ -57,14 +57,21 @@ else
     DEBUG_LDFLAGS =
 endif
 
+# Native WebAssembly exceptions. The wxWidgets libs (and KiCad) are built with
+# -fwasm-exceptions (scripts/common/env.sh DEPS_EH_FLAGS), so this test must compile AND
+# link the same way, or wasm-ld can't resolve __cpp_exception / __c_longjmp from the wx
+# archives. ?= honors the value build-gal-webgl-test.sh exports via env.sh; the fallback
+# keeps a bare `make` working.
+DEPS_EH_FLAGS ?= -fwasm-exceptions -sSUPPORT_LONGJMP=wasm -sWASM_LEGACY_EXCEPTIONS=1
+
 # -MMD -MP generates .d dependency files for header tracking
 # This ensures header changes trigger rebuilds (prevents stale object issues)
-CXXFLAGS = $(OPT_FLAGS) $(WX_CXXFLAGS) $(KICAD_INCLUDES) -std=c++20 -MMD -MP
+CXXFLAGS = $(OPT_FLAGS) $(DEPS_EH_FLAGS) $(WX_CXXFLAGS) $(KICAD_INCLUDES) -std=c++20 -MMD -MP
 
 # Emscripten flags
-BASE_LDFLAGS = -sALLOW_MEMORY_GROWTH=1 \
+BASE_LDFLAGS = $(DEPS_EH_FLAGS) \
+               -sALLOW_MEMORY_GROWTH=1 \
                -sERROR_ON_UNDEFINED_SYMBOLS=0 \
-               -sNO_DISABLE_EXCEPTION_CATCHING \
                -sEXPORTED_FUNCTIONS=['_main','_runScenario','_getTotalScenarios','_getCurrentScenario','_getCanvasWidth','_getCanvasHeight'] \
                -sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','HEAPU8'] \
                -sMODULARIZE=1 \
