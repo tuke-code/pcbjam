@@ -202,10 +202,14 @@ void DialogTestFrame::OnInputDialog(wxCommandEvent& WXUNUSED(evt))
     }
 }
 
-// Custom dialog implementation
+// Custom dialog implementation. wxRESIZE_BORDER makes it resizable (like KiCad's
+// DIALOG_SHIM dialogs, e.g. Print) so the resize-repaint behaviour can be tested:
+// a modal dialog whose 2D canvas is cleared by a resize must repaint synchronously
+// (its Asyncify pump otherwise defers the paint until the next click → black bg).
 CustomTestDialog::CustomTestDialog(wxWindow* parent)
     : wxDialog(parent, wxID_ANY, "Custom Test Dialog",
-               wxDefaultPosition, wxSize(300, 200))
+               wxDefaultPosition, wxSize(300, 200),
+               wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER)
 {
     wxBoxSizer* mainSizer = new wxBoxSizer(wxVERTICAL);
 

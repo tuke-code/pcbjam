@@ -76,17 +76,57 @@ test.describe('secondary-frame DOM title bar (drag / close)', () => {
             }, winId);
         }
 
-        // All non-main top-level windows — secondary frames AND dialogs — must
-        // have a DOM title bar, be draggable by it, and close via its × button.
-        for (const label of [
-            'Open Full GL Frame',
-            'Open Rich GL Frame',
-            'Open Small Frame',
-            'Open Modeless Dialog',
-        ]) {
+        // Returns true if dragging the bottom-right (se) resize handle grew the window.
+        async function resizeViaCorner(winId: string): Promise<boolean> {
+            const handle = page.locator(`#${winId} .window-resize-se`);
+            const box = await handle.boundingBox();
+            if (!box) return false;
+            const before = await styleRect(winId);
+            const sx = box.x + box.width / 2;
+            const sy = box.y + box.height / 2;
+            await page.mouse.move(sx, sy);
+            await page.mouse.down();
+            await page.mouse.move(sx + 60, sy + 60, { steps: 10 });
+            await page.mouse.up();
+            await page.waitForTimeout(250);
+            const after = await styleRect(winId);
+            return !!before && !!after
+                && (after.width - before.width > 20) && (after.height - before.height > 20);
+        }
+
+        const countResizeHandles = (winId: string) =>
+            page.locator(`#${winId} .window-resize-handle`).count();
+
+        // Every non-main top-level window — frame or dialog — gets a DOM title bar
+        // (drag + close ×). Edge-resize handles are added ONLY to windows whose wx
+        // style carries wxRESIZE_BORDER: all wxFrames + dialogs that opt in (the
+        // resizable dialog), but NOT the plain fixed dialog.
+        //   resizable      — expects 5 resize handles (e/w/s/se/sw); fixed expects 0
+        //   resizeDraggable — its se corner is on-screen, so assert a real resize drag
+        const windows = [
+            { label: 'Open Full GL Frame', resizable: true, resizeDraggable: false },
+            { label: 'Open Rich GL Frame', resizable: true, resizeDraggable: false },
+            { label: 'Open Small Frame', resizable: true, resizeDraggable: true },
+            { label: 'Open Resizable Dialog', resizable: true, resizeDraggable: true },
+            { label: 'Open Modeless Dialog', resizable: false, resizeDraggable: false },
+        ];
+
+        for (const { label, resizable, resizeDraggable } of windows) {
             const id = await openWindow(label);
             const hasBar = await page.locator(`#${id} .window-titlebar`).count();
             expect(hasBar, `${label} should have a DOM title bar`).toBe(1);
+
+            // Resize-handle gate: present (5) iff the window is wxRESIZE_BORDER.
+            const handles = await countResizeHandles(id);
+            if (resizable) {
+                expect(handles, `${label} should have edge-resize handles`).toBe(5);
+                if (resizeDraggable) {
+                    const resized = await resizeViaCorner(id);
+                    expect(resized, `${label} should resize by dragging its se corner`).toBe(true);
+                }
+            } else {
+                expect(handles, `${label} (no wxRESIZE_BORDER) must NOT be resizable`).toBe(0);
+            }
 
             // Root-cause check: even with main-frame DOM controls present, the title
             // bar is the top hit-test element at its own location.

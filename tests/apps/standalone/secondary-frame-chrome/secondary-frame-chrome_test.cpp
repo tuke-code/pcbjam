@@ -128,7 +128,8 @@ public:
 };
 
 // Known-working baseline: a modeless wxDialog (same chrome path as Preferences /
-// Print, which the user reports ARE draggable and X-closable).
+// Print, which the user reports ARE draggable and X-closable). NO wxRESIZE_BORDER
+// in its style -> the NEGATIVE case for edge-resize: it must NOT get resize handles.
 class BaselineDialog : public wxDialog
 {
 public:
@@ -138,6 +139,22 @@ public:
         new wxStaticText( this, wxID_ANY, "Dialog: drag + X should work", wxPoint( 16, 16 ) );
 
         LogWindow( "BaselineDialog", this );
+    }
+};
+
+// Resizable dialog: carries wxRESIZE_BORDER (like KiCad's DIALOG_SHIM dialogs, whose
+// base defaults to wxDEFAULT_FRAME_STYLE | wxRESIZE_BORDER). The POSITIVE dialog case
+// for edge-resize: it must get resize handles and be resizable by dragging its edges.
+class ResizableDialog : public wxDialog
+{
+public:
+    explicit ResizableDialog( wxWindow* parent )
+        : wxDialog( parent, wxID_ANY, "Resizable Dialog", wxPoint( 560, 300 ),
+                    wxSize( 360, 280 ), wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER )
+    {
+        new wxStaticText( this, wxID_ANY, "Dialog: drag edges to resize", wxPoint( 16, 16 ) );
+
+        LogWindow( "ResizableDialog", this );
     }
 };
 
@@ -162,6 +179,7 @@ public:
         addButton( "Open Rich GL Frame", &MainFrame::OnRichGL );
         addButton( "Open Small Frame", &MainFrame::OnSmall );
         addButton( "Open Modeless Dialog", &MainFrame::OnDialog );
+        addButton( "Open Resizable Dialog", &MainFrame::OnResizableDialog );
 
         // A GL canvas in the MAIN frame too, so a secondary GL canvas is created
         // "while another GL canvas is already visible" — the condition that lifts
@@ -177,6 +195,7 @@ private:
     void OnRichGL( wxCommandEvent& WXUNUSED( evt ) ) { ( new RichGLFrame() )->Show( true ); }
     void OnSmall( wxCommandEvent& WXUNUSED( evt ) ) { ( new SmallFrame() )->Show( true ); }
     void OnDialog( wxCommandEvent& WXUNUSED( evt ) ) { ( new BaselineDialog( this ) )->Show( true ); }
+    void OnResizableDialog( wxCommandEvent& WXUNUSED( evt ) ) { ( new ResizableDialog( this ) )->Show( true ); }
 };
 
 class SecondaryFrameChromeApp : public wxApp

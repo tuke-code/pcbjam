@@ -220,4 +220,81 @@ test.describe('Modal dialog border + drag (pcbjam #22)', () => {
       `modal canvas went transparent/black during drag (minOpaque=${minOpaque}, lowFrames=${lowFrames})`
     ).toBeGreaterThan(0.8);
   });
+
+  test('modal background stays painted (not black) after resize', async ({ page, testLogger }) => {
+    await page.goto(DIALOG_APP);
+    expect(await tryLoadApp(page), 'App should load').toBe(true);
+    await waitForRegistry(page);
+
+    // As above: the bare shell lays out #window-container below the fold, so overlay
+    // it at the origin to make the modal's DOM resize handles reachable by the pointer.
+    await page.evaluate(() => {
+      const wc = document.getElementById('window-container');
+      if (wc) {
+        wc.style.position = 'absolute';
+        wc.style.top = '0';
+        wc.style.left = '0';
+      }
+    });
+
+    await clickByLabel(page, 'Custom Dialog');
+    await waitForModalRect(page);
+    await page.waitForTimeout(400);
+
+    // The Custom dialog now carries wxRESIZE_BORDER, so it has DOM resize handles.
+    const handle = page.locator(`${MODAL_SEL} .window-resize-se`);
+    const hbox = await handle.boundingBox();
+    expect(hbox, 'resizable modal should have a se resize handle').not.toBeNull();
+
+    const beforeStats = await sampleModalCanvas(page);
+    testLogger.consoleLogs.push(`[MODAL_RESIZE] before=${JSON.stringify(beforeStats)}`);
+    await page.screenshot({ path: 'test-results/modal-04-before-resize.png', fullPage: true });
+
+    // Grab the bottom-right corner and grow the dialog in small steps, sampling the
+    // modal canvas immediately after each move. A resize legitimately reassigns
+    // canvas.width/height (clears it); inside the modal's Asyncify pump the repaint
+    // that should refill it is deferred until the next input event, so with the bug
+    // the canvas stays transparent and the black .window div shows through.
+    const startX = hbox!.x + hbox!.width / 2;
+    const startY = hbox!.y + hbox!.height / 2;
+    await page.mouse.move(startX, startY);
+    await page.mouse.down();
+    await page.waitForTimeout(120);
+
+    let minOpaque = 1;
+    let lowFrames = 0;
+    const STEPS = 16;
+    for (let i = 1; i <= STEPS; i++) {
+      await page.mouse.move(startX + i * 5, startY + i * 4);
+      const s = await sampleModalCanvas(page);
+      if (s) {
+        if (s.opaqueFrac < minOpaque) minOpaque = s.opaqueFrac;
+        if (s.opaqueFrac < 0.5) lowFrames++;
+      }
+    }
+
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+
+    const afterStats = await sampleModalCanvas(page);
+    testLogger.consoleLogs.push(
+      `[MODAL_RESIZE] minOpaque=${minOpaque} lowFrames=${lowFrames}/${STEPS} after=${JSON.stringify(afterStats)}`
+    );
+    await page.screenshot({ path: 'test-results/modal-05-after-resize.png', fullPage: true });
+
+    // Sanity: the resize actually grew the modal canvas (otherwise the assertion
+    // below is meaningless — the corner grab must have taken effect).
+    expect(
+      afterStats && beforeStats && afterStats.canvasW > beforeStats.canvasW,
+      `resize did not grow the modal canvas (before=${beforeStats?.canvasW}, after=${afterStats?.canvasW})`
+    ).toBe(true);
+
+    // With the bug: the canvas is cleared on each resize and shows black until the
+    // deferred modal repaint flushes (only on the next click) → minOpaque ≈ 0.
+    // After the fix (wx_window_resize forces a synchronous repaint): it stays painted.
+    expect(
+      minOpaque,
+      `modal canvas went transparent/black during resize (minOpaque=${minOpaque}, lowFrames=${lowFrames})`
+    ).toBeGreaterThan(0.8);
+  });
 });

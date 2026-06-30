@@ -360,4 +360,75 @@ test.describe('3D viewer from pcbnew', () => {
         const aborts = [...testLogger.consoleLogs, ...testLogger.errors].filter((l) => l.includes('Aborted('));
         expect(aborts, `WASM aborted during the title-bar test:\n${aborts.join('\n\n')}`).toEqual([]);
     });
+
+    /*
+     * Edge-resize gate for the real 3D viewer.
+     *
+     * The viewer (a wxFrame with wxRESIZE_BORDER) now gets DOM edge-resize handles.
+     * Dragging an edge calls wx_window_resize → wxWindow::SetSize, whose wxSizeEvent
+     * relays out the frame and resizes the embedded EDA_3D_CANVAS (wxGLCanvas →
+     * setGLCanvasRect). We drag the RIGHT edge (full-screen frame: its se corner sits
+     * at/over the viewport edge and is unreliable to grab; the right edge is not).
+     * Assert the frame AND its GL canvas both shrink in width.
+     */
+    test('real 3D viewer can be edge-resized (frame + GL canvas track)', async ({ page, testLogger }) => {
+        await page.goto('/kicad/pcbnew.html');
+        await waitForPcbnew(page);
+        await loadBoard(page, testLogger);
+
+        const winsBefore = await page.evaluate(() =>
+            Array.from(document.querySelectorAll('#window-container [id^="window-"]')).map((e) => e.id));
+        const glBefore = await countGlCanvases(page);
+        await openThreeDViewer(page, glBefore);
+        await page.waitForTimeout(1500);
+
+        const winId = await page.evaluate((before: string[]) => {
+            const all = Array.from(document.querySelectorAll('#window-container [id^="window-"]')).map((e) => e.id);
+            return all.find((id) => !before.includes(id)) ?? all[all.length - 1] ?? null;
+        }, winsBefore);
+        expect(winId, 'the 3D viewer should open a new top-level window').toBeTruthy();
+
+        // It is wxRESIZE_BORDER → exactly the 5 edge/corner handles.
+        const handles = await page.locator(`#${winId} .window-resize-handle`).count();
+        expect(handles, 'the 3D viewer (wxRESIZE_BORDER) should have edge-resize handles').toBe(5);
+
+        // Frame width from its style; GL canvas width from the newest glcanvas-*.
+        const frameWidth = (wid: string) =>
+            page.evaluate((id) => {
+                const el = document.getElementById(id) as HTMLElement | null;
+                return el ? (parseInt(el.style.width || '0', 10) || 0) : 0;
+            }, wid);
+        const glWidth = () =>
+            page.evaluate(() => {
+                const all = Array.from(document.querySelectorAll('canvas[id^="glcanvas-"]')) as HTMLCanvasElement[];
+                const c = all[all.length - 1];
+                return c ? (parseInt(c.style.width || '0', 10) || 0) : 0;
+            });
+
+        const beforeFrame = await frameWidth(winId as string);
+        const beforeGl = await glWidth();
+        expect(beforeFrame, 'frame should have a width').toBeGreaterThan(0);
+
+        // Drag the right edge inward (left) to shrink the frame width.
+        const edge = page.locator(`#${winId} .window-resize-e`);
+        const box = await edge.boundingBox();
+        expect(box, 'the 3D viewer should have a right-edge resize handle with a layout box').not.toBeNull();
+        const sx = box!.x + box!.width / 2;
+        const sy = box!.y + box!.height / 2;
+        await page.mouse.move(sx, sy);
+        await page.mouse.down();
+        await page.mouse.move(sx - 220, sy, { steps: 12 });
+        await page.mouse.up();
+        await page.waitForTimeout(500);
+
+        const afterFrame = await frameWidth(winId as string);
+        const afterGl = await glWidth();
+        expect(afterFrame, `frame width should shrink (was ${beforeFrame}, now ${afterFrame})`)
+            .toBeLessThan(beforeFrame - 100);
+        expect(afterGl, `3D viewer GL canvas should shrink with the frame (was ${beforeGl}, now ${afterGl})`)
+            .toBeLessThan(beforeGl);
+
+        const aborts = [...testLogger.consoleLogs, ...testLogger.errors].filter((l) => l.includes('Aborted('));
+        expect(aborts, `WASM aborted during the resize test:\n${aborts.join('\n\n')}`).toEqual([]);
+    });
 });
