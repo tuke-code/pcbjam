@@ -1,8 +1,10 @@
 import { test, expect, type Page } from '@playwright/test';
 import { waitForRegistry, clickByTooltip } from '../e2e/utils/element-tracker';
 
-// Mirrors @pcbjam/shared OWNER_HEADER (tests/ doesn't depend on the shared pkg).
-const OWNER_HEADER = 'x-pcbjam-owner';
+// Mirrors @pcbjam/shared USER_HEADER (tests/ doesn't depend on the shared pkg).
+const USER_HEADER = 'x-pcbjam-user';
+// The reference backend serves its single project/libs under any scope.
+const SCOPE = 'default';
 
 /**
  * 0004-D: the FULL remote write round-trip — no in-memory spike. Boot ensures a
@@ -30,7 +32,7 @@ test('symbol editor save persists to the backend (remote write round-trip)', asy
   page.on('console', (m) => logs.push(`[${m.type()}] ${m.text()}`));
   page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`));
 
-  await page.goto(`/p/demo/symbol_editor/?libowner=${owner}`);
+  await page.goto(`/default/projects/demo/-/symbol_editor?libowner=${owner}`);
   await expect(page.locator('#canvas')).toBeVisible({ timeout: 150000 });
   await waitForRegistry(page, 150000);
   await page.waitForFunction(
@@ -43,8 +45,8 @@ test('symbol editor save persists to the backend (remote write round-trip)', asy
   await page.screenshot({ path: SHOT('01-boot'), scale: 'css' });
 
   // Boot's ensure-user-lib created "My Symbols" (slug my-symbols) for this owner.
-  const ownerHeaders = { [OWNER_HEADER]: owner };
-  const libsRes = await fetch(`${BACKEND}/api/libs`, { headers: ownerHeaders });
+  const ownerHeaders = { [USER_HEADER]: owner };
+  const libsRes = await fetch(`${BACKEND}/api/scopes/${SCOPE}/libs`, { headers: ownerHeaders });
   const libsBody = (await libsRes.json()) as { id: string; type: string }[];
   expect(libsBody.some((l) => l.type === 'user' && l.id === 'my-symbols'), 'user lib created at boot').toBe(true);
 
@@ -96,7 +98,7 @@ test('symbol editor save persists to the backend (remote write round-trip)', asy
   await expect
     .poll(
       async () => {
-        const r = await fetch(`${BACKEND}/api/libs/my-symbols/items`, { headers: ownerHeaders });
+        const r = await fetch(`${BACKEND}/api/scopes/${SCOPE}/libs/my-symbols/items`, { headers: ownerHeaders });
         items = r.ok ? ((await r.json()) as { kind: string; name: string }[]) : [];
         return items.length;
       },
@@ -110,7 +112,7 @@ test('symbol editor save persists to the backend (remote write round-trip)', asy
 
   // The persisted body is a well-formed fork-native kicad_symbol_lib.
   const bodyRes = await fetch(
-    `${BACKEND}/api/libs/my-symbols/items/symbol/${encodeURIComponent(saved.name)}`,
+    `${BACKEND}/api/scopes/${SCOPE}/libs/my-symbols/items/symbol/${encodeURIComponent(saved.name)}`,
     { headers: ownerHeaders },
   );
   const body = await bodyRes.text();

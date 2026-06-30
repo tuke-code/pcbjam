@@ -11,8 +11,12 @@ import { test, expect, type Page } from '@playwright/test';
  * ensured by global-setup-web.ts.
  */
 
+/** Scope segment for the demo project (the reference backend serves it for any). */
+const SCOPE = 'default';
+
 interface ToolCase {
-  /** URL path after /p/demo/ */
+  /** URL tail after /:scope/projects/demo/ — a file path (tool inferred from the
+   *  extension) for file tools, or `-/<tool>` for a file-less boot. */
   route: string;
   /** title the document settles on once the tool is up / file is open */
   titleRe: RegExp;
@@ -21,13 +25,13 @@ interface ToolCase {
 }
 
 const CASES: Record<string, ToolCase> = {
-  eeschema: { route: 'eeschema/demo.kicad_sch', titleRe: /demo — Schematic Editor/i, fileless: false },
-  pcbnew: { route: 'pcbnew/demo.kicad_pcb', titleRe: /demo — PCB Editor/i, fileless: false },
-  pl_editor: { route: 'pl_editor/demo.kicad_wks', titleRe: /demo — Drawing Sheet Editor/i, fileless: false },
-  calculator: { route: 'calculator/', titleRe: /Calculator Tools/i, fileless: true },
-  symbol_editor: { route: 'symbol_editor/', titleRe: /Symbol Editor/i, fileless: true },
-  footprint_editor: { route: 'footprint_editor/', titleRe: /Footprint Editor/i, fileless: true },
-  gerbview: { route: 'gerbview/', titleRe: /Gerber Viewer/i, fileless: true },
+  eeschema: { route: 'demo.kicad_sch', titleRe: /demo — Schematic Editor/i, fileless: false },
+  pcbnew: { route: 'demo.kicad_pcb', titleRe: /demo — PCB Editor/i, fileless: false },
+  pl_editor: { route: 'demo.kicad_wks', titleRe: /demo — Drawing Sheet Editor/i, fileless: false },
+  calculator: { route: '-/calculator', titleRe: /Calculator Tools/i, fileless: true },
+  symbol_editor: { route: '-/symbol_editor', titleRe: /Symbol Editor/i, fileless: true },
+  footprint_editor: { route: '-/footprint_editor', titleRe: /Footprint Editor/i, fileless: true },
+  gerbview: { route: '-/gerbview', titleRe: /Gerber Viewer/i, fileless: true },
 };
 
 /** Console text that must never appear (wizard-crash + URL-regex modal markers). */
@@ -38,7 +42,7 @@ async function bootAndAssert(page: Page, tc: ToolCase): Promise<void> {
   page.on('console', (m) => consoleLines.push(m.text()));
   page.on('pageerror', (e) => consoleLines.push(`pageerror: ${e.message}`));
 
-  await page.goto(`/p/demo/${tc.route}`);
+  await page.goto(`/${SCOPE}/projects/demo/${tc.route}`);
 
   // boot.ts mounts the Emscripten <canvas id="canvas"> once the runtime starts.
   await expect(page.locator('#canvas')).toBeVisible({ timeout: 120000 });

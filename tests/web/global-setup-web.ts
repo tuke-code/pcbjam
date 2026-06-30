@@ -11,6 +11,9 @@ import type { FullConfig } from '@playwright/test';
  */
 
 const API_BASE = process.env.BACKEND_URL ?? 'http://localhost:3060';
+// The reference backend serves its single project under any scope; the editor
+// addresses it as /:scope/projects/:name, so the specs use a fixed scope.
+const SCOPE = 'default';
 const DEMO_SLUG = 'demo';
 const DEMO_FILES = ['demo.kicad_sch', 'demo.kicad_pcb', 'demo.kicad_wks'];
 // Origin libs the remote-lib specs browse/place (symbol-write/footprint-browse).
@@ -41,10 +44,10 @@ async function waitForApi(timeoutMs = 60000): Promise<void> {
 }
 
 async function verifyDemoProject(): Promise<void> {
-  const r = await fetch(`${API_BASE}/api/projects/${DEMO_SLUG}`);
+  const r = await fetch(`${API_BASE}/api/scopes/${SCOPE}/projects/${DEMO_SLUG}`);
   if (!r.ok) {
     throw new Error(
-      `GET /api/projects/${DEMO_SLUG} -> HTTP ${r.status}; ` +
+      `GET /api/scopes/${SCOPE}/projects/${DEMO_SLUG} -> HTTP ${r.status}; ` +
         `is the backend's PROJECT_DIR pointing at tests/fixtures/demo?`
     );
   }
@@ -58,9 +61,9 @@ async function verifyDemoProject(): Promise<void> {
 
 async function verifyLibs(): Promise<void> {
   for (const kind of ['symbol', 'footprint'] as const) {
-    const r = await fetch(`${API_BASE}/api/libs?kind=${kind}`);
+    const r = await fetch(`${API_BASE}/api/scopes/${SCOPE}/libs?kind=${kind}`);
     if (!r.ok) {
-      throw new Error(`GET /api/libs?kind=${kind} -> HTTP ${r.status}`);
+      throw new Error(`GET /api/scopes/${SCOPE}/libs?kind=${kind} -> HTTP ${r.status}`);
     }
     const libs = (await r.json()) as { id: string }[];
     const have = new Set(libs.map((l) => l.id));

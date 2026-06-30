@@ -1,8 +1,10 @@
 import { test, expect, type Page } from '@playwright/test';
 import { waitForRegistry, clickByTooltip } from '../e2e/utils/element-tracker';
 
-// Mirrors @pcbjam/shared OWNER_HEADER (tests/ doesn't depend on the shared pkg).
-const OWNER_HEADER = 'x-pcbjam-owner';
+// Mirrors @pcbjam/shared USER_HEADER (tests/ doesn't depend on the shared pkg).
+const USER_HEADER = 'x-pcbjam-user';
+// The reference backend serves its single project/libs under any scope.
+const SCOPE = 'default';
 
 /**
  * 0009-C: the FULL remote footprint write round-trip — no in-memory spike. Boot
@@ -51,7 +53,7 @@ test('footprint editor save persists to the backend (remote write round-trip)', 
   page.on('console', (m) => logs.push(`[${m.type()}] ${m.text()}`));
   page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`));
 
-  await page.goto(`/p/demo/footprint_editor/?libowner=${owner}`);
+  await page.goto(`/default/projects/demo/-/footprint_editor?libowner=${owner}`);
   await expect(page.locator('#canvas')).toBeVisible({ timeout: 180000 });
   await waitForRegistry(page, 180000);
   await page.waitForFunction(
@@ -64,8 +66,8 @@ test('footprint editor save persists to the backend (remote write round-trip)', 
   await page.screenshot({ path: SHOT('01-boot'), scale: 'css' });
 
   // Boot's ensure-user-lib created the writable container for this owner.
-  const ownerHeaders = { [OWNER_HEADER]: owner };
-  const libsRes = await fetch(`${BACKEND}/api/libs?kind=footprint`, { headers: ownerHeaders });
+  const ownerHeaders = { [USER_HEADER]: owner };
+  const libsRes = await fetch(`${BACKEND}/api/scopes/${SCOPE}/libs?kind=footprint`, { headers: ownerHeaders });
   const libsBody = (await libsRes.json()) as { id: string; type: string }[];
   logs.push(`[spec] libs: ${JSON.stringify(libsBody)}`);
   expect(libsBody.some((l) => l.type === 'user' && l.id === USER_LIB), 'user lib created at boot').toBe(true);
@@ -89,7 +91,7 @@ test('footprint editor save persists to the backend (remote write round-trip)', 
   await expect
     .poll(
       async () => {
-        const r = await fetch(`${BACKEND}/api/libs/${USER_LIB}/items`, { headers: ownerHeaders });
+        const r = await fetch(`${BACKEND}/api/scopes/${SCOPE}/libs/${USER_LIB}/items`, { headers: ownerHeaders });
         items = r.ok ? ((await r.json()) as { kind: string; name: string }[]) : [];
         return items.filter((i) => i.kind === 'footprint').length;
       },
@@ -103,7 +105,7 @@ test('footprint editor save persists to the backend (remote write round-trip)', 
 
   // The persisted body is a well-formed fork-native footprint (native version).
   const bodyRes = await fetch(
-    `${BACKEND}/api/libs/${USER_LIB}/items/footprint/${encodeURIComponent(saved.name)}`,
+    `${BACKEND}/api/scopes/${SCOPE}/libs/${USER_LIB}/items/footprint/${encodeURIComponent(saved.name)}`,
     { headers: ownerHeaders },
   );
   const body = await bodyRes.text();

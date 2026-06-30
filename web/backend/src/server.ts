@@ -16,7 +16,7 @@ import Fastify from "fastify";
 import { initServer } from "@ts-rest/fastify";
 import {
   contract,
-  OWNER_HEADER,
+  USER_HEADER,
   type Project,
   type ProjectFile,
 } from "@pcbjam/shared";
@@ -39,11 +39,13 @@ import {
   writeUserItem,
 } from "./user-libs.js";
 
-/** The (thin, pre-auth) owner from OWNER_HEADER; absent ⇒ the default owner. */
-function ownerOf(
+/** The (thin, pre-auth) user from USER_HEADER; absent ⇒ the default. User libs
+ *  are namespaced by this slug (this reference backend serves one project off the
+ *  filesystem regardless of the URL scope). */
+function userOf(
   headers: Record<string, string | string[] | undefined>,
 ): string {
-  const v = headers[OWNER_HEADER];
+  const v = headers[USER_HEADER];
   const s = Array.isArray(v) ? v[0] : v;
   return (s && String(s).trim()) || DEFAULT_OWNER;
 }
@@ -131,10 +133,13 @@ async function walk(dir: string, prefix = ""): Promise<ProjectFile[]> {
   return out;
 }
 
-async function project(): Promise<Project> {
+// The reference backend serves one project for any scope; it echoes back the
+// requested scope so the editor's links stay consistent.
+async function project(scope: string): Promise<Project> {
   const st = await fs.stat(PROJECT_DIR);
   return {
     id: PROJECT_ID,
+    scope,
     slug: SLUG,
     name: path.basename(PROJECT_DIR) || SLUG,
     createdAt: st.birthtime.toISOString(),
@@ -161,14 +166,20 @@ async function main(): Promise<void> {
 
   const s = initServer();
   const router = s.router(contract, {
-    listProjects: async () => ({ status: 200, body: [await project()] }),
+    listProjects: async ({ params }) => ({
+      status: 200,
+      body: [await project(params.scope)],
+    }),
     getProject: async ({ params }) => {
       if (params.project !== SLUG) {
         return { status: 404 as const, body: { message: "project not found" } };
       }
       return {
         status: 200 as const,
-        body: { project: await project(), files: await walk(PROJECT_DIR) },
+        body: {
+          project: await project(params.scope),
+          files: await walk(PROJECT_DIR),
+        },
       };
     },
     listFiles: async ({ params }) => {
@@ -178,7 +189,7 @@ async function main(): Promise<void> {
       return { status: 200 as const, body: await walk(PROJECT_DIR) };
     },
     listLibs: async ({ headers, query }) => {
-      const owner = ownerOf(headers);
+      const owner = userOf(headers);
       // Origins filtered by item kind (?kind); user libs are kind-agnostic
       // containers → always listed.
       const [origins, user] = await Promise.all([
@@ -189,7 +200,7 @@ async function main(): Promise<void> {
     },
     listLibItems: async ({ params, headers }) => {
       // User libs win over origins on an id clash (the editor's writable lib).
-      const user = await listUserItems(userLibs, ownerOf(headers), params.lib);
+      const user = await listUserItems(userLibs, userOf(headers), params.lib);
       const items = user ?? (await listLibItems(libs, params.lib));
       if (items === null) {
         return { status: 404 as const, body: { message: "library not found" } };
@@ -198,7 +209,7 @@ async function main(): Promise<void> {
     },
     createLib: async ({ body, headers }) => {
       try {
-        const lib = await createUserLib(userLibs, ownerOf(headers), body.name);
+        const lib = await createUserLib(userLibs, userOf(headers), body.name);
         return { status: 201 as const, body: lib };
       } catch (e) {
         if (e instanceof UserLibError && e.status === 409) {
@@ -210,16 +221,23 @@ async function main(): Promise<void> {
         };
       }
     },
+    // The reference backend has no drift store; collaboration here is tab-only
+    // (BroadcastChannel). Accept-and-ignore: the editor reports drift best-effort
+    // and ignores failures, so a 404 is harmless and needs no storage.
+    reportDrift: async () => ({
+      status: 404 as const,
+      body: { message: "drift reporting not supported by the reference backend" },
+    }),
   });
   await app.register(s.plugin(router));
 
   // Streamed item-body fetch (text; intentionally not a ts-rest endpoint).
   // User libs are resolved first (owner-scoped), then read-only origins.
-  app.get<{ Params: { lib: string; kind: string; name: string } }>(
-    "/api/libs/:lib/items/:kind/:name",
+  app.get<{ Params: { scope: string; lib: string; kind: string; name: string } }>(
+    "/api/scopes/:scope/libs/:lib/items/:kind/:name",
     async (req, reply) => {
       const { lib, kind, name } = req.params;
-      const userPath = userItemBodyPath(userLibs, ownerOf(req.headers), lib, kind, name);
+      const userPath = userItemBodyPath(userLibs, userOf(req.headers), lib, kind, name);
       const userExists =
         userPath && (await fs.stat(userPath).then((st) => st.isFile()).catch(() => false));
       const abs = userExists ? userPath! : itemBodyPath(libs, lib, kind, name);
@@ -235,8 +253,8 @@ async function main(): Promise<void> {
   );
 
   // Item-body WRITE (text; the mirror of the GET above). Owner from OWNER_HEADER.
-  app.put<{ Params: { lib: string; kind: string; name: string } }>(
-    "/api/libs/:lib/items/:kind/:name",
+  app.put<{ Params: { scope: string; lib: string; kind: string; name: string } }>(
+    "/api/scopes/:scope/libs/:lib/items/:kind/:name",
     async (req, reply) => {
       const { lib, kind, name } = req.params;
       const body = typeof req.body === "string" ? req.body : "";
@@ -244,7 +262,7 @@ async function main(): Promise<void> {
       try {
         const item = await writeUserItem(
           userLibs,
-          ownerOf(req.headers),
+          userOf(req.headers),
           lib,
           kind,
           name,
@@ -261,8 +279,8 @@ async function main(): Promise<void> {
   );
 
   // Streamed file-byte download (binary; intentionally not a ts-rest endpoint).
-  app.get<{ Params: { project: string; "*": string } }>(
-    "/api/projects/:project/files/*",
+  app.get<{ Params: { scope: string; project: string; "*": string } }>(
+    "/api/scopes/:scope/projects/:project/files/*",
     async (req, reply) => {
       if (req.params.project !== SLUG) {
         return reply.code(404).send({ message: "project not found" });
