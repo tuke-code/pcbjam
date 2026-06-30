@@ -1,13 +1,13 @@
 ---
 name: git-feature-sync
-description: Rebase the current feature branch onto main in all 4 repos (root + kicad + wxwidgets + pcbjam-shared). Naturally re-runnable - after the user resolves a conflict manually and runs `git rebase --continue`, re-invoke the skill and it picks up where it stopped. Usage - "/git-feature-sync".
+description: Rebase the current feature branch onto main in all 5 repos (root + kicad + wxwidgets + binaryen + pcbjam-shared). Naturally re-runnable - after the user resolves a conflict manually and runs `git rebase --continue`, re-invoke the skill and it picks up where it stopped. Usage - "/git-feature-sync".
 ---
 
 # git-feature-sync
 
-Rebase the current feature branch onto each repo's main, across root, kicad, wxwidgets, and pcbjam-shared.
+Rebase the current feature branch onto each repo's main, across root, kicad, wxwidgets, binaryen, and pcbjam-shared.
 
-Per-repo main mapping is in `scripts/git-workflow/repos.sh` (root=`main`, kicad/wxwidgets=`wasm-port`, pcbjam-shared=`main`).
+Per-repo main mapping is in `scripts/git-workflow/repos.sh` (root=`main`, kicad/wxwidgets/binaryen=`wasm-port`, pcbjam-shared=`main`).
 
 ## How "resume after conflict" works
 
@@ -32,7 +32,7 @@ So after the user resolves a conflict manually + runs `git rebase --continue` in
 
 4. **Determine work plan.** For each repo, mark "needs rebase" if `up_to_date_with_main: false`. If all repos are up-to-date, print "all repos already up to date with their mains" and stop cleanly.
 
-5. **Execute per repo** in order [root, kicad, wxwidgets, pcbjam-shared]. Skip any repo with `up_to_date_with_main: true`. For each repo that needs rebase:
+5. **Execute per repo** in order [root, kicad, wxwidgets, binaryen, pcbjam-shared]. Skip any repo with `up_to_date_with_main: true`. For each repo that needs rebase:
    - Prose-announce: "About to rebase <repo> (`<feature>`) onto `origin/<main>` — proceed?"
    - `git -C <path> rebase origin/<main>` (origins were already fetched in step 1; this hits the `ask` permission — user confirms again at tool layer)
    - If the rebase command exits non-zero (conflict), STOP and emit the handoff message (see below).

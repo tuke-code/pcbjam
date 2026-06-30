@@ -1,28 +1,28 @@
 ---
 name: git-feature-finish
-description: Merge the current feature branch back to main (fast-forward only) and push, across all 4 repos. Submodules first (kicad, wxwidgets, pcbjam-shared), then root - so the root push includes the merged submodule SHAs. Stops for confirmation at each merge and push. Usage - "/git-feature-finish".
+description: Merge the current feature branch back to main (fast-forward only) and push, across all 5 repos. Submodules first (kicad, wxwidgets, binaryen, pcbjam-shared), then root - so the root push includes the merged submodule SHAs. Stops for confirmation at each merge and push. Usage - "/git-feature-finish".
 ---
 
 # git-feature-finish
 
 Land the current feature branch into each repo's main and push. Uses `--ff-only` for clean linear history.
 
-Per-repo main mapping is in `scripts/git-workflow/repos.sh` (root=`main`, kicad/wxwidgets=`wasm-port`, pcbjam-shared=`main`).
+Per-repo main mapping is in `scripts/git-workflow/repos.sh` (root=`main`, kicad/wxwidgets/binaryen=`wasm-port`, pcbjam-shared=`main`).
 
 ## Pre-flight (all of these must pass before any merge happens)
 
 1. **Fetch every origin FIRST.** Run `bash scripts/git-workflow/for-each-repo.sh fetch origin`. This is mandatory and must happen *before* the status snapshot. `repo-status.sh` derives `up_to_date_with_main` from the local `origin/<main>` ref **without fetching** — so without this step a repo whose origin has moved looks "up to date", check 5 passes, and the staleness is only discovered mid-merge (the `pull --ff-only` in the steps below would catch it, but then you've already merged the earlier repos). Fetching here makes the pre-flight STOP cleanly with "run `/git-feature-sync` first" instead of bailing partway through.
 2. Run `bash scripts/git-workflow/repo-status.sh`. Parse the JSON. Because step 1 just fetched, `up_to_date_with_main` now reflects true remote state.
-3. All 4 repos must have `dirty: false`. If any is dirty, STOP and tell the user to commit (`/git-feature-commit`) or stash first.
-4. All 4 repos must be on the same feature branch (use root's branch as the reference). If not, STOP and report the mismatch.
-5. All 4 repos must have `up_to_date_with_main: true` (i.e. the feature is rebased onto the latest main). If any isn't, STOP and instruct: "run `/git-feature-sync` first".
+3. All 5 repos must have `dirty: false`. If any is dirty, STOP and tell the user to commit (`/git-feature-commit`) or stash first.
+4. All 5 repos must be on the same feature branch (use root's branch as the reference). If not, STOP and report the mismatch.
+5. All 5 repos must have `up_to_date_with_main: true` (i.e. the feature is rebased onto the latest main). If any isn't, STOP and instruct: "run `/git-feature-sync` first".
 6. None may have `rebase_in_progress: true`. If so, STOP.
 
-## Steps — order: kicad, wxwidgets, pcbjam-shared, root
+## Steps — order: kicad, wxwidgets, binaryen, pcbjam-shared, root
 
 Submodules first so that when root checks out main and merges its feature branch, the pointer-bump commits land on root's main referencing the just-merged submodule mains.
 
-For each repo in order [kicad, wxwidgets, pcbjam-shared, root]:
+For each repo in order [kicad, wxwidgets, binaryen, pcbjam-shared, root]:
 
 1. Skip if already merged: run `git -C <path> branch --merged <main>` and check if the feature branch appears. If so, print "<repo>: feature already merged into <main>, skipping merge+push" and proceed to step 5 (branch delete prompt).
 
@@ -39,12 +39,13 @@ For each repo in order [kicad, wxwidgets, pcbjam-shared, root]:
 5. **Prose-ask:** "Delete local feature branch `<feature>` in <repo>?"
    - `git -C <path> branch -d <feature>` (hits `ask` permission). This is safe (`-d`, not `-D`) — git refuses if the branch isn't fully merged, which is exactly the safety we want.
 
-## After all 4 repos done
+## After all 5 repos done
 
 Report a summary table:
 ```
 kicad:     merged feature/foo into wasm-port, pushed (origin/wasm-port now at <sha>), branch deleted
 wxwidgets: merged feature/foo into wasm-port, pushed (origin/wasm-port now at <sha>), branch deleted
+binaryen:  merged feature/foo into wasm-port, pushed (origin/wasm-port now at <sha>), branch deleted
 pcbjam-shared: merged feature/foo into main, pushed (origin/main now at <sha>), branch deleted
 root:      merged feature/foo into main,      pushed (origin/main now at <sha>),      branch deleted
 ```

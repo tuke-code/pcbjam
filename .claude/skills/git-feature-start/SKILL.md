@@ -1,16 +1,17 @@
 ---
 name: git-feature-start
-description: Create a new feature branch across all 4 repos (root + kicad + wxwidgets + pcbjam-shared submodules). Fetches each repo's main, fast-forward pulls, and creates the same feature branch in each. Usage - "/git-feature-start <branch-name>", e.g. "/git-feature-start feature/new-foo".
+description: Create a new feature branch across all 5 repos (root + kicad + wxwidgets + binaryen + pcbjam-shared submodules). Fetches each repo's main, fast-forward pulls, and creates the same feature branch in each. Usage - "/git-feature-start <branch-name>", e.g. "/git-feature-start feature/new-foo".
 ---
 
 # git-feature-start
 
-Create a new feature branch in all 4 repos (root, kicad, wxwidgets, and pcbjam-shared submodules), based on each repo's main branch.
+Create a new feature branch in all 5 repos (root, kicad, wxwidgets, binaryen, and pcbjam-shared submodules), based on each repo's main branch.
 
 Per-repo main mapping (hardcoded in `scripts/git-workflow/repos.sh`):
 - root → `main`
 - kicad → `wasm-port`
 - wxwidgets → `wasm-port`
+- binaryen → `wasm-port`
 - pcbjam-shared (web/pcbjam-shared) → `main`
 
 ## Arguments
@@ -25,7 +26,7 @@ If the user invoked the skill without a branch name, ask for one via `AskUserQue
 
 2. **Pre-flight: check no repo is already on a non-main branch.** Run `bash scripts/git-workflow/repo-status.sh` and inspect each line's `branch` field. If any repo's `branch` is not its `main` (or is empty meaning detached HEAD), STOP and tell the user. Suggest: `/git-feature-sync` if they're already mid-feature, or manually checkout the main in that repo first. Do NOT silently switch off in-progress work.
 
-3. **For each repo** in order [root, kicad, wxwidgets, pcbjam-shared], run these commands. Echo what you're about to do in chat before each repo.
+3. **For each repo** in order [root, kicad, wxwidgets, binaryen, pcbjam-shared], run these commands. Echo what you're about to do in chat before each repo.
    - `git -C <path> fetch origin`
    - `git -C <path> checkout <main>`
    - `git -C <path> pull --ff-only origin <main>`
@@ -36,6 +37,7 @@ If the user invoked the skill without a branch name, ask for one via `AskUserQue
    root:      created <branch> from main@<sha>
    kicad:     created <branch> from wasm-port@<sha>
    wxwidgets: created <branch> from wasm-port@<sha>
+   binaryen:  created <branch> from wasm-port@<sha>
    pcbjam-shared: created <branch> from main@<sha>
    ```
 
@@ -43,7 +45,7 @@ If the user invoked the skill without a branch name, ask for one via `AskUserQue
 
 ## Failure handling
 
-If any step fails partway (e.g. checkout fails in wxwidgets after root and kicad succeeded), STOP and report exactly which repos already have the new branch and which don't. The user can manually finish or `/git-feature-finish` won't run until all 4 are aligned anyway.
+If any step fails partway (e.g. checkout fails in wxwidgets after root and kicad succeeded), STOP and report exactly which repos already have the new branch and which don't. The user can manually finish or `/git-feature-finish` won't run until all 5 are aligned anyway.
 
 ## Safety
 
