@@ -110,8 +110,26 @@ function loadScript(src: string): Promise<void> {
  *     the page is COEP `require-corp`). The `.wasm`/`images.tar.gz` fetches just
  *     need `ACAO` + `CORP` on the CDN. See docs/features/demo-deploy/0001-*.
  */
-function pthreadWorkerScript(base: string, tool: Tool): string | Blob {
+function pthreadWorkerScript(
+  base: string,
+  tool: Tool,
+  traceMask?: string | null,
+): string | Blob {
   const abs = new URL(`${base}/${tool}.js`, window.location.href);
+  // ?trace=<mask>: seed `self.__KICAD_TRACE__` in EVERY pthread worker's scope
+  // before it importScripts the glue. With PROXY_TO_PTHREAD the C main()/UI (and
+  // thus TRACE_MANAGER) run on a pthread, so the trace env must be set in the
+  // worker realm, not just the page's Module.ENV. The glue's ENV-merge shim
+  // reads __KICAD_TRACE__ into ENV -> environ -> getenv("KICAD_TRACE").
+  if (traceMask) {
+    return new Blob(
+      [
+        `self.__KICAD_TRACE__=${JSON.stringify(traceMask)};`,
+        `importScripts(${JSON.stringify(abs.href)});`,
+      ],
+      { type: "text/javascript" },
+    );
+  }
   if (abs.origin === window.location.origin) return `${base}/${tool}.js`;
   return new Blob([`importScripts(${JSON.stringify(abs.href)});`], {
     type: "text/javascript",
@@ -169,6 +187,13 @@ async function doBoot(opts: BootOptions): Promise<void> {
   // we must do the same or the wasm falls back to a hardcoded 1280x720 frame that
   // mismatches the viewport, breaking the whole AUI layout (toolbars/panels).
   (w as unknown as { mainWindow: HTMLElement }).mainWindow = container;
+
+  // Dev/diagnostics: ?trace=<KICAD_TRACE mask> turns on a KiCad trace channel for
+  // this boot (e.g. ?trace=KI_TRACE_SYM_CHOOSER for symbol-chooser timing). Set on
+  // the page's Module.ENV (main thread) AND seeded into each pthread worker via
+  // pthreadWorkerScript (the app/UI thread under PROXY_TO_PTHREAD); the glue's
+  // ENV-merge shim feeds it into the C environ that wxGetEnv reads.
+  const traceMask = new URLSearchParams(window.location.search).get("trace");
 
   // libs: install the provider (must exist before any plugin call can suspend
   // on it) and generate the sym-lib-table from the source's libs — both before
@@ -321,10 +346,21 @@ async function doBoot(opts: BootOptions): Promise<void> {
 
   w.Module = {
     thisProgram: TOOL_ARGV0[tool], // argv[0] for KiCad's DEBUG check
+    ...(traceMask ? { ENV: { KICAD_TRACE: traceMask } } : {}),
     preRun,
     postRun: [],
-    print: (...args: unknown[]) => log(`[out] ${args.join(" ")}`),
-    printErr: (...args: unknown[]) => log(`[err] ${args.join(" ")}`),
+    print: (...args: unknown[]) => {
+      const m = args.join(" ");
+      log(`[out] ${m}`);
+      // With ?trace=, also echo to the JS console (the in-page log buffer is
+      // capped at 800 lines and would truncate a full-set trace run).
+      if (traceMask) console.log(m);
+    },
+    printErr: (...args: unknown[]) => {
+      const m = args.join(" ");
+      log(`[err] ${m}`);
+      if (traceMask) console.warn(m);
+    },
     setStatus: (text: string) => {
       if (text) onStatus(text);
     },
@@ -346,7 +382,7 @@ async function doBoot(opts: BootOptions): Promise<void> {
     locateFile: (path: string) => `${base}/${path}`,
     // Pin the pthread worker script. Same-origin → direct URL; cross-origin CDN
     // → a same-origin blob shim that importScripts the glue (see helper above).
-    mainScriptUrlOrBlob: pthreadWorkerScript(base, tool),
+    mainScriptUrlOrBlob: pthreadWorkerScript(base, tool, traceMask),
     // Own the wasm fetch so we can report download progress (see helper). Streams
     // straight into the compiler; passing `module` to the callback lets emscripten
     // share it with the pthread workers (this hook fires on the main thread only).
