@@ -357,6 +357,7 @@ elif [[ "$PHASE" == "postprocess" ]]; then
     # wasm (no container). Parallelize across apps when pipelining.
     if [[ "${KICAD_PIPELINE:-0}" == "1" ]] && [ "$TOTAL_APPS" -gt 1 ]; then
         mkdir -p "$PIPELINE_LOG_DIR"
+        kw_stage binaryen
         ./scripts/binaryen-hoist-pass/build-wasm-opt.sh >/dev/null  # pre-warm Binaryen (submodule) once
         _install_pipeline_trap
         for app in "${APPS[@]}"; do
@@ -374,6 +375,7 @@ elif [[ "${KICAD_PIPELINE:-0}" == "1" ]] && [ "$TOTAL_APPS" -gt 1 ]; then
     mkdir -p "$PIPELINE_LOG_DIR"
     # Pre-build the Binaryen submodule once — two concurrent postprocesses racing
     # the first from-source build would collide.
+    kw_stage binaryen
     ./scripts/binaryen-hoist-pass/build-wasm-opt.sh >/dev/null
     _install_pipeline_trap
     idx=1

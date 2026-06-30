@@ -98,6 +98,7 @@ BEGIN {
     ord[++ROWN] = "kicad-compile";   lab["kicad-compile"]   = "KiCad compile"
     ord[++ROWN] = "kicad-bitmaps";   lab["kicad-bitmaps"]   = "Bitmap resources"
     ord[++ROWN] = "copy-output";     lab["copy-output"]     = "Copy output"
+    ord[++ROWN] = "binaryen";        lab["binaryen"]        = "Build Binaryen"
     ord[++ROWN] = "dyncall-shims";   lab["dyncall-shims"]   = "dynCall shims"
     ord[++ROWN] = "finalize";        lab["finalize"]        = "Finalize WASM"
     ord[++ROWN] = "asyncify";        lab["asyncify"]        = "Asyncify"
@@ -172,6 +173,8 @@ function render_markers(   state, totalEl, pk, curIdx, i, k, st, det, subdet, en
         printf "H|-|0|0|%d|%s\n", totalEl, state
         if (curRawKey == "container-sync") {
             printf "R|active|Sync source to container|%s\n", fmt(termTs - rowStartTs["container-sync"])
+        } else if (curRawKey == "binaryen") {
+            printf "R|active|Build Binaryen|%s\n", fmt(termTs - rowStartTs["binaryen"])
         } else {
             printf "N|waiting for build to start...\n"
         }

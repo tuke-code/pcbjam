@@ -8,15 +8,14 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-# wasm-emscripten-finalize ships with emscripten (it was removed from Binaryen ~v116), so use the
-# emsdk's own — the one emscripten would run in-link — directly. No binaryen download. A host-mode
-# kicad/test build stubs the emsdk finalize and keeps the real binary at .real; prefer it (the stub
-# exits 0 having done nothing).
-EMSDK_DIR="${EMSDK:-${PROJECT_ROOT}/tools/emsdk}"
-FINALIZE="${EMSDK_DIR}/upstream/bin/wasm-emscripten-finalize"
-if [ -x "${FINALIZE}.real" ]; then
-    FINALIZE="${FINALIZE}.real"
-fi
+# wasm-emscripten-finalize comes from our Binaryen submodule (version_130 + --hoist-cpp-catches),
+# built alongside wasm-opt by build-wasm-opt.sh. Pinning finalize and the asyncify wasm-opt to ONE
+# Binaryen version removes the host's emsdk dependency from the post-process entirely (it is now
+# dyncall=node + finalize/asyncify=submodule), which is what was breaking on the ephemeral CI host.
+# HOIST_WASMOPT, when the build driver pre-warms the submodule build, points at the already-built
+# wasm-opt so we don't re-invoke the build per app; finalize sits next to it in the same bin/.
+WASM_OPT="${HOIST_WASMOPT:-$("${SCRIPT_DIR}/../binaryen-hoist-pass/build-wasm-opt.sh")}"
+FINALIZE="$(dirname "${WASM_OPT}")/wasm-emscripten-finalize"
 
 INPUT_WASM="${1:-output/pcbnew.wasm}"
 OUTPUT_WASM="${2:-${INPUT_WASM}}"

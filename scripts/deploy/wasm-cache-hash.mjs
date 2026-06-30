@@ -51,7 +51,10 @@ const INPUTS = [
   { file: "scripts/common/apply-asyncify.sh" },
   { file: "scripts/common/apply-finalize.sh" },
   { file: "scripts/common/inject-dyncall-shims.sh" },
-  { file: "scripts/common/get-wasm-opt.sh" },
+  // The submodule build that provides BOTH host wasm-opt and wasm-emscripten-finalize.
+  // (get-wasm-opt.sh is no longer on the build path — bench-only — so it no longer
+  // belongs in the cache key.)
+  { file: "scripts/binaryen-hoist-pass/build-wasm-opt.sh" },
 
   // Per-tool compile recipes (compile flags / emcc link options).
   { dir: "scripts/kicad", match: /^build-.*\.sh$/ },

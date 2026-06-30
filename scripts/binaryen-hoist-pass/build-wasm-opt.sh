@@ -1,10 +1,14 @@
 #!/bin/bash
-# Build a wasm-opt that includes the catch-arm-hoisting pass (--hoist-cpp-catches).
+# Build the host post-process Binaryen tools from our submodule: wasm-opt (with the
+# catch-arm-hoisting pass, --hoist-cpp-catches) AND wasm-emscripten-finalize.
 #
 # Source of truth is the tracked Binaryen submodule (binaryen/, branch wasm-port =
 # upstream version_130 + src/passes/HoistCppCatches.cpp). This configures an out-of-source
 # build into the gitignored build-wasm/ tree and prints the wasm-opt path on stdout
-# (build progress to stderr). See docs/features/wasm-exceptions/06-spike-plan.md (Phase 1.5).
+# (build progress to stderr); wasm-emscripten-finalize lands next to it in the same bin/
+# (apply-finalize.sh derives it from the wasm-opt dir). Building both from one submodule
+# keeps finalize and asyncify on a single Binaryen version and removes the host emsdk
+# dependency from the post-process. See docs/features/wasm-exceptions/06-spike-plan.md (Phase 1.5).
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -27,6 +31,6 @@ if [ ! -f "${BUILD}/build.ninja" ]; then
         -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON -DBUILD_TESTS=OFF >&2
 fi
 
-ninja -C "${BUILD}" wasm-opt >&2
+ninja -C "${BUILD}" wasm-opt wasm-emscripten-finalize >&2
 
 echo "${BUILD}/bin/wasm-opt"
