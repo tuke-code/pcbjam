@@ -122,6 +122,15 @@ declare global {
  */
 export const LIB_BUSY_EVENT = "pcbjam:lib-busy";
 export const LIB_ERROR_EVENT = "pcbjam:lib-error";
+/**
+ * Fired around the bulk "fat list" crossing (`list`/`bodies`) — the eager
+ * idb→wasm library load that can take tens of seconds on the full CDN set. Unlike
+ * LIB_BUSY (per-item open/save), this brackets the whole-library hydrate so the
+ * editor chrome can show a "loading libraries, just slow" overlay instead of a
+ * silent freeze. One `loading:true` per lib as its crossing starts, `loading:false`
+ * as the bytes are handed to the bridge; the consumer coalesces the per-lib run.
+ */
+export const LIB_LOADING_EVENT = "pcbjam:lib-loading";
 
 export interface LibBusyDetail {
   busy: boolean;
@@ -132,10 +141,22 @@ export interface LibBusyDetail {
 export interface LibErrorDetail {
   message: string;
 }
+export interface LibLoadingDetail {
+  loading: boolean;
+  kind: string;
+  /** Libraries whose fat-load has started this burst (1-based, increasing). */
+  done: number;
+  /** Total libs of this kind to load (from listLibs), or 0 if unknown. */
+  total: number;
+}
 
 function emitLibBusy(detail: LibBusyDetail): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(LIB_BUSY_EVENT, { detail }));
+}
+function emitLibLoading(detail: LibLoadingDetail): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(LIB_LOADING_EVENT, { detail }));
 }
 function emitLibError(message: string): void {
   if (typeof window === "undefined") return;
@@ -228,6 +249,15 @@ export function installLibsProvider(
   if (window.kicadLibs) return;
   const delay = artificialDelayMs();
 
+  // Per-burst fat-load progress. The plugin fat-loads every library of a kind
+  // one bridge crossing at a time, so counting `bodies` requests gives real
+  // per-lib progress; `total` comes from listLibs(kind) (cached). A trailing
+  // timer resets the counter once a burst goes quiet, so a later open starts
+  // fresh (mirrors the overlay's own hide debounce).
+  let fatDone = 0;
+  let fatTotal = 0;
+  let fatResetTimer: ReturnType<typeof setTimeout> | undefined;
+
   const request: KicadLibsRequest = async (op, lib, arg, kind = "symbol") => {
     const id = libIdFromUri(lib);
     log(`[libs] request op=${op} kind=${kind} lib=${lib} (id=${id}) arg=${arg}`);
@@ -247,29 +277,61 @@ export function installLibsProvider(
           // the plugin pre-fills its cache and never per-item `get`s. Falls back
           // to listItems + N getItemBody for sources without bulk read.
           if (arg === "bodies") {
-            const all = source.getAllItems
-              ? await source.getAllItems(id)
-              : await fallbackGetAllItems(source, id);
-            const items = all.filter((i) => i.kind === kind);
-            // "Copy as-is" framing: a one-line JSON header (names + UTF-8 byte
-            // lengths), a newline, then every body's RAW bytes concatenated — no
-            // JSON escaping. The C++ bridge memcpy's this straight into the wasm
-            // heap; the plugin parses the small header and slices the bodies, so
-            // none of the (hundreds of MB of) s-expr gets un-escaped.
-            const header = JSON.stringify({
-              [key]: items.map((i) => ({ name: i.name, len: i.body.length })),
-            });
-            const headerBytes = new TextEncoder().encode(header + "\n");
-            const total =
-              headerBytes.length + items.reduce((n, i) => n + i.body.length, 0);
-            const out = new Uint8Array(total);
-            out.set(headerBytes, 0);
-            let off = headerBytes.length;
-            for (const i of items) {
-              out.set(i.body, off);
-              off += i.body.length;
+            // Bracket the whole-library hydrate so the editor can overlay a
+            // "loading libraries (slow, not hung)" state over the otherwise
+            // silent multi-second freeze. `true` before the (async) IDB read so
+            // the overlay can paint while the C++ side is Asyncify-suspended;
+            // `false` once the bytes are framed and about to cross the bridge.
+            clearTimeout(fatResetTimer);
+            if (fatTotal === 0) {
+              // First lib of the burst — learn the total for the progress bar.
+              try {
+                fatTotal = (await source.listLibs(kind)).length;
+              } catch {
+                fatTotal = 0;
+              }
             }
-            return out;
+            fatDone++;
+            emitLibLoading({ loading: true, kind, done: fatDone, total: fatTotal });
+            try {
+              const all = source.getAllItems
+                ? await source.getAllItems(id)
+                : await fallbackGetAllItems(source, id);
+              const items = all.filter((i) => i.kind === kind);
+              // "Copy as-is" framing: a one-line JSON header (names + UTF-8 byte
+              // lengths), a newline, then every body's RAW bytes concatenated — no
+              // JSON escaping. The C++ bridge memcpy's this straight into the wasm
+              // heap; the plugin parses the small header and slices the bodies, so
+              // none of the (hundreds of MB of) s-expr gets un-escaped.
+              const header = JSON.stringify({
+                [key]: items.map((i) => ({ name: i.name, len: i.body.length })),
+              });
+              const headerBytes = new TextEncoder().encode(header + "\n");
+              const total =
+                headerBytes.length +
+                items.reduce((n, i) => n + i.body.length, 0);
+              const out = new Uint8Array(total);
+              out.set(headerBytes, 0);
+              let off = headerBytes.length;
+              for (const i of items) {
+                out.set(i.body, off);
+                off += i.body.length;
+              }
+              return out;
+            } finally {
+              emitLibLoading({
+                loading: false,
+                kind,
+                done: fatDone,
+                total: fatTotal,
+              });
+              // Reset the per-burst counter once the run goes quiet, so the next
+              // open starts from zero (the WASM drives these back-to-back).
+              fatResetTimer = setTimeout(() => {
+                fatDone = 0;
+                fatTotal = 0;
+              }, 1500);
+            }
           }
           const items = await source.listItems(id);
           const names = items

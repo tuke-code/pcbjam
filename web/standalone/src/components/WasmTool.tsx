@@ -25,8 +25,10 @@ import { resolveWasmBase } from "@/wasm/wasm-assets";
 import {
   LIB_BUSY_EVENT,
   LIB_ERROR_EVENT,
+  LIB_LOADING_EVENT,
   type LibBusyDetail,
   type LibErrorDetail,
+  type LibLoadingDetail,
   type LibsSource,
 } from "@/wasm/libs/source";
 import { memfsFilePath, memfsProjectDir } from "@/wasm/constants";
@@ -584,6 +586,15 @@ export function WasmTool({
   const [libSync, setLibSync] = React.useState<string | null>(null);
   // Last lib error (e.g. a backend 404 on open), shown as a dismissible toast.
   const [libError, setLibError] = React.useState<string | null>(null);
+  // Eager whole-library idb→wasm load in flight (the ~tens-of-seconds fat-load on
+  // first chooser/editor open). Drives a full-cover overlay so the freeze reads as
+  // "loading, just slow" rather than a hang. Null when idle; `done/total` count the
+  // per-lib fat-load crossings so the overlay can show a progress bar.
+  const [libLoading, setLibLoading] = React.useState<{
+    kind: string;
+    done: number;
+    total: number;
+  } | null>(null);
 
   const append = React.useCallback(
     (msg: string) => setLogs((prev) => [...prev.slice(-800), msg]),
@@ -623,6 +634,31 @@ export function WasmTool({
     const t = setTimeout(() => setLibError(null), 6000);
     return () => clearTimeout(t);
   }, [libError]);
+
+  // Full-library eager load overlay. The fat-load fires one loading:true/false
+  // pair PER library (222 on the full set), and between them the C++ side parses
+  // with the main thread blocked. Show immediately on `true`, and only hide after
+  // a short quiet gap on `false` (reset by the next lib's `true`) — so the overlay
+  // stays continuous across the whole run and drops shortly after the last lib,
+  // instead of flickering 222 times.
+  React.useEffect(() => {
+    let hideTimer: ReturnType<typeof setTimeout> | undefined;
+    const onLoading = (e: Event) => {
+      const d = (e as CustomEvent<LibLoadingDetail>).detail;
+      clearTimeout(hideTimer);
+      // Update the bar on every event (true and false) so the count reflects the
+      // latest lib; arm the hide only when the run reports it's winding down.
+      setLibLoading({ kind: d.kind || "library", done: d.done, total: d.total });
+      if (!d.loading) {
+        hideTimer = setTimeout(() => setLibLoading(null), 700);
+      }
+    };
+    window.addEventListener(LIB_LOADING_EVENT, onLoading);
+    return () => {
+      clearTimeout(hideTimer);
+      window.removeEventListener(LIB_LOADING_EVENT, onLoading);
+    };
+  }, []);
 
   // "Taking too long": once the tool has been loading for a while without
   // becoming ready, surface a hint (slow link / something may be wrong) + a
@@ -905,6 +941,42 @@ export function WasmTool({
               )}
             </>
           )}
+        </div>
+      )}
+
+      {/* Eager library load overlay — the first chooser/editor open hydrates the
+          whole library set from IDB into wasm (tens of seconds on the full CDN
+          set) with the main thread blocked. Cover the (frozen) editor so it reads
+          as "loading, just slow" rather than a hang. Shown post-boot; before
+          `ready` the boot overlay already covers it. */}
+      {ready && libLoading && (
+        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-[#1a1a2e]/95 text-white">
+          <Loader2 className="animate-spin" size={32} />
+          <p className="font-mono text-sm text-white/80">
+            {libLoading.kind === "library"
+              ? "Loading libraries…"
+              : `Loading ${libLoading.kind} libraries…`}
+          </p>
+          {libLoading.total > 0 && (
+            <div className="w-64 max-w-[70vw]">
+              <div className="h-1.5 overflow-hidden rounded-full bg-white/15">
+                <div
+                  className="h-full rounded-full bg-emerald-400 transition-[width] duration-200 ease-out"
+                  style={{
+                    width: `${Math.min(100, Math.round((libLoading.done / libLoading.total) * 100))}%`,
+                  }}
+                />
+              </div>
+              <p className="mt-1 text-center font-mono text-[11px] text-white/50">
+                {Math.min(libLoading.done, libLoading.total)} / {libLoading.total}{" "}
+                libraries
+              </p>
+            </div>
+          )}
+          <p className="max-w-sm px-6 text-center font-mono text-xs text-white/40">
+            Moving the library set into the editor. The first open can take a
+            moment — it's cached after this.
+          </p>
         </div>
       )}
 

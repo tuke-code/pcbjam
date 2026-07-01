@@ -434,6 +434,13 @@ fi
 emcc -c -pthread "${PROJECT_ROOT}/wasm/shims/nanosleep_yield.c" -o "${STUBS_BUILD}/nanosleep_yield.o"
 NANOSLEEP_YIELD_LINK="${STUBS_BUILD}/nanosleep_yield.o"
 
+# mallinfo() stub for the mimalloc build: -sMALLOC=mimalloc doesn't export the
+# glibc mallinfo() that OpenCASCADE's OSD_MemInfo.cxx (libTKernel, pcbnew's 3D)
+# references — without this the pcbnew link fails `undefined symbol: mallinfo`.
+# Zeroed no-op (memory reporting only); harmless for apps that don't reference it.
+emcc -c "${PROJECT_ROOT}/wasm/shims/mallinfo_stub.c" -o "${STUBS_BUILD}/mallinfo_stub.o"
+MALLINFO_STUB_LINK="${STUBS_BUILD}/mallinfo_stub.o"
+
 emcmake cmake "${KICAD_DIR}" \
     ${CCACHE_OPTS} \
     ${SYM_CONVERTER_CMAKE_FLAG} \
@@ -444,7 +451,7 @@ emcmake cmake "${KICAD_DIR}" \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     -DCMAKE_CXX_FLAGS="${EXTRA_FLAGS} -Xclang -fno-pch-timestamp -pthread -sUSE_ZLIB=1 -DKICAD_USE_PLATFORM_WASM=1${DIAG_DEFINES} -I${SYSROOT}/include -I${STUBS_DIR} -include ${STUBS_DIR}/char_traits_uint16_workaround.h" \
     -DCMAKE_C_FLAGS="${EXTRA_FLAGS} -pthread -sUSE_ZLIB=1 -I${SYSROOT}/include -I${STUBS_DIR}" \
-    -DCMAKE_EXE_LINKER_FLAGS="${LINKER_DEBUG_FLAGS} -pthread -sUSE_ZLIB=1 -sASYNCIFY=1 -sDYNCALLS=1 -sASYNCIFY_STACK_SIZE=65536 -sUSE_PTHREADS=1 -sMALLOC=mimalloc -sPTHREAD_POOL_SIZE='navigator.hardwareConcurrency' -sPTHREAD_POOL_SIZE_STRICT=0 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=256MB -sMAXIMUM_MEMORY=4GB -sMAX_WEBGL_VERSION=2 ${GL3D_LINK_FLAGS} ${NANOSLEEP_YIELD_LINK} -sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','UTF8ToString','stringToUTF8','lengthBytesUTF8','dynCall'] -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=['\$dynCall'] --bind -L${SYSROOT}/lib ${STUBS_BUILD}/libgit2_stub.a ${STUBS_BUILD}/libcurl_stub.a${APP_STUB_LINK} ${STUBS_BUILD}/libnng_stub.a ${EMBIND_OBJ}" \
+    -DCMAKE_EXE_LINKER_FLAGS="${LINKER_DEBUG_FLAGS} -pthread -sUSE_ZLIB=1 -sASYNCIFY=1 -sDYNCALLS=1 -sASYNCIFY_STACK_SIZE=65536 -sUSE_PTHREADS=1 -sMALLOC=mimalloc -sPTHREAD_POOL_SIZE='navigator.hardwareConcurrency' -sPTHREAD_POOL_SIZE_STRICT=0 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=256MB -sMAXIMUM_MEMORY=4GB -sMAX_WEBGL_VERSION=2 ${GL3D_LINK_FLAGS} ${NANOSLEEP_YIELD_LINK} ${MALLINFO_STUB_LINK} -sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','UTF8ToString','stringToUTF8','lengthBytesUTF8','dynCall'] -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=['\$dynCall'] --bind -L${SYSROOT}/lib ${STUBS_BUILD}/libgit2_stub.a ${STUBS_BUILD}/libcurl_stub.a${APP_STUB_LINK} ${STUBS_BUILD}/libnng_stub.a ${EMBIND_OBJ}" \
     -DCMAKE_PREFIX_PATH="${SYSROOT};${WX_BUILD}" \
     -DwxWidgets_CONFIG_EXECUTABLE="${WX_BUILD}/wx-config" \
     \

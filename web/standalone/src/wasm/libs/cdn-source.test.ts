@@ -7,6 +7,7 @@ const MANIFEST_URL = "https://cdn.test/libs/kicad/9.0.0/manifest.json";
 const BASE = "https://cdn.test/libs/kicad/9.0.0";
 
 const enc = new TextEncoder();
+const dec = new TextDecoder();
 
 /** Build a static-origin snapshot (per-lib manifest + bundle) the way
  *  publish-libs will, using the REAL wire codecs — so this pins the format. */
@@ -90,18 +91,24 @@ describe("cdn libs source", () => {
     expect(await src.getItemBody("Device", "symbol", "Nope")).toBeNull();
   });
 
-  it("getAllItems returns every item with its body in one shot (fat list)", async () => {
+  it("getAllItems returns every item with its (raw-bytes) body in one shot (fat list)", async () => {
     const src = await fakeCdn();
     const all = (await src.getAllItems!("Device")).sort((a, b) =>
       a.name.localeCompare(b.name),
     );
-    expect(all).toEqual([
+    // "Copy as-is": bodies come back as raw Uint8Array (no TextDecoder) so the
+    // provider can frame + memcpy them across the bridge unescaped.
+    expect(
+      all.map((i) => ({ kind: i.kind, name: i.name, body: dec.decode(i.body) })),
+    ).toEqual([
       { kind: "symbol", name: "C", body: "(kicad_symbol_lib (symbol C))" },
       { kind: "symbol", name: "R", body: "(kicad_symbol_lib (symbol R))" },
     ]);
-    // Bodies match the per-item getItemBody for the same kind/name.
+    // Bodies (decoded) match the per-item getItemBody for the same kind/name.
     for (const it of all) {
-      expect(it.body).toBe(await src.getItemBody("Device", it.kind, it.name));
+      expect(dec.decode(it.body)).toBe(
+        await src.getItemBody("Device", it.kind, it.name),
+      );
     }
   });
 
