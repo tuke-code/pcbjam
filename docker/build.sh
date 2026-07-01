@@ -266,6 +266,13 @@ postprocess_app() {
     kw_stage dyncall-shims
     ./scripts/common/inject-dyncall-shims.sh "${out_dir}/${app}.js"
 
+    # Merge Module.ENV into the runtime ENV: the emscripten glue never merges it,
+    # so ?trace= (boot.ts sets Module.ENV.KICAD_TRACE) was a silent no-op —
+    # environ_get on the app pthread proxies to the main thread, whose ENV stayed
+    # empty. Replaces a manual per-build glue edit. Idempotent; runtime no-op when
+    # Module.ENV is unset. See docs/features/libs/0013.
+    node ./scripts/common/patch-env-shim.mjs "${out_dir}/${app}.js"
+
     # Apply wasm-emscripten-finalize on host (skipped in Docker due to memory limits)
     kw_stage finalize
     ./scripts/common/apply-finalize.sh "${out_dir}/${app}.wasm" "${out_dir}/${app}.wasm"

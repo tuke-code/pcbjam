@@ -190,9 +190,12 @@ async function doBoot(opts: BootOptions): Promise<void> {
 
   // Dev/diagnostics: ?trace=<KICAD_TRACE mask> turns on a KiCad trace channel for
   // this boot (e.g. ?trace=KI_TRACE_SYM_CHOOSER for symbol-chooser timing). Set on
-  // the page's Module.ENV (main thread) AND seeded into each pthread worker via
-  // pthreadWorkerScript (the app/UI thread under PROXY_TO_PTHREAD); the glue's
-  // ENV-merge shim feeds it into the C environ that wxGetEnv reads.
+  // the page's Module.ENV (main thread). Under PROXY_TO_PTHREAD the app/UI thread
+  // is a pthread, but `environ_get` on a pthread proxies to the MAIN thread — so
+  // the main thread's ENV is what `getenv("KICAD_TRACE")` reads. The build's
+  // patch-env-shim.mjs makes the glue merge Module.ENV into that ENV (emscripten's
+  // glue otherwise ignores Module.ENV); the per-worker seed below is a harmless
+  // belt-and-suspenders. See docs/features/libs/0013.
   const traceMask = new URLSearchParams(window.location.search).get("trace");
 
   // libs: install the provider (must exist before any plugin call can suspend
