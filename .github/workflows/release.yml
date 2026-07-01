@@ -1,10 +1,11 @@
 name: release
 
 # Release pipeline on a vX.Y.Z tag, in order:
-#   1) build  — the SAME wasm-build.yml recipe as CI, but at -O2 (the shipped demo
-#               opt level) + run the e2e gate; reuses main's opt-independent base
-#               cache so only the asyncify/-O2 tail rebuilds. Uploads output/.
-#   2) publish-wasm — push the -O2 build to the CDN (content-addressed, idempotent)
+#   1) build  — the SAME wasm-build.yml recipe as CI, at the SAME -O1 asyncify tail
+#               + run the e2e gate. Because the opt level now matches main, this
+#               FINAL-cache-hits main's build and skips the asyncify tail rebuild.
+#               Uploads output/.
+#   2) publish-wasm — push the build to the CDN (content-addressed, idempotent)
 #               and write manifest-<tag>.json. The registry now reflects THIS tag.
 #   3) deploy-demo  — build the standalone pinned to that manifest + deploy to
 #               demo.pcbjam.com. So the demo can never point at stale wasm.
@@ -49,17 +50,18 @@ jobs:
       - id: tag
         run: echo "tag=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
 
-  # 1) Build at -O2 (shipped) + e2e gate, reusing main's base cache. Uploads the
-  #    publishable output/ as the 'wasm-output' artifact for the publish job.
+  # 1) Build (-O1, identical to main) + e2e gate. Reuses main's FINAL cache (same
+  #    opt level) so the asyncify tail isn't rebuilt. Uploads the publishable
+  #    output/ as the 'wasm-output' artifact for the publish job.
   build:
     uses: ./.github/workflows/wasm-build.yml
     with:
-      opt_level: "-O2"
+      opt_level: "-O1"
       build_3d_viewer: "ON"
       run_tests: true
       upload_output: true
 
-  # 2) Publish the -O2 build to the CDN (content-addressed; unchanged tools reuse)
+  # 2) Publish the build to the CDN (content-addressed; unchanged tools reuse)
   #    and write manifest-<tag>.json. Cheap runner — just downloads + uploads.
   publish-wasm:
     needs: [meta, build]

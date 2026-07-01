@@ -128,9 +128,10 @@ fi
 
 # 3. Post-asyncify shrink. Asyncify spills every live local; without coalescing, large
 # coroutine-entry functions exceed V8's per-function locals limit and stall/crash the renderer.
-# -O1 already runs CoalesceLocals and suffices (CI uses it); -O2 is the default. NOT -Os/-Oz
-# (they break the asyncify runtime — Binaryen #4484). See docs/debugging/DEBUG.md §6-7.
-BINARYEN_OPT_LEVEL="${BINARYEN_OPT_LEVEL:--O2}"
+# -O1 runs CoalesceLocals (enough to keep instrumented functions under V8's local limit) and is the
+# level we ship EVERYWHERE — main CI, tag releases, and local builds all use it. NOT -Os/-Oz (they
+# break the asyncify runtime — Binaryen #4484). See docs/debugging/DEBUG.md §6-7.
+BINARYEN_OPT_LEVEL="${BINARYEN_OPT_LEVEL:--O1}"
 echo "Running wasm-opt ${BINARYEN_OPT_LEVEL} (shrink instrumented functions under V8's local limit)..."
 "${PRELOAD_CMD[@]}" "${TIME_CMD[@]}" "${WASM_OPT}" "${BINARYEN_OPT_LEVEL}" "${FEAT[@]}" ${G} "${OUTPUT_WASM}" -o "${OUTPUT_WASM}"
 

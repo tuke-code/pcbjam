@@ -1,27 +1,29 @@
 name: wasm-build (reusable)
 
-# THE single KiCad WASM build+test recipe, called by ci-ubicloud.yml (main/PR,
-# -O1 for fast feedback) and release.yml (tag, -O2 for the shipped demo). There
-# is no other build definition — publishing/deploy consume this job's output, so
-# the build can never diverge from what ships (the bug that shipped a -O1 / 3D-off
-# demo while CI built -O1 / 3D-on).
+# THE single KiCad WASM build+test recipe, called by ci-ubicloud.yml (main/PR) and
+# release.yml (tag). Both build the SAME way — the asyncify `wasm-opt` tail is -O1
+# everywhere — so the build can never diverge from what ships (the bug that shipped
+# a -O1 / 3D-off demo while CI built -O1 / 3D-on). The opt_level input remains as an
+# escape hatch for a one-off -O2 build, but is -O1 for both real callers, so a tag
+# release FINAL-cache-hits main's build and skips the asyncify tail entirely.
 #
 # Two-tier output cache around docker/build.sh's --compile-only / --postprocess-only
-# split. -O1 and -O2 differ ONLY in the final `wasm-opt -O` shrink; everything
-# before (docker compile → base wasm → asyncify instrument) is identical. So:
-#   - BASE cache  (opt-INDEPENDENT key): the --compile-only output (base wasm +
-#     sysroot headers). Warmed by main's -O1 CI; an -O2 release restores it and
-#     skips the expensive compile, running only the asyncify/-O2 tail.
-#   - FINAL cache (opt-SPECIFIC key): the post-processed output; fast-path for
-#     re-running the same opt+SHA (e.g. a re-deploy).
-# Both keys now include the 3D-viewer flag, so a 3D-on and 3D-off build can never
+# split. The expensive container compile (→ base wasm) is opt- and binaryen-
+# independent; only the host `asyncify + wasm-opt -O` tail depends on the binaryen
+# fork + opt level. So:
+#   - BASE cache  (compile-input key): the --compile-only output (base wasm +
+#     sysroot headers). Reused whenever only the binaryen fork / asyncify config
+#     changed — the compile is skipped and just the tail reruns.
+#   - FINAL cache (base + binaryen SHA + opt level): the post-processed output;
+#     fast-path for re-running the same SHA (a tag release reusing main, a re-deploy).
+# Both keys include the 3D-viewer flag, so a 3D-on and 3D-off build can never
 # poison each other's cache.
 
 on:
   workflow_call:
     inputs:
       opt_level:
-        description: "Binaryen wasm-opt shrink level for the asyncify tail (-O1 fast / -O2 shipped)"
+        description: "Binaryen wasm-opt shrink level for the asyncify tail (-O1 everywhere; escape hatch for a one-off -O2)"
         type: string
         default: "-O1"
       build_3d_viewer:

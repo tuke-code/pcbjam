@@ -22,15 +22,15 @@
 #
 # The build is split into two phases:
 # 1. Docker: Compile KiCad to WASM (without asyncify)
-# 2. Host: dyncall shims + finalize + asyncify + -O2 (Binaryen submodule via build-wasm-opt.sh)
+# 2. Host: dyncall shims + finalize + asyncify + wasm-opt -O1 (Binaryen submodule via build-wasm-opt.sh)
 #
 # KICAD_PIPELINE=1 (multi-app builds only): run phase 2 of each app in the
 # background while the next app compiles in the container. wasm-opt is
 # Amdahl-capped at ~4 effective cores, so on a many-core CI box the container
 # would otherwise sit idle for the 1-2h of host-side wasm-opt (run 27226030304:
 # 103 min of the 4h was tools serialized behind each other's wasm-opt). At most
-# KICAD_PIPELINE_JOBS (default 2) postprocesses run concurrently — pcbnew's -O2
-# peaks ~34 GB RSS, so 2 fits the 128 GB CI box but NOT a dev Mac: leave
+# KICAD_PIPELINE_JOBS (default 2) postprocesses run concurrently — pcbnew's wasm-opt
+# pass peaks ~34 GB RSS, so 2 fits the 128 GB CI box but NOT a dev Mac: leave
 # KICAD_PIPELINE unset locally.
 #
 # Binaryen is downloaded automatically - no prerequisites needed.
@@ -118,7 +118,7 @@ echo "Building app: ${APP_NAME}"
 # Build phase (cache split). The container compile produces an OPT-INDEPENDENT
 # base wasm; the only opt-DEPENDENT work is the final `wasm-opt -O$LEVEL` shrink
 # inside the host post-process (apply-asyncify.sh). Splitting them lets CI cache
-# the expensive compile once (shared across -O1/-O2) and re-run just the
+# the expensive compile once (shared regardless of the asyncify tail) and re-run just the
 # asyncify/-O tail per opt level — see .github/workflows/.
 #   (default) both       — compile in-container, then host post-process.
 #   --compile-only       — only the in-container compile → base wasm in output/.
@@ -248,7 +248,7 @@ compile_app() {
 }
 
 # Phase 2 of one app: host-side post-processing (dyncall shims, finalize,
-# asyncify + -O2). Pure host work on output/${app}.* — independent of the
+# asyncify + wasm-opt -O1). Pure host work on output/${app}.* — independent of the
 # container, which is what makes it safe to run in the background while the
 # next app compiles.
 postprocess_app() {
@@ -280,7 +280,7 @@ postprocess_app() {
     # Apply asyncify transformation on host. The converter is a synchronous node
     # CLI built with ASYNCIFY=0, so asyncify is unnecessary and would be wrong.
     # apply-asyncify always runs the --hoist-cpp-catches pass FIRST (native wasm-EH is the only build
-    # mode) so Asyncify can suspend from inside C++ catch arms, then asyncify + removelist + -O2.
+    # mode) so Asyncify can suspend from inside C++ catch arms, then asyncify + removelist + wasm-opt -O1.
     if [ "$app" != "sym_convert" ]; then
         kw_stage asyncify
         ./scripts/common/apply-asyncify.sh "${out_dir}/${app}.wasm" "${out_dir}/${app}.wasm"
@@ -304,7 +304,7 @@ pipeline_running_count() {
 }
 
 # Launch postprocess_app in the background, capped at KICAD_PIPELINE_JOBS
-# concurrent jobs (default 2: pcbnew's -O2 peaks ~34 GB RSS; two postprocesses
+# concurrent jobs (default 2: pcbnew's wasm-opt pass peaks ~34 GB RSS; two postprocesses
 # plus the container compile fit the 128 GB CI box). Portable poll loop instead
 # of `wait -n` (absent in macOS bash 3.2).
 pipeline_postprocess() {
