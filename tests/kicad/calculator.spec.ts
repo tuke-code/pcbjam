@@ -105,7 +105,7 @@ test.describe('PCB Calculator WASM', () => {
         const hasRegulatorPanel = labels.some(l => l === 'Calculate');
         expect(hasRegulatorPanel, `expected the calculator's default Regulator panel to be live (Calculate button registered). Got: ${JSON.stringify(labels.slice(0, 30))}`).toBe(true);
 
-        await page.screenshot({ path: 'test-results/calculator-loaded.png', scale: 'device' });
+        await page.screenshot({ path: 'test-results/calculator-loaded.png', scale: 'css' });
     });
 
     test('treebook lists expected panels', async ({ page, testLogger }) => {
@@ -132,7 +132,7 @@ test.describe('PCB Calculator WASM', () => {
         void testLogger;
         await completeFirstRunWizard(page);
 
-        await page.screenshot({ path: 'test-results/calculator-before-switch.png', scale: 'device' });
+        await page.screenshot({ path: 'test-results/calculator-before-switch.png', scale: 'css' });
 
         const clicked = await clickTreeItem(page, 'Color Code');
         expect(clicked, 'expected to find and click the Color Code tree item').toBe(true);
@@ -145,6 +145,6 @@ test.describe('PCB Calculator WASM', () => {
         const onColorCodePanel = labelsAfter.some(l => /Tolerance/i.test(l));
         expect(onColorCodePanel, `expected Color Code panel to be active after click; labels: ${JSON.stringify(labelsAfter.slice(0, 40))}`).toBe(true);
 
-        await page.screenshot({ path: 'test-results/calculator-color-code.png', scale: 'device' });
+        await page.screenshot({ path: 'test-results/calculator-color-code.png', scale: 'css' });
     });
 });

@@ -20,7 +20,7 @@ async function completeWizard(page: Page): Promise<void> {
     await page.waitForFunction(() => !!window.wxElementRegistry, null, { timeout: 90000 });
     await page.waitForTimeout(2000);
 
-    await page.screenshot({ path: 'test-results/pl_editor-wizard-00-initial.png', scale: 'device' });
+    await page.screenshot({ path: 'test-results/pl_editor-wizard-00-initial.png', scale: 'css' });
 
     for (let i = 1; i <= 10; i++) {
         let clicked = await clickByLabel(page, 'Next >');
@@ -32,7 +32,7 @@ async function completeWizard(page: Page): Promise<void> {
                 await page.waitForTimeout(500);
                 await page.screenshot({
                     path: `test-results/pl_editor-wizard-${String(i).padStart(2, '0')}-finish.png`,
-                    scale: 'device'
+                    scale: 'css'
                 });
             }
 
@@ -42,7 +42,7 @@ async function completeWizard(page: Page): Promise<void> {
         await page.waitForTimeout(500);
         await page.screenshot({
             path: `test-results/pl_editor-wizard-${String(i).padStart(2, '0')}.png`,
-            scale: 'device'
+            scale: 'css'
         });
     }
 
@@ -62,7 +62,7 @@ test.describe('pl_editor WASM', () => {
         await expect(page.locator('#canvas')).toBeVisible({ timeout: 90000 });
         await page.waitForFunction(() => !!window.wxElementRegistry, null, { timeout: 90000 });
         await page.waitForTimeout(1500);
-        await page.screenshot({ path: 'test-results/pl_editor-01-loaded.png', scale: 'device' });
+        await page.screenshot({ path: 'test-results/pl_editor-01-loaded.png', scale: 'css' });
 
         expect(hasAbort(testLogger), 'no WASM abort during load').toBe(false);
 
@@ -89,7 +89,7 @@ test.describe('pl_editor WASM', () => {
         expect(blockingDialogs, 'no setup wizard/dialog should be visible (seed skipped it)').toBe(0);
         expect(hasAbort(testLogger), 'no WASM abort during launch').toBe(false);
 
-        await page.screenshot({ path: 'test-results/pl_editor-02-no-wizard.png', scale: 'device' });
+        await page.screenshot({ path: 'test-results/pl_editor-02-no-wizard.png', scale: 'css' });
     });
 
     test('File menu exposes Open... and Save As...', async ({ page, testLogger }) => {
@@ -99,7 +99,7 @@ test.describe('pl_editor WASM', () => {
         expect(fileMenuClicked, 'File menubar item should be clickable').toBe(true);
         await page.waitForTimeout(400);
 
-        await page.screenshot({ path: 'test-results/pl_editor-03-file-menu.png', scale: 'device' });
+        await page.screenshot({ path: 'test-results/pl_editor-03-file-menu.png', scale: 'css' });
 
         // Menu items are tracked in the "rendered" half of the registry (popup
         // widgets), not the regular findAll({visible:true}) set. Use findAllRendered
@@ -150,7 +150,7 @@ test.describe('pl_editor WASM', () => {
         // screenshot catches the dialog as a black rectangle.
         await page.waitForTimeout(600);
 
-        await page.screenshot({ path: 'test-results/pl_editor-04-save-as-dialog.png', scale: 'device' });
+        await page.screenshot({ path: 'test-results/pl_editor-04-save-as-dialog.png', scale: 'css' });
 
         // The bug: pressing Enter on a folder name treated it as a file and surfaced
         // "Unable to load /dev file". After the OnOk fix, the dialog should navigate
@@ -160,7 +160,7 @@ test.describe('pl_editor WASM', () => {
         await page.keyboard.press('Enter');
         await page.waitForTimeout(900);
 
-        await page.screenshot({ path: 'test-results/pl_editor-04b-after-enter.png', scale: 'device' });
+        await page.screenshot({ path: 'test-results/pl_editor-04b-after-enter.png', scale: 'css' });
 
         // The wxFileDialog should still be visible — we navigated into /dev, didn't close it.
         const dialogStillOpen = await page.evaluate(() => {

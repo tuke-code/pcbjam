@@ -6,8 +6,8 @@ A lot of native module have to be compiled to wasm, the most complex is wxwidget
 The e2e tests are in /tests, with a README and WHATWORKS md files
 The e2e tests are separated per feature
 Wxwidgets wasm port has hooks for finding positions of UI elements, tests use that
-The test have screenshots that are tracked with git, use compare-screenshots.sh to see what changed
-Update test images with /scripts/update-baseline-screenshots.sh when a new image is added
+The test screenshots are tracked with git; CI's Linux render is the source of truth (tooling: tests/tools/screenshots/, see its README).
+To update baselines, promote a CI run's render (churn-free — only meaningfully-changed images restage): `cd tests && npm run screenshots:promote -- --run <ci-run-id>`, then commit. `npm run screenshots:check` is the local gate; on each main push CI posts a screenshot-diff + runtime-perf report to Discord.
 The tests have log files in tests/logs/{wxwidgets/kicad}/{test-name} after each run where the js console and cpp logs are visible
 Always check screenshots for validating tests
 Run e2e tests from /tests folder: `npm run test:kicad` or `npm run test:e2e` (not playwright directly)

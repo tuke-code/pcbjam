@@ -1,0 +1,1421 @@
+{
+  "_note": "engine tags are best-effort (gen-manifest.ts); the name list is authoritative. Refine engines after calibration.",
+  "screenshots": [
+    {
+      "name": "01-loading.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "03-after-load.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "04-controls-tab.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "05-text-input-tab.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "06-text-input-typed.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "07-drawing-tab.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "08-drawing-done.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "09-lists-tab.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "10-lists-clicked.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "10b-choice-selected.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "11-file-menu.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "12-help-menu.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "13-final.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "appearance-00-layers.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "appearance-01-objects.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "appearance-02-nets.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "appearance-03-layers-again.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "appearance-10-layers-scrolled.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "appearance-11-layers-scrolled-back.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "appearance-20-objects-scrolled.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "aui-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "aui-02-panels.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "aui-03-close-clicked.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "aui-04-dragged.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "aui-05-multi-panel.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "aui-resize-01-hover.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "aui-resize-02-mid-drag-live.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "aui-resize-03-mid-drag.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "aui-resize-04-after.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "auinotebook-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "auinotebook-02-tab-switch.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "auinotebook-03-add-tab.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "auinotebook-04-remove-tab.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "auinotebook-05-tab-style.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "bitmapbuttons-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "bitmapbuttons-02-toolbar-click.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "bitmapbuttons-03-toggle.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "bitmapbuttons-04-multi-toggle.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "bitmapbuttons-05-enable-toggle.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "bitmapbuttons-06-shapes.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "bitmapbuttons-07-artprovider.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "bitmask.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "calculator-before-switch.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "calculator-color-code.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "calculator-loaded.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "calendar-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "calendar-02-select-date.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "calendar-03-next-month.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "calendar-04-prev-month.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "calendar-05-today.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "clipboard-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "clipboard-02-copy-clicked.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "clipboard-03-paste-clicked.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "clipboard-04-check-clicked.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "clipboard-05-clear-clicked.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "clipboard-06-full-flow.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "collapsible-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "collapsible-02-panes.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "collapsible-03-expanded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "collapsible-04-expand-all.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "collapsible-05-collapse-all.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "contextmenu-01-open.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "coroutine-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "coroutine-02-summary.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "coroutine-nested-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "coroutine-nested-02-summary.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dataview-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dataview-02-list-populated.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dataview-03-list-selected.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dataview-04-list-add.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dataview-05-tree-tab.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dataview-06-tree-selected.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dataview-07-tree-expanded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dataview-08-tree-collapsed.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dataview-09-column-click.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dataview-10-scrolled.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dataviewvirtual-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dataviewvirtual-02-large-dataset.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dataviewvirtual-03-scroll.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dataviewvirtual-04-selection.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dataviewvirtual-05-zone-manager.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dialog-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dialog-02-info-clicked.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dialog-03-yesno-clicked.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dialog-04-error-clicked.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dialog-05-custom-clicked.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dialogs-00-initial.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dialogs-01-tab-selected.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dialogs-custom-closed.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dialogs-custom-open.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dialogs-full-flow.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dialogs-msgbox-error-closed.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dialogs-msgbox-error-open.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dialogs-msgbox-info-closed.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dialogs-msgbox-info-open.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dialogs-msgbox-yesno-closed.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dialogs-msgbox-yesno-open.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dialogs-timer-initial.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dialogs-timer-multiple.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dialogs-timer-running.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dialogs-timer-started.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dialogs-timer-stopped.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dnd-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dnd-02-handlers.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dnd-03-dragenter.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dnd-04-dragleave.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dnd-05-drop.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dnd-06-file-written.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dnd-07-event-fired.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dnd-08-multiple-files.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "dnd-09-with-file.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "earlysize-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "earlysize-02-result.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "eeschema-crosshair-00-small.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "eeschema-crosshair-01-full.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "eeschema-crosshair-02-45.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "eeschema-crosshair-03-small-again.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "eeschema-draw-wires-00-before-tool-click.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "eeschema-draw-wires-01-after-click.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "eeschema-draw-wires-02-after-drawing.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "eeschema-load-rendered.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "eeschema-loaded-css.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "eeschema-loaded.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "eeschema-url-regex.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "eeschema-wizard-00-initial.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "filedialog-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "filedialog-02-open-clicked.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "filedialog-03-save-clicked.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "filedialog-04-multiple-clicked.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "filedialog-05-all-buttons.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "filedlg-folder-nav.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "fontenum.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "gerbview-01-loaded.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "gerbview-02-metrics.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "gerbview-print-00-loaded.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "gerbview-print-01-dialog.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "gerbview-print-02-reopened.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "gerbview-wizard-00-initial.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "gerbview-wizard-01.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "gerbview-wizard-02.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "gerbview-wizard-03.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "gerbview-wizard-04-finish.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "grid-tab-final.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "gridedit-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "gridedit-02-select-cell.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "gridedit-03-edit-cell.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "gridedit-04-add-row.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "gridedit-05-delete-row.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "gridrenderers-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "gridrenderers-02-color-cells.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "gridrenderers-03-icon-text.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "gridrenderers-04-striped.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "gridrenderers-05-checkbox-toggle.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "htmlwin-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "htmlwin-02-basic-content.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "htmlwin-03-tables.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "htmlwin-04-long-content.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "htmlwin-05-kicad-about.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "htmlwin-06-link-clicked.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "htmlwin-07-scrolled.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "htmlwin-08a-basic.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "htmlwin-08b-tables.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "htmlwin-08c-about.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "infobar-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "infobar-02-info.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "infobar-03-warning.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "infobar-04-error.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "infobar-05-dismiss.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "layout-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "layout-02-splitter.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "layout-03-sash-dragged.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "layout-04-scrolled-left.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "layout-05-scrolled-right.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "layout-06-combined.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "listctrl-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "listctrl-02-virtual.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "listctrl-03-columns.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "listctrl-04-selected.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "listctrl-05-scrolled.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "load-pcb-microwave-00-pcbnew-ready.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "load-pcb-microwave-01-dialog-open.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "load-pcb-microwave.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "load-pcb-pic_programmer-00-pcbnew-ready.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "load-pcb-pic_programmer-01-dialog-open.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "load-pcb-pic_programmer.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "logerror-01-initial.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "logerror-02-before-error.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "logerror-03-single-error-dialog.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "logerror-04-multiple-errors-dialog.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "logerror-05-mixed-levels.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "maximize-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "maximize-02-fullscreen.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "maximize-03-canvas.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "menu-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "menu-02-menubar.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "menu-03-file-clicked.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "menu-04-edit-clicked.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "menu-05-all-menus.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "ownerdrawn-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "ownerdrawn-02-layer.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "ownerdrawn-03-font.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "ownerdrawn-04-icon.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "ownerdrawn-05-log.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "pcbnew-context-menu.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "pcbnew-context-submenu.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "pcbnew-draw-lines-00-before-tool-click.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "pcbnew-draw-lines-01-after-click.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "pcbnew-draw-lines-02-after-drawing.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "pcbnew-loaded-css.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "pcbnew-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "pcbnew-sidebar-scrollbar-dragged.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "pcbnew-sidebar-scrollbar.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "pickers-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "pickers-02-colors.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "pickers-03-font.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "pickers-04-preview.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "pl_editor-01-loaded.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "pl_editor-02-no-wizard.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "pl_editor-03-file-menu.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "pl_editor-04-save-as-dialog.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "pl_editor-04b-after-enter.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "pl_editor-context-menu.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "pl_editor-load-rendered.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "pl_editor-scrollbar-dragged.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "pl_editor-scrollbar.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "pl_editor-wizard-00-initial.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "popup-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "popup-02-status.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "popup-03-palette-dismissed.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "popup-03-palette-open.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "popup-03-palette.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "popup-04-color.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "popup-05-positioning.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "popup-06-log.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "print-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "print-02-preview-panel.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "print-03-browser-print-clicked.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "print-04-preview-clicked.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "print-05-page-setup-clicked.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "print-06-print-clicked.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "print-07-callbacks.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "print-08-all-buttons.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "printpreview-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "printpreview-02-preview-area.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "printpreview-03-preview-frame.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "printpreview-04-page-setup.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "printpreview-05-settings.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "probe-00-after-wizard.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "probe-01-file-menu-open.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "probe-02-after-open-click.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "probe-03-late.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "propgrid-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "propgrid-02-categories.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "propgrid-03-selected.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "propgrid-04-manager.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "radiogroups-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "radiogroups-02-selections.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "regions.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "retinascale-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "scrollbar-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "scrollbar-02-dragged.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "searchctrl-01-visible.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "searchctrl-02-typing.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "searchctrl-03-after-enter.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "selectheight-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "selectheight-02-result.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "specialized-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "specialized-02-treebook-initial.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "specialized-03-treebook-subpage.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "specialized-04-treebook-expand.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "specialized-05-bitmapcombo-dropdown.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "specialized-06-bitmapcombo-select.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "specialized-07-rearrange-list.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "specialized-08-get-order.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "spinctrl-01-visible.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "spinctrl-02-after-click.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "stc-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "stc-02-python-default.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "stc-03-drc-mode.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "stc-04-plain-mode.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "stc-05-insert-sample.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "stc-06-cleared.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "stc-07-line-numbers-toggle.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "stc-08-folded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "stc-09-typed.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "stc-10a-python.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "stc-10b-drc.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "stc-10c-python-again.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "symbol_editor-01-loaded.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "symbol_editor-02-metrics.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "symbol_editor-wizard-00-initial.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "textdecor.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "threadpool-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "timer-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "timer-02-started.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "timer-03-ticked.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "timer-04-stopped.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "timer-05-fast-started.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "timer-06-fast-running.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "timer-07-fast-stopped.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "timer-08-reset.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "toolbar-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "toolbar-02-buttons.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "toolbar-03-new-clicked.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "toolbar-04-zoom.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "toolbar-05-toggle-on.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "toolbar-06-toggle-off.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "toolbar-07-statusbar.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "toolbar-08-all-buttons.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "tree-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "tree-02-hierarchy.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "tree-03-selected.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "tree-04-expanded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "tree-05-collapsed.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "tree-06-added.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "tree-07-deleted.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "validators-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "validators-02-text.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "validators-03-integer.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "validators-04-float.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "validators-05-netname.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "validators-06-button.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "wasmedge-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "wasmedge-02-filesystem.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "wasmedge-03-threading.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "wasmedge-04-fonts.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "wasmedge-05-clipboard.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "wasmedge-06-memory.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "wasmedge-07-runall.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "wasmedge-08-log.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "wizard-00-initial.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "wizard-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "wizard-01.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "wizard-02-launch.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "wizard-02.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "wizard-03-next-page.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "wizard-03.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "wizard-04-back-page.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "wizard-04-finish.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "wizard-05-cancel.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "wxgrid-01-tab.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "wxgrid-02-selection.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "wxgrid-03-editing.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "wxgrid-controls.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "wxgrid-dedicated-page.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "xml-01-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "xml-02-input.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "xml-03-parse.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "xml-04-traverse.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "xml-05-create.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "xml-06-results.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "zoom-pl_editor-00-baseline.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "zoom-pl_editor-01-zoomed-in-at-P.png",
+      "engine": "firefox-llvmpipe"
+    },
+    {
+      "name": "zoom-pl_editor-02-zoomed-out-back.png",
+      "engine": "firefox-llvmpipe"
+    }
+  ]
+}

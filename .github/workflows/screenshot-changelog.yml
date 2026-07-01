@@ -1,0 +1,41 @@
+name: screenshot-changelog
+
+# Discord trigger B: when a push to main changes committed baseline PNGs, post an
+# old | new+boxes | heatmap triptych per changed baseline (ADDED image / REMOVED
+# title too). No build, no GPU — it only diffs two git revisions of PNGs that are
+# already CI-rendered, so it runs in ~30s. Complements the re-render drift gate in
+# wasm-build.yml (which catches un-blessed renders); this is the human-facing feed
+# of intentional baseline updates as they land.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tests/baseline-screenshots/**.png'
+      - 'tests/e2e/baseline-screenshots/**.png'
+
+concurrency:
+  group: screenshot-changelog-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # HEAD^ is needed to diff the tip commit's baseline changes. (A push of
+          # multiple commits reports only the tip commit's baseline diff — fine for
+          # a changelog; baseline refreshes are single commits in practice.)
+          fetch-depth: 2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install screenshot tooling deps
+        working-directory: tests
+        run: npm ci
+      - name: Post baseline changelog to Discord
+        working-directory: tests
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: npm run screenshots:changelog

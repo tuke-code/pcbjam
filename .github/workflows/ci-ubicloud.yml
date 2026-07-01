@@ -35,6 +35,9 @@ concurrency:
 jobs:
   build:
     uses: ./.github/workflows/wasm-build.yml
+    # Pass repo secrets (DISCORD_WEBHOOK_URL) through to the reusable build so the
+    # post-test step can post the screenshot + perf report on push to main.
+    secrets: inherit
     with:
       # -O1 asyncify shrink — the level we ship (release.yml uses the same -O1).
       # 3D viewer ON so 3d-viewer.spec.ts has a viewer.

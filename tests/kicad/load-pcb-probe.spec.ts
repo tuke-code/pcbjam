@@ -193,7 +193,7 @@ test.describe('PCB load probe', () => {
     test('inspect File→Open dialog state', async ({ page }) => {
         await completeWizard(page);
 
-        await page.screenshot({ path: 'test-results/probe-00-after-wizard.png', scale: 'device' });
+        await page.screenshot({ path: 'test-results/probe-00-after-wizard.png', scale: 'css' });
 
         await dumpMemfs(page, [
             '/',
@@ -214,7 +214,7 @@ test.describe('PCB load probe', () => {
         console.log(`[PROBE] File menu clicked: ${fileClicked}`);
         await page.waitForTimeout(500);
 
-        await page.screenshot({ path: 'test-results/probe-01-file-menu-open.png', scale: 'device' });
+        await page.screenshot({ path: 'test-results/probe-01-file-menu-open.png', scale: 'css' });
         await dumpRegistry(page, 'file-menu-open');
 
         // Click Open menu item (try common label variants)
@@ -228,12 +228,12 @@ test.describe('PCB load probe', () => {
         // is fast but goes through the Asyncify loop.
         await page.waitForTimeout(3000);
 
-        await page.screenshot({ path: 'test-results/probe-02-after-open-click.png', scale: 'device' });
+        await page.screenshot({ path: 'test-results/probe-02-after-open-click.png', scale: 'css' });
         await dumpRegistry(page, 'after-open-click');
 
         // Wait a bit longer and dump again, in case the dialog paints late
         await page.waitForTimeout(3000);
-        await page.screenshot({ path: 'test-results/probe-03-late.png', scale: 'device' });
+        await page.screenshot({ path: 'test-results/probe-03-late.png', scale: 'css' });
         await dumpRegistry(page, 'late');
 
         // Final check: re-dump MEMFS so we can confirm nothing changed under us

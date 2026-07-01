@@ -135,7 +135,7 @@ test.describe('PCBnew move with "m" (#9)', () => {
         const drawnId = newItems[0].id;
         const pos0 = await getPos(page, drawnId);
 
-        const beforeMove = await page.screenshot({ path: 'test-results/pcbnew-move-00-before.png', scale: 'device' });
+        const beforeMove = await page.screenshot({ path: 'test-results/pcbnew-move-00-before.png', scale: 'css' });
 
         // Hover the cursor onto the line and select it, then move with the keyboard.
         await page.mouse.move(midPoint.x, midPoint.y);
@@ -155,7 +155,7 @@ test.describe('PCBnew move with "m" (#9)', () => {
         await page.keyboard.press('Enter');
         await page.waitForTimeout(500);
 
-        const afterMove = await page.screenshot({ path: 'test-results/pcbnew-move-01-after.png', scale: 'device' });
+        const afterMove = await page.screenshot({ path: 'test-results/pcbnew-move-01-after.png', scale: 'css' });
 
         const pos1 = await getPos(page, drawnId);
         const dx = pos1.x - pos0.x;

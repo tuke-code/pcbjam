@@ -229,7 +229,7 @@ async function completeWizard(page: Page): Promise<void> {
     }, null, { timeout: 150000 });
     await page.waitForTimeout(2000);
 
-    await page.screenshot({ path: 'test-results/eeschema-wizard-00-initial.png', scale: 'device' });
+    await page.screenshot({ path: 'test-results/eeschema-wizard-00-initial.png', scale: 'css' });
 
     for (let i = 1; i <= 10; i++) {
         let clicked = await clickByLabel(page, 'Next >');
@@ -241,7 +241,7 @@ async function completeWizard(page: Page): Promise<void> {
                 await page.waitForTimeout(500);
                 await page.screenshot({
                     path: `test-results/eeschema-wizard-${String(i).padStart(2, '0')}-finish.png`,
-                    scale: 'device'
+                    scale: 'css'
                 });
             }
 
@@ -251,7 +251,7 @@ async function completeWizard(page: Page): Promise<void> {
         await page.waitForTimeout(500);
         await page.screenshot({
             path: `test-results/eeschema-wizard-${String(i).padStart(2, '0')}.png`,
-            scale: 'device'
+            scale: 'css'
         });
     }
 
@@ -313,7 +313,7 @@ test.describe('Eeschema WASM', () => {
             path: 'test-results/eeschema-loaded-css.png',
             scale: 'css'
         });
-        await page.screenshot({ path: 'test-results/eeschema-loaded.png', scale: 'device' });
+        await page.screenshot({ path: 'test-results/eeschema-loaded.png', scale: 'css' });
 
         const canvasCount = await page.locator('canvas').count();
         expect(canvasCount).toBeGreaterThan(0);
@@ -408,7 +408,7 @@ test.describe('Eeschema WASM', () => {
 
         await page.screenshot({
             path: 'test-results/eeschema-draw-wires-00-before-tool-click.png',
-            scale: 'device'
+            scale: 'css'
         });
 
         expect(await clickByTooltip(page, 'Draw Wires', { elementType: 'tool' })).toBe(true);
@@ -429,7 +429,7 @@ test.describe('Eeschema WASM', () => {
 
         const afterToolClick = await page.screenshot({
             path: 'test-results/eeschema-draw-wires-01-after-click.png',
-            scale: 'device'
+            scale: 'css'
         });
 
         const glCanvasId = await page.evaluate(() => {
@@ -475,7 +475,7 @@ test.describe('Eeschema WASM', () => {
 
         const afterDrawing = await page.screenshot({
             path: 'test-results/eeschema-draw-wires-02-after-drawing.png',
-            scale: 'device'
+            scale: 'css'
         });
 
         const diffRegion: DiffRegion = {

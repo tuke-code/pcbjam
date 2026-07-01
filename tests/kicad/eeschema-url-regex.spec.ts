@@ -110,7 +110,7 @@ test.describe('Eeschema URL-detection regex', () => {
 
         await page.screenshot({
             path: 'test-results/eeschema-url-regex.png',
-            scale: 'device',
+            scale: 'css',
         });
 
         // The wxRegEx compile failure surfaces two ways: a wxLogError logged to

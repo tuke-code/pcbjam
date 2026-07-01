@@ -1,0 +1,238 @@
+/**
+ * The one screenshot comparison engine + its CLI.
+ *
+ * Run modes (from the `tests/` directory):
+ *   tsx tools/screenshots/compare.ts                 # gate: baselines vs test-results
+ *   tsx tools/screenshots/compare.ts --fail-on-change  # same, but exit 1 on any change
+ *   tsx tools/screenshots/compare.ts --pair OLD NEW --name N --out DIR   # diff two files
+ *
+ * The gate mode classifies every screenshot into changed / added / removed /
+ * unchanged, writes per-change triptych + heatmap PNGs and a machine-readable
+ * report.json into DIFF_OUT_DIR, and (unless --fail-on-change) exits 0 so it can
+ * run report-only first. post-discord.ts and the changelog workflow import the
+ * exported helpers rather than re-deriving the diff.
+ */
+import * as fs from 'fs';
+import * as path from 'path';
+import { PNG } from 'pngjs';
+import {
+    BASELINE_DIRS,
+    RESULTS_DIR,
+    DIFF_OUT_DIR,
+    MANIFEST_PATH,
+    type EngineFloor,
+    type Manifest,
+    floorFor,
+} from './config';
+import { diffImages, cluster, drawBoxes, composite, loadPng, savePng, type Box } from './image-ops';
+
+export type PairVerdict = 'unchanged' | 'changed';
+
+export type PairResult = {
+    name: string;
+    verdict: PairVerdict;
+    dimsMatch: boolean;
+    diffPixels: number;
+    changedRatio: number;
+    meanChannelDiff: number;
+    boxes: Box[];
+    /** heuristic: a broad, low-intensity change smells like host env drift, not a code regression */
+    driftHint: 'regression-like' | 'drift-like' | null;
+};
+
+/** Broad + low-intensity ⇒ likely environment drift rather than a localized regression. */
+function driftHint(changed: boolean, changedRatio: number, meanChannelDiff: number): PairResult['driftHint'] {
+    if (!changed) return null;
+    return changedRatio > 0.05 && meanChannelDiff < 4 ? 'drift-like' : 'regression-like';
+}
+
+/** Compare two decoded PNGs; returns the verdict/metrics plus the heatmap and old|new+boxes|heatmap triptych. */
+export function comparePair(
+    oldPng: PNG,
+    newPng: PNG,
+    name: string,
+    floor: EngineFloor
+): { result: PairResult; heatmap: PNG; triptych: PNG } {
+    const d = diffImages(oldPng, newPng);
+    const changed = !d.dimsMatch || d.changedRatio > floor.changedRatio;
+    const boxes = changed ? cluster(d.mask, d.width, d.height) : [];
+    const triptych = composite([oldPng, drawBoxes(newPng, boxes), d.heatmap]);
+    return {
+        result: {
+            name,
+            verdict: changed ? 'changed' : 'unchanged',
+            dimsMatch: d.dimsMatch,
+            diffPixels: d.diffPixels,
+            changedRatio: d.changedRatio,
+            meanChannelDiff: d.meanChannelDiff,
+            boxes,
+            driftHint: driftHint(changed, d.changedRatio, d.meanChannelDiff),
+        },
+        heatmap: d.heatmap,
+        triptych,
+    };
+}
+
+export type ChangedEntry = PairResult & { triptych: string; heatmap: string };
+export type Report = {
+    generatedFor: string | null;
+    changed: ChangedEntry[];
+    added: Array<{ name: string; image: string }>;
+    removed: Array<{ name: string }>;
+    unchangedCount: number;
+    /** many changes, mostly drift-like ⇒ probably a host Mesa/font refresh; re-promote rather than debug */
+    driftLikely: boolean;
+};
+
+const DRIFT_BULK = 20;
+
+function listPngs(dir: string): string[] {
+    if (!fs.existsSync(dir)) return [];
+    return fs.readdirSync(dir).filter((f) => f.toLowerCase().endsWith('.png'));
+}
+
+/** basename → absolute baseline path (first BASELINE_DIRS entry wins; collisions warned). */
+function baselineIndex(root: string): Map<string, string> {
+    const index = new Map<string, string>();
+    for (const dir of BASELINE_DIRS) {
+        const abs = path.join(root, dir);
+        for (const name of listPngs(abs)) {
+            if (index.has(name)) {
+                console.warn(`[compare] duplicate baseline name ${name} (${dir} shadowed by earlier dir)`);
+                continue;
+            }
+            index.set(name, path.join(abs, name));
+        }
+    }
+    return index;
+}
+
+function loadManifest(root: string): Manifest | undefined {
+    const p = path.join(root, MANIFEST_PATH);
+    if (!fs.existsSync(p)) return undefined;
+    try {
+        return JSON.parse(fs.readFileSync(p, 'utf8')) as Manifest;
+    } catch (e) {
+        console.warn(`[compare] could not parse ${MANIFEST_PATH}: ${(e as Error).message}`);
+        return undefined;
+    }
+}
+
+/** Full gate run: classify baselines vs the current run's screenshots. */
+export function classify(root: string, sha: string | null): Report {
+    const baselines = baselineIndex(root);
+    const resultsDir = path.join(root, RESULTS_DIR);
+    const actuals = new Set(listPngs(resultsDir));
+    const manifest = loadManifest(root);
+    const outDir = path.join(root, DIFF_OUT_DIR);
+    fs.mkdirSync(outDir, { recursive: true });
+
+    const report: Report = {
+        generatedFor: sha,
+        changed: [],
+        added: [],
+        removed: [],
+        unchangedCount: 0,
+        driftLikely: false,
+    };
+
+    // Changed / unchanged / removed: iterate the committed baselines.
+    for (const [name, baselinePath] of baselines) {
+        if (!actuals.has(name)) {
+            // Missing output. Only call it REMOVED when the manifest expects it — otherwise
+            // a flaky/OOM'd/skipped spec that simply didn't write a PNG would masquerade as
+            // an intentional removal. (The stronger "did the spec actually run" cross-check
+            // against the Playwright JSON report lands with the manifest work.)
+            if (manifest?.screenshots.some((e) => e.name === name)) {
+                report.removed.push({ name });
+            }
+            continue;
+        }
+        const { result, heatmap, triptych } = comparePair(
+            loadPng(baselinePath),
+            loadPng(path.join(resultsDir, name)),
+            name,
+            floorFor(name, manifest)
+        );
+        if (result.verdict === 'unchanged') {
+            report.unchangedCount++;
+            continue;
+        }
+        const triptychRel = path.join(DIFF_OUT_DIR, `${name}.triptych.png`);
+        const heatmapRel = path.join(DIFF_OUT_DIR, `${name}.heatmap.png`);
+        savePng(path.join(root, triptychRel), triptych);
+        savePng(path.join(root, heatmapRel), heatmap);
+        report.changed.push({ ...result, triptych: triptychRel, heatmap: heatmapRel });
+    }
+
+    // Added: an actual with no committed baseline.
+    for (const name of actuals) {
+        if (baselines.has(name)) continue;
+        const imageRel = path.join(DIFF_OUT_DIR, `${name}.added.png`);
+        fs.copyFileSync(path.join(resultsDir, name), path.join(root, imageRel));
+        report.added.push({ name, image: imageRel });
+    }
+
+    const driftLike = report.changed.filter((c) => c.driftHint === 'drift-like').length;
+    report.driftLikely = report.changed.length >= DRIFT_BULK && driftLike * 2 >= report.changed.length;
+
+    report.changed.sort((a, b) => b.changedRatio - a.changedRatio);
+    report.added.sort((a, b) => a.name.localeCompare(b.name));
+    report.removed.sort((a, b) => a.name.localeCompare(b.name));
+    return report;
+}
+
+function parseArgs(argv: string[]): Record<string, string | boolean> {
+    const out: Record<string, string | boolean> = {};
+    for (let i = 0; i < argv.length; i++) {
+        const a = argv[i];
+        if (a === '--fail-on-change') out.failOnChange = true;
+        else if (a === '--pair') {
+            out.oldPath = argv[++i];
+            out.newPath = argv[++i];
+        } else if (a === '--name') out.name = argv[++i];
+        else if (a === '--out') out.out = argv[++i];
+        else if (a === '--sha') out.sha = argv[++i];
+    }
+    return out;
+}
+
+function runPair(args: Record<string, string | boolean>): void {
+    const name = (args.name as string) || 'pair';
+    const outDir = (args.out as string) || path.join(RESULTS_DIR, 'screenshot-diff');
+    fs.mkdirSync(outDir, { recursive: true });
+    const oldPng = fs.existsSync(args.oldPath as string)
+        ? loadPng(args.oldPath as string)
+        : new PNG({ width: 1, height: 1 });
+    const newPng = fs.existsSync(args.newPath as string)
+        ? loadPng(args.newPath as string)
+        : new PNG({ width: 1, height: 1 });
+    const { result, heatmap, triptych } = comparePair(oldPng, newPng, name, floorFor(name));
+    savePng(path.join(outDir, `${name}.triptych.png`), triptych);
+    savePng(path.join(outDir, `${name}.heatmap.png`), heatmap);
+    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+}
+
+function main(): void {
+    const args = parseArgs(process.argv.slice(2));
+    if (args.oldPath && args.newPath) {
+        runPair(args);
+        return;
+    }
+    const root = process.cwd();
+    const report = classify(root, (args.sha as string) || process.env.GITHUB_SHA || null);
+    fs.writeFileSync(path.join(root, DIFF_OUT_DIR, 'report.json'), JSON.stringify(report, null, 2));
+    const { changed, added, removed, unchangedCount, driftLikely } = report;
+    console.log(
+        `[compare] changed=${changed.length} added=${added.length} removed=${removed.length} ` +
+            `unchanged=${unchangedCount}${driftLikely ? ' (looks like environment drift → re-promote)' : ''}`
+    );
+    for (const c of changed.slice(0, 10)) {
+        console.log(`  CHANGED ${c.name} ratio=${(c.changedRatio * 100).toFixed(3)}% ${c.driftHint}`);
+    }
+    if (args.failOnChange && (changed.length || added.length || removed.length)) {
+        process.exitCode = 1;
+    }
+}
+
+if (require.main === module) main();

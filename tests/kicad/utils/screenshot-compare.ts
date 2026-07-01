@@ -151,7 +151,7 @@ export async function completeWizard(page: Page, opts: { screenshots?: boolean }
     await page.waitForTimeout(2000);
 
     if (opts.screenshots) {
-        await page.screenshot({ path: 'test-results/wizard-00-initial.png', scale: 'device' });
+        await page.screenshot({ path: 'test-results/wizard-00-initial.png', scale: 'css' });
     }
 
     for (let i = 1; i <= 10; i++) {
@@ -164,7 +164,7 @@ export async function completeWizard(page: Page, opts: { screenshots?: boolean }
                 await page.waitForTimeout(500);
                 await page.screenshot({
                     path: `test-results/wizard-${String(i).padStart(2, '0')}-finish.png`,
-                    scale: 'device'
+                    scale: 'css'
                 });
             }
 
@@ -176,7 +176,7 @@ export async function completeWizard(page: Page, opts: { screenshots?: boolean }
         if (opts.screenshots) {
             await page.screenshot({
                 path: `test-results/wizard-${String(i).padStart(2, '0')}.png`,
-                scale: 'device'
+                scale: 'css'
             });
         }
     }

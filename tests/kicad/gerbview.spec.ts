@@ -25,7 +25,7 @@ async function completeWizard(page: Page): Promise<void> {
     }, null, { timeout: 90000 });
     await page.waitForTimeout(2000);
 
-    await page.screenshot({ path: 'test-results/gerbview-wizard-00-initial.png', scale: 'device' });
+    await page.screenshot({ path: 'test-results/gerbview-wizard-00-initial.png', scale: 'css' });
 
     for (let i = 1; i <= 10; i++) {
         let clicked = await clickByLabel(page, 'Next >');
@@ -37,7 +37,7 @@ async function completeWizard(page: Page): Promise<void> {
                 await page.waitForTimeout(500);
                 await page.screenshot({
                     path: `test-results/gerbview-wizard-${String(i).padStart(2, '0')}-finish.png`,
-                    scale: 'device'
+                    scale: 'css'
                 });
             }
 
@@ -47,7 +47,7 @@ async function completeWizard(page: Page): Promise<void> {
         await page.waitForTimeout(500);
         await page.screenshot({
             path: `test-results/gerbview-wizard-${String(i).padStart(2, '0')}.png`,
-            scale: 'device'
+            scale: 'css'
         });
     }
 
@@ -65,7 +65,7 @@ test.describe('gerbview WASM', () => {
 
     test('app loads, canvas visible, no WASM abort', async ({ page, testLogger }) => {
         await completeWizard(page);
-        await page.screenshot({ path: 'test-results/gerbview-01-loaded.png', scale: 'device' });
+        await page.screenshot({ path: 'test-results/gerbview-01-loaded.png', scale: 'css' });
 
         expect(hasAbort(testLogger), 'no WASM abort during load').toBe(false);
 
@@ -93,7 +93,7 @@ test.describe('gerbview WASM', () => {
             };
         });
 
-        await page.screenshot({ path: 'test-results/gerbview-02-metrics.png', scale: 'device' });
+        await page.screenshot({ path: 'test-results/gerbview-02-metrics.png', scale: 'css' });
 
         expect(metrics.registryTotal, 'registry should be populated').toBeGreaterThan(10);
         expect(metrics.toolbarCount, 'at least one toolbar should be visible').toBeGreaterThanOrEqual(1);

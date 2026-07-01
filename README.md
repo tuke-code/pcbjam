@@ -193,6 +193,22 @@ npx playwright test menu    # Menu tests only
 
 See [tests/README.md](tests/README.md) for test documentation.
 
+### Screenshots
+
+CI's Linux render is the source of truth for baseline screenshots. On each `main`
+push, CI compares its render against the committed baselines and posts the diff
+(plus the runtime-perf numbers) to Discord. To update baselines after an intended
+render change, promote a CI run's render — only meaningfully-changed images
+restage, so it stays churn-free:
+
+```bash
+cd tests
+npm run screenshots:check                          # local gate: current vs baselines
+npm run screenshots:promote -- --run <ci-run-id>   # adopt a CI run's render, then commit
+```
+
+See [tests/tools/screenshots/README.md](tests/tools/screenshots/README.md).
+
 ## Current Status
 
 - **wxWidgets WASM**: Core widgets working (menus, dialogs, grids, trees, OpenGL)

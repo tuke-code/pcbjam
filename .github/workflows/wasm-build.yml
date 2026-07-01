@@ -42,6 +42,13 @@ on:
         description: "Upload the publishable output/ subset as the 'wasm-output' artifact"
         type: boolean
         default: false
+    secrets:
+      # Declared so this reusable workflow may reference ${{ secrets.DISCORD_WEBHOOK_URL }}
+      # (an undeclared secret reference is a workflow startup failure). ci-ubicloud.yml
+      # passes it via `secrets: inherit`; release.yml doesn't (required: false) → the
+      # screenshot/perf report step just no-ops there.
+      DISCORD_WEBHOOK_URL:
+        required: false
 
 jobs:
   build-and-test:
@@ -295,11 +302,13 @@ jobs:
         run: npm run setup:kicad
 
       - name: wxWidgets e2e (npm run test)
+        id: wx_e2e
         if: inputs.run_tests
         working-directory: tests
         run: npm run test
 
       - name: KiCad e2e (npm run test:kicad:ci)
+        id: kicad_e2e
         if: inputs.run_tests
         working-directory: tests
         run: xvfb-run -a npm run test:kicad:ci
@@ -313,6 +322,24 @@ jobs:
         continue-on-error: true
         working-directory: tests
         run: xvfb-run -a npm run test:perf
+
+      # Screenshot drift gate + always-on Discord report (screenshots + perf).
+      # Report-only during rollout: compare.ts exits 0 without --fail-on-change and
+      # the step is continue-on-error, so it never blocks the build — flip to gating
+      # once the per-engine floors are calibrated (tests/tools/screenshots/config.ts,
+      # seeded by `npm run screenshots:noise`). post-discord posts ONLY on push to
+      # main and no-ops without DISCORD_WEBHOOK_URL (inert on PRs/forks). It reads the
+      # already-produced test-results (screenshots + perf-*.json) — no extra build.
+      - name: Screenshot compare + Discord report (screenshots + perf)
+        if: always() && inputs.run_tests
+        continue-on-error: true
+        working-directory: tests
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          npm run screenshots:check
+          npm run screenshots:report -- --e2e ${{ (steps.wx_e2e.outcome == 'success' && steps.kicad_e2e.outcome == 'success') && 'pass' || 'fail' }}
 
       - name: Upload test logs & screenshots
         if: always() && inputs.run_tests

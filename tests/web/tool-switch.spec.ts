@@ -62,7 +62,7 @@ test.describe('web app — tool switching', () => {
 
     await page.screenshot({
       path: 'test-results/web-switch-sch-to-pcb.png',
-      scale: 'device',
+      scale: 'css',
     });
   });
 
@@ -81,7 +81,7 @@ test.describe('web app — tool switching', () => {
 
     await page.screenshot({
       path: 'test-results/web-switch-pcb-to-sch.png',
-      scale: 'device',
+      scale: 'css',
     });
   });
 });

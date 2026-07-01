@@ -98,7 +98,7 @@ test.describe('pl_editor drawing-sheet load', () => {
             .toMatch(/load-test/i);
 
         await page.waitForTimeout(1000);
-        await page.screenshot({ path: 'test-results/pl_editor-load-rendered.png', scale: 'device' });
+        await page.screenshot({ path: 'test-results/pl_editor-load-rendered.png', scale: 'css' });
 
         expect(hasAbort(testLogger), 'no WASM abort during open').toBe(false);
     });

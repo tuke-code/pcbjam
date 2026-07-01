@@ -116,12 +116,12 @@ test.describe('gerbview Print dialog (WASM)', () => {
 
     test('no Print Preview button, and the dialog reopens (no wedge)', async ({ page, testLogger }) => {
         await waitForGerbview(page);
-        await page.screenshot({ path: 'test-results/gerbview-print-00-loaded.png', scale: 'device' });
+        await page.screenshot({ path: 'test-results/gerbview-print-00-loaded.png', scale: 'css' });
 
         // --- Open the Print dialog ---
         await openPrintDialog(page);
         expect(await printDialogIsOpen(page), 'Print dialog should be open').toBe(true);
-        await page.screenshot({ path: 'test-results/gerbview-print-01-dialog.png', scale: 'device' });
+        await page.screenshot({ path: 'test-results/gerbview-print-01-dialog.png', scale: 'css' });
 
         // --- The broken "Print Preview" button must be gone in the browser ---
         const preview = await findByLabel(page, 'Print Preview', { visible: true, exact: true });
@@ -139,7 +139,7 @@ test.describe('gerbview Print dialog (WASM)', () => {
         await openPrintDialog(page);
         expect(await printDialogIsOpen(page), 'Print dialog should reopen (no wedge)').toBe(true);
         await page.waitForTimeout(2500); // let the reopened dialog finish painting before capture
-        await page.screenshot({ path: 'test-results/gerbview-print-02-reopened.png', scale: 'device' });
+        await page.screenshot({ path: 'test-results/gerbview-print-02-reopened.png', scale: 'css' });
 
         expect(hasAbort(testLogger), 'no WASM abort during the flow').toBe(false);
     });

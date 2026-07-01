@@ -314,7 +314,7 @@ test.describe('PCBnew WASM', () => {
             expect(reference.meanChannelDiff, `${reference.name} mean channel diff`).toBeLessThan(region.maxMeanChannelDiff);
         }
 
-        await page.screenshot({ path: 'test-results/pcbnew-loaded.png', scale: 'device' });
+        await page.screenshot({ path: 'test-results/pcbnew-loaded.png', scale: 'css' });
 
         const canvasCount = await page.locator('canvas').count();
         expect(canvasCount).toBeGreaterThan(0);
@@ -409,7 +409,7 @@ test.describe('PCBnew WASM', () => {
 
         const beforeToolClick = await page.screenshot({
             path: 'test-results/pcbnew-draw-lines-00-before-tool-click.png',
-            scale: 'device'
+            scale: 'css'
         });
 
         expect(await clickByTooltip(page, 'Draw Lines', { elementType: 'tool' })).toBe(true);
@@ -430,7 +430,7 @@ test.describe('PCBnew WASM', () => {
 
         const afterToolClick = await page.screenshot({
             path: 'test-results/pcbnew-draw-lines-01-after-click.png',
-            scale: 'device'
+            scale: 'css'
         });
 
         const glCanvasId = await page.evaluate(() => {
@@ -491,7 +491,7 @@ test.describe('PCBnew WASM', () => {
 
         const afterDrawing = await page.screenshot({
             path: 'test-results/pcbnew-draw-lines-02-after-drawing.png',
-            scale: 'device'
+            scale: 'css'
         });
 
         const diffRegion: DiffRegion = {

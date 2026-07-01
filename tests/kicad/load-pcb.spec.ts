@@ -107,7 +107,7 @@ function runLoadPcbTest(demo: DemoCfg): void {
         await waitForPcbnew(page);
         await page.screenshot({
             path: `test-results/load-pcb-${demo.name}-00-pcbnew-ready.png`,
-            scale: 'device',
+            scale: 'css',
         });
 
         // ── Inject .kicad_pcb + .kicad_pro into the dialog's start dir. ──
@@ -140,7 +140,7 @@ function runLoadPcbTest(demo: DemoCfg): void {
         await page.waitForTimeout(1000);
         await page.screenshot({
             path: `test-results/load-pcb-${demo.name}-01-dialog-open.png`,
-            scale: 'device',
+            scale: 'css',
         });
 
         // ── Focus the filename text field, type the name, accept. ──────
@@ -189,7 +189,7 @@ function runLoadPcbTest(demo: DemoCfg): void {
         // fully painted by the time waitForBoardLoaded returns.
         await page.screenshot({
             path: `test-results/load-pcb-${demo.name}.png`,
-            scale: 'device',
+            scale: 'css',
         });
 
         const allLines = [...testLogger.consoleLogs, ...testLogger.errors];

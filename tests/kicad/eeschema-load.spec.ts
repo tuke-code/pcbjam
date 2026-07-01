@@ -132,7 +132,7 @@ test.describe('Eeschema schematic load', () => {
         await page.waitForTimeout(1000);
         await page.screenshot({
             path: 'test-results/eeschema-load-rendered.png',
-            scale: 'device',
+            scale: 'css',
         });
     });
 });

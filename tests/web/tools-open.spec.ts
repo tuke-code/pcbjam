@@ -81,7 +81,7 @@ test.describe('web app — tool open paths', () => {
       page,
     }) => {
       await bootAndAssert(page, tc);
-      await page.screenshot({ path: `test-results/web-${tool}.png`, scale: 'device' });
+      await page.screenshot({ path: `test-results/web-${tool}.png`, scale: 'css' });
     });
   }
 });
