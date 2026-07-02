@@ -19,7 +19,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { BASELINE_DIRS, MANIFEST_PATH, type Manifest } from './config';
+import { BASELINE_DIRS, MANIFEST_PATH, isIgnored, type Manifest } from './config';
 
 const CHROMIUM = 'chromium-swiftshader';
 const FIREFOX = 'firefox-llvmpipe';
@@ -78,7 +78,7 @@ function listBaselines(root: string): string[] {
     for (const dir of BASELINE_DIRS) {
         const abs = path.join(root, dir);
         if (!fs.existsSync(abs)) continue;
-        for (const f of fs.readdirSync(abs)) if (f.toLowerCase().endsWith('.png')) names.add(f);
+        for (const f of fs.readdirSync(abs)) if (f.toLowerCase().endsWith('.png') && !isIgnored(f)) names.add(f);
     }
     return [...names].sort();
 }

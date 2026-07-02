@@ -16,7 +16,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
-import { BASELINE_DIRS, MANIFEST_PATH, floorFor, type Manifest } from './config';
+import { BASELINE_DIRS, MANIFEST_PATH, floorFor, isIgnored, type Manifest } from './config';
 import { diffImages, loadPng } from './image-ops';
 
 function listPngs(dir: string): string[] {
@@ -67,6 +67,9 @@ type Plan = { updated: string[]; added: string[]; unchanged: string[]; removedCa
 function buildPlan(root: string, renderDir: string, manifest?: Manifest): { plan: Plan; apply: () => void } {
     const baselines = baselineIndex(root);
     const rendered = new Set(listPngs(renderDir));
+    // Never promote excluded screenshots (e.g. the flaky retinascale fullPage shot).
+    for (const name of [...rendered]) if (isIgnored(name)) rendered.delete(name);
+    for (const name of [...baselines.keys()]) if (isIgnored(name)) baselines.delete(name);
     const plan: Plan = { updated: [], added: [], unchanged: [], removedCandidates: [] };
     const actions: Array<() => void> = [];
 

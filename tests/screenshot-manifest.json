@@ -54,6 +54,22 @@
       "engine": "chromium-swiftshader"
     },
     {
+      "name": "3d-viewer-00-board-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "3d-viewer-pic_programmer-render.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "3d-viewer-pic_programmer.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "3d-viewer-titlebar.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
       "name": "appearance-00-layers.png",
       "engine": "chromium-swiftshader"
     },
@@ -554,22 +570,6 @@
       "engine": "firefox-llvmpipe"
     },
     {
-      "name": "gerbview-wizard-01.png",
-      "engine": "firefox-llvmpipe"
-    },
-    {
-      "name": "gerbview-wizard-02.png",
-      "engine": "firefox-llvmpipe"
-    },
-    {
-      "name": "gerbview-wizard-03.png",
-      "engine": "firefox-llvmpipe"
-    },
-    {
-      "name": "gerbview-wizard-04-finish.png",
-      "engine": "firefox-llvmpipe"
-    },
-    {
       "name": "grid-tab-final.png",
       "engine": "chromium-swiftshader"
     },
@@ -794,6 +794,34 @@
       "engine": "chromium-swiftshader"
     },
     {
+      "name": "modal-01-border.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "modal-02-before-drag.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "modal-03-after-drag.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "modal-04-before-resize.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "modal-05-after-resize.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "notebook-01-scrolled.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "notebook-02-scrolled-again.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
       "name": "ownerdrawn-01-loaded.png",
       "engine": "chromium-swiftshader"
     },
@@ -822,6 +850,10 @@
       "engine": "chromium-swiftshader"
     },
     {
+      "name": "pcbnew-dark-mode-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
       "name": "pcbnew-draw-lines-00-before-tool-click.png",
       "engine": "chromium-swiftshader"
     },
@@ -839,6 +871,14 @@
     },
     {
       "name": "pcbnew-loaded.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "pcbnew-move-00-before.png",
+      "engine": "chromium-swiftshader"
+    },
+    {
+      "name": "pcbnew-move-01-after.png",
       "engine": "chromium-swiftshader"
     },
     {
@@ -919,10 +959,6 @@
     },
     {
       "name": "popup-03-palette-open.png",
-      "engine": "chromium-swiftshader"
-    },
-    {
-      "name": "popup-03-palette.png",
       "engine": "chromium-swiftshader"
     },
     {
@@ -1031,10 +1067,6 @@
     },
     {
       "name": "regions.png",
-      "engine": "chromium-swiftshader"
-    },
-    {
-      "name": "retinascale-01-loaded.png",
       "engine": "chromium-swiftshader"
     },
     {
@@ -1330,15 +1362,7 @@
       "engine": "chromium-swiftshader"
     },
     {
-      "name": "wizard-01.png",
-      "engine": "chromium-swiftshader"
-    },
-    {
       "name": "wizard-02-launch.png",
-      "engine": "chromium-swiftshader"
-    },
-    {
-      "name": "wizard-02.png",
       "engine": "chromium-swiftshader"
     },
     {
@@ -1346,15 +1370,7 @@
       "engine": "chromium-swiftshader"
     },
     {
-      "name": "wizard-03.png",
-      "engine": "chromium-swiftshader"
-    },
-    {
       "name": "wizard-04-back-page.png",
-      "engine": "chromium-swiftshader"
-    },
-    {
-      "name": "wizard-04-finish.png",
       "engine": "chromium-swiftshader"
     },
     {
@@ -1404,18 +1420,6 @@
     {
       "name": "xml-06-results.png",
       "engine": "chromium-swiftshader"
-    },
-    {
-      "name": "zoom-pl_editor-00-baseline.png",
-      "engine": "firefox-llvmpipe"
-    },
-    {
-      "name": "zoom-pl_editor-01-zoomed-in-at-P.png",
-      "engine": "firefox-llvmpipe"
-    },
-    {
-      "name": "zoom-pl_editor-02-zoomed-out-back.png",
-      "engine": "firefox-llvmpipe"
     }
   ]
 }

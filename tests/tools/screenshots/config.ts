@@ -9,8 +9,12 @@
  * the npm scripts and CI steps run from).
  */
 
-/** Committed baseline directories, scanned in order. Filenames are the keys. */
-export const BASELINE_DIRS = ['baseline-screenshots', 'e2e/baseline-screenshots'] as const;
+/**
+ * Committed baseline directory. Single dir on purpose: `e2e/baseline-screenshots/`
+ * used to also hold a few names (grid-tab-final, wxgrid-*) that ALSO live here with
+ * different bytes — so they got silently shadowed. Consolidated to one dir.
+ */
+export const BASELINE_DIRS = ['baseline-screenshots'] as const;
 
 /** Where Playwright writes the current run's screenshots (gitignored). */
 export const RESULTS_DIR = 'test-results';
@@ -73,6 +77,20 @@ export const FLOORS: Record<string, EngineFloor> = {
  * Keyed by screenshot filename. Empty for now.
  */
 export const IGNORE_REGIONS: Record<string, Array<{ x: number; y: number; width: number; height: number }>> = {};
+
+/**
+ * Screenshots excluded from comparison entirely (not compared, not counted as
+ * changed/added/removed, not put in the manifest). For nondeterministic captures
+ * that can't be a stable baseline — e.g. `retinascale-01-loaded` is a `fullPage`
+ * HiDPI test whose captured height + DPR scaling vary run-to-run (~60% inter-run
+ * diff observed), a flaky test rather than render noise.
+ */
+export const IGNORE_SCREENSHOTS = new Set<string>(['retinascale-01-loaded.png']);
+
+/** True if a screenshot is excluded from comparison. */
+export function isIgnored(name: string): boolean {
+    return IGNORE_SCREENSHOTS.has(name);
+}
 
 export type ManifestEntry = { name: string; engine: string };
 export type Manifest = { screenshots: ManifestEntry[] };

@@ -23,6 +23,7 @@ import {
     type EngineFloor,
     type Manifest,
     floorFor,
+    isIgnored,
 } from './config';
 import { diffImages, cluster, drawBoxes, composite, loadPng, savePng, type Box } from './image-ops';
 
@@ -123,6 +124,9 @@ export function classify(root: string, sha: string | null): Report {
     const baselines = baselineIndex(root);
     const resultsDir = path.join(root, RESULTS_DIR);
     const actuals = new Set(listPngs(resultsDir));
+    // Drop excluded screenshots from both sides so they're never compared or counted.
+    for (const name of [...baselines.keys()]) if (isIgnored(name)) baselines.delete(name);
+    for (const name of [...actuals]) if (isIgnored(name)) actuals.delete(name);
     const manifest = loadManifest(root);
     const outDir = path.join(root, DIFF_OUT_DIR);
     fs.mkdirSync(outDir, { recursive: true });
