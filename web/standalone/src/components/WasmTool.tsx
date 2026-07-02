@@ -17,6 +17,7 @@ import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import {
   currentScope,
   libsSourceConfig,
+  modelsSourceConfig,
   yjsProviderConfig,
   type DocSource,
 } from "@/lib/config";
@@ -31,6 +32,10 @@ import {
   type LibLoadingDetail,
   type LibsSource,
 } from "@/wasm/libs/source";
+import {
+  MODELS_LOADING_EVENT,
+  type ModelsLoadingDetail,
+} from "@/wasm/libs/models-bridge";
 import { memfsFilePath, memfsProjectDir } from "@/wasm/constants";
 import { driveProjectIntoTool, type ToolFile } from "@/wasm/kicad-runner";
 import { registerSaveHook, type SaveBytes } from "@/wasm/save-flow";
@@ -595,6 +600,9 @@ export function WasmTool({
     done: number;
     total: number;
   } | null>(null);
+  // Board 3D-model prefetch in flight (background; the viewer works without it —
+  // anything still missing lazy-loads per model). Small badge, not an overlay.
+  const [modelsSync, setModelsSync] = React.useState<string | null>(null);
 
   const append = React.useCallback(
     (msg: string) => setLogs((prev) => [...prev.slice(-800), msg]),
@@ -658,6 +666,18 @@ export function WasmTool({
       clearTimeout(hideTimer);
       window.removeEventListener(LIB_LOADING_EVENT, onLoading);
     };
+  }, []);
+
+  // Board 3D-model prefetch progress (models-bridge prescan) — background badge.
+  React.useEffect(() => {
+    const onModels = (e: Event) => {
+      const d = (e as CustomEvent<ModelsLoadingDetail>).detail;
+      setModelsSync(
+        d.loading ? `Fetching 3D models — ${d.done}/${d.total}` : null,
+      );
+    };
+    window.addEventListener(MODELS_LOADING_EVENT, onModels);
+    return () => window.removeEventListener(MODELS_LOADING_EVENT, onModels);
   }, []);
 
   // "Taking too long": once the tool has been loading for a while without
@@ -756,6 +776,9 @@ export function WasmTool({
           onAbort: oom.onAbort,
           onProgress: (loaded, total) => setProgress({ loaded, total }),
           libsSource: source,
+          // 3D models: lazy per-board source (null unless the CDN manifest is
+          // configured) — feeds the board prescan + the viewer's ensure fallback.
+          modelsSource: modelsSourceConfig(),
         });
         // Register the save sink before the file opens: from here on, every
         // editor File→Save (MEMFS write) is routed onward through saveBytes.
@@ -999,6 +1022,13 @@ export function WasmTool({
       {ready && libSync && (
         <div className="pointer-events-none absolute bottom-9 left-3 z-20 flex items-center gap-2 rounded bg-black/80 px-3 py-1.5 text-xs text-emerald-200">
           <Loader2 className="animate-spin" size={14} /> {libSync}
+        </div>
+      )}
+
+      {/* Board 3D models still prefetching into the cache (background). */}
+      {ready && modelsSync && (
+        <div className="pointer-events-none absolute bottom-[4.25rem] left-3 z-20 flex items-center gap-2 rounded bg-black/80 px-3 py-1.5 text-xs text-sky-200">
+          <Loader2 className="animate-spin" size={14} /> {modelsSync}
         </div>
       )}
 

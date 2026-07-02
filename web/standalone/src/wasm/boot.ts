@@ -1,11 +1,15 @@
 import type { Tool } from "@pcbjam/shared";
 import {
   KICAD_CONFIG_DIR,
+  MODELS_3D_ENV_VARS,
+  MODELS_3D_ROOT,
   RESOURCE_PATH,
   TOOL_ARGV0,
   TOOL_LIB_KIND,
   TOOL_NEEDS_CONFIG_SEED,
 } from "./constants";
+import { installModel3dHandler } from "./libs/models-bridge";
+import type { Model3dSource } from "./libs/models-source";
 import {
   buildFpLibTable,
   buildSymLibTable,
@@ -60,6 +64,9 @@ export interface BootOptions {
   /** Library source backing `window.kicadLibs`. Null/omitted disables libs
    *  (an empty sym-lib-table is seeded). Its libs become sym-lib-table rows. */
   libsSource?: LibsSource | null;
+  /** 3D model source (lazy, per-board). Null/omitted ⇒ the viewer renders the
+   *  bare board only, exactly as before models existed. */
+  modelsSource?: Model3dSource | null;
 }
 
 let booted: { tool: Tool; promise: Promise<void> } | null = null;
@@ -177,8 +184,17 @@ async function fetchWasmWithProgress(
 }
 
 async function doBoot(opts: BootOptions): Promise<void> {
-  const { tool, base, container, log, onStatus, onAbort, onProgress, libsSource } =
-    opts;
+  const {
+    tool,
+    base,
+    container,
+    log,
+    onStatus,
+    onAbort,
+    onProgress,
+    libsSource,
+    modelsSource,
+  } = opts;
   const w = window as ToolWindow;
 
   // The wasm reads the top-level frame geometry from a GLOBAL `mainWindow`
@@ -215,6 +231,12 @@ async function doBoot(opts: BootOptions): Promise<void> {
   const libKind = TOOL_LIB_KIND[tool];
   if (libsSource && libKind) {
     installLibsProvider(libsSource, log);
+    // 3D models ride the same provider (kind "model3d"): the C++ ensure fallback
+    // and the board prescan both resolve through this source.
+    if (modelsSource) {
+      installModel3dHandler(modelsSource, log);
+      log("[3d] model source installed");
+    }
     try {
       // Ensure the owner has at least one writable user lib to save items into.
       // Pass the tool's kind so origins are filtered to the right domain.
@@ -321,6 +343,9 @@ async function doBoot(opts: BootOptions): Promise<void> {
       FS.writeFile(path, contents);
       log(`[boot] seeded ${path}`);
     };
+    // 3D models: the MEMFS root the prescan/ensure paths write into, plus the
+    // env vars (every vintage) that make KiCad's resolver look there.
+    FS.mkdirTree(MODELS_3D_ROOT);
     writeIfAbsent(
       `${KICAD_CONFIG_DIR}/kicad_common.json`,
       JSON.stringify(
@@ -328,6 +353,11 @@ async function doBoot(opts: BootOptions): Promise<void> {
           do_not_show_again: {
             update_check_prompt: true,
             data_collection_prompt: true,
+          },
+          environment: {
+            vars: Object.fromEntries(
+              MODELS_3D_ENV_VARS.map((v) => [v, MODELS_3D_ROOT]),
+            ),
           },
         },
         null,

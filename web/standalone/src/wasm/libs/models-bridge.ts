@@ -1,0 +1,181 @@
+import { MODELS_3D_ROOT } from "../constants";
+import type { Model3dSource } from "./models-source";
+
+/**
+ * Glue between 3D model delivery and the running KiCad WASM tool:
+ *
+ *  - `installModel3dHandler` backs the provider's `kind === "model3d"` requests
+ *    (the C++ lazy fallback in S3D_CACHE::load → PCBJAM_3D::EnsureModelFile asks
+ *    "ensure" for a ref the prescan missed).
+ *  - `prescanBoardModels` scans a board's `(model "…")` refs up front and
+ *    prefetches those bodies (R2 → IDB → MEMFS) so the 3D viewer's first open
+ *    resolves everything locally.
+ *
+ * Both paths converge on `ensureModelInMemfs`: fetch the body via the
+ * `Model3dSource` (IDB-cached, sparse) and write it under `MODELS_3D_ROOT` —
+ * where boot points every `KICAD*_3DMODEL_DIR` env var, so KiCad's stock
+ * resolver finds the file with no C++ resolution changes.
+ */
+
+/** Progress of a board-model prefetch burst (drives the 3D loading overlay). */
+export const MODELS_LOADING_EVENT = "pcbjam:models-loading";
+
+export interface ModelsLoadingDetail {
+  loading: boolean;
+  done: number;
+  total: number;
+}
+
+function emitModelsLoading(detail: ModelsLoadingDetail): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(MODELS_LOADING_EVENT, { detail }));
+}
+
+/**
+ * Normalize a footprint model reference to the source's relative form —
+ * "${KICAD*_3DMODEL_DIR}/<lib>.3dshapes/<name>.<ext>" (any vintage, `${}` or
+ * `$()`) → "<lib>.3dshapes/<name>.<ext>". Bare relative refs pass through;
+ * absolute paths / ${KIPRJMOD} / kicad_embed:// are not ours → null. Mirrors
+ * pcbjamNormalizeModelRef in kicad/3d-viewer/3d_cache/pcbjam_model_fetch.cpp.
+ */
+export function normalizeModelRef(raw: string): string | null {
+  const ref = raw.trim();
+  if (!ref) return null;
+  if (ref.startsWith("${") || ref.startsWith("$(")) {
+    const closing = ref[1] === "{" ? "}" : ")";
+    const end = ref.indexOf(closing);
+    if (end < 0) return null;
+    const v = ref.slice(2, end);
+    // Any vintage of the model-dir var, plus the pre-v6 legacy alias.
+    if (!v.includes("3DMODEL_DIR") && v !== "KISYS3DMOD") return null;
+    return ref.slice(end + 1).replace(/^[/\\]+/, "") || null;
+  }
+  if (ref.startsWith("/") || ref.includes("://")) return null;
+  return ref;
+}
+
+/** Every `(model "…")` ref in a KiCad board/footprint s-expr, normalized. */
+export function scanModelRefs(sexprText: string): string[] {
+  const refs = new Set<string>();
+  const re = /\(\s*model\s+"((?:[^"\\]|\\.)*)"/g;
+  for (let m = re.exec(sexprText); m; m = re.exec(sexprText)) {
+    const raw = m[1]!.replace(/\\(.)/g, "$1");
+    const rel = normalizeModelRef(raw);
+    if (rel) refs.add(rel);
+  }
+  return [...refs];
+}
+
+type ModelFS = Pick<EmscriptenFS, "mkdirTree" | "writeFile" | "analyzePath">;
+
+function toolFS(): ModelFS | null {
+  const fs = (window as ToolWindow).FS;
+  return fs && typeof fs.writeFile === "function" ? (fs as ModelFS) : null;
+}
+
+let installedSource: Model3dSource | null = null;
+let installedLog: (msg: string) => void = () => {};
+/** Refs already materialized in MEMFS this session (bodies are immutable). */
+const written = new Set<string>();
+/** In-flight ensures, coalesced per ref (prescan and the C++ fallback race). */
+const ensuring = new Map<string, Promise<string | null>>();
+
+/** Wire the model source used by the provider dispatch + prescan. */
+export function installModel3dHandler(
+  source: Model3dSource,
+  log: (msg: string) => void,
+): void {
+  installedSource = source;
+  installedLog = log;
+}
+
+/** Fetch one model body and write it under MODELS_3D_ROOT. Resolves to the
+ *  absolute MEMFS path when present, null when the source can't serve it. */
+export async function ensureModelInMemfs(ref: string): Promise<string | null> {
+  const dest = `${MODELS_3D_ROOT}/${ref}`;
+  if (written.has(ref)) return dest;
+  let p = ensuring.get(ref);
+  if (!p) {
+    p = doEnsure(ref, dest).finally(() => ensuring.delete(ref));
+    ensuring.set(ref, p);
+  }
+  return p;
+}
+
+async function doEnsure(ref: string, dest: string): Promise<string | null> {
+  const source = installedSource;
+  const fs = toolFS();
+  if (!source || !fs) return null;
+  if (fs.analyzePath(dest).exists) {
+    written.add(ref);
+    return dest;
+  }
+  const body = await source.getModelBody(ref);
+  if (!body) return null;
+  fs.mkdirTree(dest.slice(0, dest.lastIndexOf("/")));
+  fs.writeFile(dest, body);
+  written.add(ref);
+  installedLog(`[3d] materialized ${ref} (${body.length} bytes)`);
+  return dest;
+}
+
+/**
+ * Provider dispatch for `kind === "model3d"` (called by installLibsProvider's
+ * request before any lib-id parsing — the C++ bridge passes an empty lib; the
+ * ref itself carries the library). Answers with the ABSOLUTE MEMFS path of the
+ * materialized file — S3D_CACHE loads that path directly, so model delivery
+ * never depends on env-var expansion inside the wasm runtime.
+ */
+export async function handleModel3dRequest(
+  op: string,
+  arg: string,
+): Promise<string | null> {
+  if (op !== "ensure") return null;
+  const rel = normalizeModelRef(arg);
+  if (!rel) return null;
+  try {
+    return await ensureModelInMemfs(rel);
+  } catch (e) {
+    installedLog(`[3d] ensure failed for ${arg}: ${String(e)}`);
+    return null;
+  }
+}
+
+/**
+ * Prefetch every model a board references (fire-and-forget from the project
+ * sync). Bodies land in IDB + MEMFS before the user opens the 3D viewer in the
+ * common case; anything still missing falls back to the per-model C++ ensure.
+ */
+export async function prescanBoardModels(
+  boardText: string,
+  concurrency = 6,
+): Promise<void> {
+  if (!installedSource) return;
+  const refs = scanModelRefs(boardText);
+  if (!refs.length) return;
+
+  const total = refs.length;
+  let done = 0;
+  emitModelsLoading({ loading: true, done, total });
+  installedLog(`[3d] prescan: ${total} model ref(s) on board`);
+  const started = performance.now();
+
+  let idx = 0;
+  const worker = async (): Promise<void> => {
+    while (idx < refs.length) {
+      const ref = refs[idx++]!;
+      try {
+        await ensureModelInMemfs(ref);
+      } catch {
+        // best-effort: the C++ lazy path (or a later prescan) retries
+      }
+      emitModelsLoading({ loading: ++done < total, done, total });
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, total) }, () => worker()),
+  );
+  installedLog(
+    `[3d] prescan: ${done}/${total} in ${Math.round(performance.now() - started)}ms`,
+  );
+}

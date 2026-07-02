@@ -98,6 +98,7 @@ export const LOCAL_PROJECTS_ENABLED =
 
 import type { ProviderConfig, ProviderKind } from "@/wasm/collab";
 import { cdnLibsSource } from "@/wasm/libs/cdn-source";
+import { cdnModelsSource, type Model3dSource } from "@/wasm/libs/models-source";
 import { remoteLibsSource } from "@/wasm/libs/remote-source";
 import { scopedLibsSource } from "@/wasm/libs/scoped-source";
 import type { LibsSource } from "@/wasm/libs/source";
@@ -191,6 +192,22 @@ export function currentScope(): string {
  *  (IDB-cached). See wasm/libs/cdn-source.ts + docs/features/r2-idb-sync. */
 export const CDN_LIBS_MANIFEST_URL =
   import.meta.env.VITE_LIBS_MANIFEST_URL || null;
+
+/** Full URL of the CDN 3D-models top manifest, e.g.
+ *  https://cdn.pcbjam.com/libs/kicad-models/10.0.0/manifest.json. Bodies are
+ *  fetched lazily per board (sparse layers) and cached in IDB — never bulk
+ *  synced. Unset ⇒ the 3D viewer renders bare boards (no component models).
+ *  See wasm/libs/models-source.ts + docs/features/3d-models. */
+export const CDN_MODELS_MANIFEST_URL =
+  import.meta.env.VITE_MODELS_MANIFEST_URL || null;
+
+/** The 3D model source for a tool boot (null ⇒ models disabled). One instance
+ *  per call — WasmTool keeps a single instance per boot like the libs source. */
+export function modelsSourceConfig(): Model3dSource | null {
+  return CDN_MODELS_MANIFEST_URL
+    ? cdnModelsSource(CDN_MODELS_MANIFEST_URL)
+    : null;
+}
 
 export function libsSourceConfig(projectId?: string): LibsSource | null {
   const kind = import.meta.env.VITE_LIBS_SOURCE ?? "remote";

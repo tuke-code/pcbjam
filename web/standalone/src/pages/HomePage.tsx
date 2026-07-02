@@ -23,6 +23,7 @@ import { WaitlistForm } from "@/components/WaitlistForm";
 import { NewFileDialog } from "@/components/NewFileDialog";
 import type { SaveBytes } from "@/wasm/save-flow";
 import { LocalProjectView, type LocalFile } from "@/components/LocalProjectView";
+import { StorageUsageCard } from "@/components/StorageUsageCard";
 import { WasmTool } from "@/components/WasmTool";
 
 /** A KiCad project picked from the local filesystem (no backend involved). */
@@ -322,6 +323,11 @@ export function HomePage() {
           />
         </div>
       </section>
+
+      {/* --- Browser storage: per-kind cache sizes + delete-3D-cache. --- */}
+      <div className="mt-10">
+        <StorageUsageCard />
+      </div>
     </div>
   );
 }

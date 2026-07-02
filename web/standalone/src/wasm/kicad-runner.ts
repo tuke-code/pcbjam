@@ -1,6 +1,7 @@
 import type { Tool } from "@pcbjam/shared";
 import { FILELESS_TOOLS } from "@pcbjam/shared";
 import { memfsFilePath, memfsProjectDir } from "./constants";
+import { prescanBoardModels } from "./libs/models-bridge";
 import { openFileInTool } from "./open-flow";
 
 /**
@@ -55,6 +56,16 @@ async function syncProjectToMemfs(win: ToolWindow, opts: DriveOptions): Promise<
     const bytes = await opts.fetchBytes(file.path);
     fs.writeFile(dest, bytes);
     opts.log(`[memfs] wrote ${dest} (${bytes.length} bytes)`);
+    // 3D models: prefetch every model this board references (R2 → IDB → MEMFS)
+    // so the 3D viewer's first open resolves locally. Fire-and-forget — project
+    // open never waits on it; a ref that misses falls back to the C++ per-model
+    // ensure. No-op unless a model source is installed (bootKicadTool).
+    if (file.path.endsWith(".kicad_pcb")) {
+      const text = new TextDecoder().decode(bytes);
+      void prescanBoardModels(text).catch((e) =>
+        opts.log(`[3d] prescan failed: ${String(e)}`),
+      );
+    }
   }
 }
 

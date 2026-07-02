@@ -1,3 +1,4 @@
+import { handleModel3dRequest } from "./models-bridge";
 import { libIdFromUri, libUri } from "./uri";
 
 /**
@@ -259,6 +260,12 @@ export function installLibsProvider(
   let fatResetTimer: ReturnType<typeof setTimeout> | undefined;
 
   const request: KicadLibsRequest = async (op, lib, arg, kind = "symbol") => {
+    // 3D models are addressed by ref, not lib-table URI (the C++ ensure bridge
+    // passes an empty lib) — dispatch before the lib-id parse would null it out.
+    if (kind === "model3d") {
+      log(`[libs] request op=${op} kind=model3d arg=${arg}`);
+      return handleModel3dRequest(op, arg);
+    }
     const id = libIdFromUri(lib);
     log(`[libs] request op=${op} kind=${kind} lib=${lib} (id=${id}) arg=${arg}`);
     if (!id) return null;

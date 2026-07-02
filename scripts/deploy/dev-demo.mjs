@@ -72,6 +72,8 @@ function parseArgs(argv) {
     contentTag: null, // use the live CDN gallery for this tag (else build locally)
     galleryTag: "demo-local", // path tag for the locally-built gallery
     noGallery: false, // disable the example gallery (local-folder + IDB only)
+    modelsTag: null, // 3D models snapshot tag (live CDN, or the local dir's tag)
+    modelsLocal: null, // local publish-models --driver local output dir (serve same-origin)
     port: null,
     repo: "https://github.com/emergence-engineering/pcbjam",
   };
@@ -87,6 +89,8 @@ function parseArgs(argv) {
       case "--no-gallery": a.noGallery = true; break;
       case "--port": a.port = next(); break;
       case "--repo": a.repo = next(); break;
+      case "--models-tag": a.modelsTag = next(); break;
+      case "--models-local": a.modelsLocal = next(); break;
       case "-h": case "--help": a.help = true; break;
       default: throw new Error(`unknown arg: ${argv[i]}`);
     }
@@ -108,6 +112,9 @@ const HELP = `dev-demo.mjs — run the standalone locally in demo mode (R2-only 
   --content-tag <tag>  pin the LIVE CDN gallery for this release tag (default: build+serve the gallery locally)
   --gallery-tag <tag>  path tag for the locally-built gallery (default demo-local)
   --no-gallery         disable the example gallery (local-folder + IDB projects only)
+  --models-tag <tag>   enable lazy 3D models from the CDN snapshot at this tag
+  --models-local <dir> serve a local publish-models layout (--driver local --compress none)
+                       same-origin instead of the CDN (requires --models-tag)
   --port <n>           dev server port
 
 By default the read-only example gallery (deploy/demo/gallery.json) is built
@@ -140,6 +147,26 @@ function main() {
   } else {
     env.VITE_LIBS_SOURCE = "static";
     delete env.VITE_LIBS_MANIFEST_URL;
+  }
+
+  // --- 3D models: lazy per-board bodies (docs/features/3d-models). Off unless a
+  //     tag is given. --models-local <publish-models --out dir> serves that
+  //     layout same-origin at /models-cdn via a public/ symlink (publish it with
+  //     --compress none — the dev server can't send Content-Encoding: br);
+  //     otherwise the live CDN snapshot for --models-tag is used.
+  if (a.modelsTag && a.modelsLocal) {
+    const link = join(repoRoot, "web/standalone/public/models-cdn");
+    try {
+      if (lstatSync(link)) rmSync(link, { recursive: true, force: true });
+    } catch {
+      /* no existing link */
+    }
+    symlinkSync(resolve(a.modelsLocal, "libs/kicad-models"), link);
+    env.VITE_MODELS_MANIFEST_URL = `/models-cdn/${a.modelsTag}/manifest.json`;
+  } else if (a.modelsTag) {
+    env.VITE_MODELS_MANIFEST_URL = `${a.cdn}/libs/kicad-models/${a.modelsTag}/manifest.json`;
+  } else {
+    delete env.VITE_MODELS_MANIFEST_URL;
   }
 
   // --- No backend: collab is cross-tab only, document bytes are local (api path),
@@ -189,6 +216,7 @@ function main() {
   console.log(`  VITE_LIBS_SOURCE=${env.VITE_LIBS_SOURCE}${env.VITE_LIBS_MANIFEST_URL ? ` (${env.VITE_LIBS_MANIFEST_URL})` : ""}`);
   console.log(`  VITE_WASM_ROOT=${env.VITE_WASM_ROOT}${env.VITE_WASM_MANIFEST ? ` (${env.VITE_WASM_MANIFEST})` : " (local build)"}`);
   console.log(`  VITE_PROJECT_SOURCE=${env.VITE_PROJECT_SOURCE}${env.VITE_PROJECT_MANIFEST_URL ? ` (${env.VITE_PROJECT_MANIFEST_URL})` : ""}`);
+  console.log(`  VITE_MODELS_MANIFEST_URL=${env.VITE_MODELS_MANIFEST_URL ?? "(unset — 3D models off)"}`);
   console.log(`  VITE_YJS_PROVIDER=${env.VITE_YJS_PROVIDER}  VITE_DOC_SOURCE=${env.VITE_DOC_SOURCE}  VITE_LOCAL_PROJECTS=${env.VITE_LOCAL_PROJECTS}`);
 
   const child = spawn("pnpm", viteArgs, { cwd: repoRoot, env, stdio: "inherit" });

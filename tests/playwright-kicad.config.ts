@@ -89,6 +89,7 @@ const PCBNEW_FAMILY_SPECS = [
   '**/pcbnew-move.spec.ts',
   // 3D viewer specs boot pcbnew.html (3D-enabled build) — same V8 routing.
   '**/3d-viewer.spec.ts',
+  '**/3d-viewer-models.spec.ts',
   '**/footprint-3d-preview.spec.ts',
 ];
 

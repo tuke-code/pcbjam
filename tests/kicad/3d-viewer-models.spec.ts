@@ -1,0 +1,255 @@
+import type { Page } from '@playwright/test';
+import { test, expect } from './fixtures';
+import { clickMenuBarItem, clickMenuItem } from '../e2e/utils/element-tracker';
+import { injectFromSubmodule } from './utils/fs-inject';
+import { waitForBoardLoaded } from './utils/board-ready';
+import { waitForPcbnew } from './utils/pcbnew-ready';
+
+/**
+ * 3D viewer COMPONENT MODELS e2e (docs/features/3d-models): load pic_programmer,
+ * open the 3D viewer, and verify the model-delivery machinery end to end at the
+ * KiCad/wasm level:
+ *
+ *  1. Statically linked format plugins (vrml + oce — upstream loads them via
+ *     dlopen, which wasm doesn't have) parse real model files.
+ *  2. Project-local models resolve exactly as upstream: the board references
+ *     `${KIPRJMOD}/libs/3d_shapes/*.wrl`, injected with the project.
+ *  3. The lazy-fetch fallback (S3D_CACHE::load → PCBJAM_3D::EnsureModelFile →
+ *     `kicadLibs.request("ensure", …, "model3d")`) asks JS for every
+ *     `${KICAD*_3DMODEL_DIR}` ref, with the ref NORMALIZED to
+ *     `<lib>.3dshapes/<name>.<ext>` — and a served ref (the stub writes the
+ *     bytes into MEMFS and answers "1") then resolves and renders.
+ *
+ * The stub provider stands in for the standalone's models-bridge (which fetches
+ * from the CDN into IDB); here it serves ONE in-repo STEP fixture under a
+ * board-referenced name — geometry is a USB-C connector where a DIP-8 socket
+ * belongs, which is irrelevant: the assertion is parse+render, not fidelity.
+ */
+
+const KICAD_VERSION_DIR = '10.0';
+const PROJECT_DIR_MEMFS = `/home/kicad/documents/kicad/${KICAD_VERSION_DIR}/projects`;
+
+// The JS-owned MEMFS root the stub writes model bodies under — the same dir
+// the standalone's models-bridge uses (constants.ts MODELS_3D_ROOT). Its exact
+// location is immaterial: the ensure protocol answers with the ABSOLUTE path
+// and S3D_CACHE loads it directly (env-var expansion never resolves
+// ${KICAD*_3DMODEL_DIR} refs in the wasm runtime — see
+// docs/features/3d-models/0001).
+const MODELS_ROOT_MEMFS = '/pcbjam/3dmodels';
+
+// The board ref the stub provider serves (normalized form the bridge must ask
+// for), and the in-repo STEP whose bytes stand in for it.
+const SERVED_REF = 'Package_DIP.3dshapes/DIP-8_W7.62mm.step';
+const STEP_FIXTURE = 'kicad/demos/openair-max/Libraries/HRO_TYPE-C-31-M-12.step';
+
+const DEMO = { name: 'pic_programmer', dir: 'pic_programmer', stem: 'pic_programmer' } as const;
+
+declare global {
+    interface Window {
+        __modelEnsures?: Array<{ op: string; arg: string; kind: string }>;
+        __stepFixtureB64?: string;
+    }
+}
+
+/** Record every model3d bridge request; serve SERVED_REF from the fixture. */
+async function installModelProviderStub(page: Page, serveAll = false): Promise<void> {
+    await page.evaluate(
+        ({ stockDir, servedRef, serveAll }) => {
+            window.__modelEnsures = [];
+            (globalThis as any).kicadLibs = {
+                request: async (op: string, _lib: string, arg: string, kind: string) => {
+                    if (kind !== 'model3d') return null;
+                    window.__modelEnsures!.push({ op, arg, kind });
+                    console.log(`[TEST-3D] ensure request: ${op} ${arg}`);
+                    if (op !== 'ensure' || (!serveAll && arg !== servedRef)) return null;
+
+                    const b64 = window.__stepFixtureB64!;
+                    const binary = atob(b64);
+                    const data = new Uint8Array(binary.length);
+                    for (let i = 0; i < binary.length; i++) data[i] = binary.charCodeAt(i);
+
+                    // Mirror models-bridge.ts ensureModelInMemfs: write under the
+                    // JS-owned model root and answer with the ABSOLUTE path —
+                    // S3D_CACHE loads it directly (no env-var expansion needed).
+                    // @ts-expect-error — Emscripten FS lives on window
+                    const FS = (window as any).FS;
+                    const dest = `${stockDir}/${arg}`;
+                    FS.mkdirTree(dest.slice(0, dest.lastIndexOf('/')));
+                    FS.writeFile(dest, data);
+                    console.log(`[TEST-3D] served ${arg} → ${dest} (${data.length} bytes)`);
+                    return dest;
+                },
+            };
+        },
+        { stockDir: MODELS_ROOT_MEMFS, servedRef: SERVED_REF, serveAll },
+    );
+}
+
+async function loadBoard(page: Page, testLogger: { consoleLogs: string[]; errors: string[] }): Promise<void> {
+    const pcbFilename = `${DEMO.stem}.kicad_pcb`;
+    const proFilename = `${DEMO.stem}.kicad_pro`;
+
+    await injectFromSubmodule(page, `kicad/demos/${DEMO.dir}/${pcbFilename}`,
+        `${PROJECT_DIR_MEMFS}/${pcbFilename}`);
+    await injectFromSubmodule(page, `kicad/demos/${DEMO.dir}/${proFilename}`,
+        `${PROJECT_DIR_MEMFS}/${proFilename}`);
+    // Project-local 3D models — the board references them as
+    // ${KIPRJMOD}/libs/3d_shapes/<name>.wrl; resolved by the stock resolver, so
+    // they must NOT go through the ensure bridge (asserted below).
+    await injectFromSubmodule(page, `kicad/demos/${DEMO.dir}/libs/3d_shapes/textool_40.wrl`,
+        `${PROJECT_DIR_MEMFS}/libs/3d_shapes/textool_40.wrl`);
+    await injectFromSubmodule(page, `kicad/demos/${DEMO.dir}/libs/3d_shapes/adjustable_rx2v4.wrl`,
+        `${PROJECT_DIR_MEMFS}/libs/3d_shapes/adjustable_rx2v4.wrl`);
+
+    expect(await clickMenuBarItem(page, 'File'), 'File menu should be findable').toBe(true);
+    await page.waitForTimeout(400);
+    expect(await clickMenuItem(page, 'Open...'), 'Open… menu item should be findable').toBe(true);
+
+    await page.waitForFunction(() => {
+        const registry = window.wxElementRegistry;
+        return !!registry && registry.findAll({ visible: true })
+            .some((el) => el.typeName === 'wxFileDialog');
+    }, null, { timeout: 15000 });
+    await page.waitForTimeout(1000);
+
+    const filenameInput = await page.evaluate(() => {
+        const registry = window.wxElementRegistry;
+        if (!registry) return null;
+        const text = registry.findAll({ visible: true })
+            .find((el) => el.typeName === 'wxTextCtrl' && el.name === 'text');
+        return text ? { x: text.centerX, y: text.centerY } : null;
+    });
+    expect(filenameInput, 'filename text input should be visible').not.toBeNull();
+    if (!filenameInput) throw new Error('filename text input not found');
+
+    await page.mouse.click(filenameInput.x, filenameInput.y);
+    await page.waitForTimeout(200);
+    await page.keyboard.type(pcbFilename);
+    await page.waitForTimeout(300);
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(1000);
+
+    const result = await waitForBoardLoaded(page, testLogger, 60000);
+    console.log(`[TEST] ${DEMO.name} board-ready result: ${result}`);
+}
+
+function countGlCanvases(page: Page): Promise<number> {
+    return page.evaluate(() => document.querySelectorAll('canvas[id^="glcanvas-"]').length);
+}
+
+async function openThreeDViewer(page: Page, glBefore: number): Promise<number> {
+    let opened = false;
+    if (await clickMenuBarItem(page, 'View')) {
+        await page.waitForTimeout(400);
+        opened = await clickMenuItem(page, '3D Viewer');
+    }
+    if (!opened) {
+        console.log('[TEST] View → 3D Viewer not found via menu; trying Alt+3');
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(200);
+        await page.keyboard.press('Alt+3');
+    }
+
+    await page.waitForFunction(() => {
+        return !!document.querySelector('#window-container [id^="window-"]')
+            || document.querySelectorAll('canvas[id^="glcanvas-"]').length > 0;
+    }, null, { timeout: 60000 });
+
+    await page.waitForFunction((before: number) =>
+        document.querySelectorAll('canvas[id^="glcanvas-"]').length > before,
+        glBefore, { timeout: 60000 });
+
+    const glAfter = await countGlCanvases(page);
+    console.log(`[TEST] glcanvas count after opening 3D viewer: ${glAfter}`);
+    expect(glAfter, 'a new WebGL canvas should appear for the 3D viewer').toBeGreaterThan(glBefore);
+    return glAfter;
+}
+
+test.describe('3D viewer component models', () => {
+    test.describe.configure({ mode: 'serial' });
+    test.setTimeout(240000);
+
+    test('resolves project models, lazy-fetches lib models via the bridge, renders', async ({ page, testLogger }) => {
+        await page.goto('/kicad/pcbnew.html');
+        await waitForPcbnew(page);
+
+        // Stash the STEP fixture bytes + install the provider stub BEFORE the
+        // viewer can issue any ensure request.
+        const fs = require('fs') as typeof import('fs');
+        const path = require('path') as typeof import('path');
+        const fixtureAbs = path.resolve(__dirname, '..', '..', STEP_FIXTURE);
+        await page.evaluate(
+            (b64: string) => { window.__stepFixtureB64 = b64; },
+            fs.readFileSync(fixtureAbs).toString('base64'),
+        );
+        await installModelProviderStub(page);
+
+        await loadBoard(page, testLogger);
+
+        const glBefore = await countGlCanvases(page);
+        await openThreeDViewer(page, glBefore);
+
+        // Scene build + progressive raytrace passes.
+        await page.waitForTimeout(8000);
+        await page.screenshot({ path: `test-results/3d-viewer-models-${DEMO.name}.png`, scale: 'css' });
+
+        // --- bridge assertions -------------------------------------------------
+        const ensures = await page.evaluate(() => window.__modelEnsures ?? []);
+        console.log(`[TEST] ensure requests: ${ensures.length}`);
+        for (const e of ensures.slice(0, 30)) console.log(`[TEST]   ${e.op} ${e.arg}`);
+
+        // Every ${KICAD*_3DMODEL_DIR} ref crossed the bridge, normalized.
+        const args = ensures.map((e) => e.arg);
+        expect(args, 'the served lib ref must cross the bridge normalized')
+            .toContain(SERVED_REF);
+        expect(args.every((a) => /^[^/${]+\.3dshapes\//.test(a)),
+            'every bridge ref is a normalized <lib>.3dshapes/<file> path').toBe(true);
+        // Project-local (${KIPRJMOD}) models resolve natively — never bridged.
+        expect(args.some((a) => a.includes('textool_40') || a.includes('adjustable_rx2v4')),
+            'project-local models must not go through the ensure bridge').toBe(false);
+        // Board refs are unique per model file — the C++ memo must not re-ask.
+        expect(new Set(args).size, 'ensure requests are deduplicated').toBe(args.length);
+
+        // The served model landed in MEMFS where the resolver looks.
+        const servedSize = await page.evaluate(
+            ({ stockDir, servedRef }) => {
+                // @ts-expect-error — Emscripten FS lives on window
+                const FS = (window as any).FS;
+                try { return FS.stat(`${stockDir}/${servedRef}`).size as number; }
+                catch { return -1; }
+            },
+            { stockDir: MODELS_ROOT_MEMFS, servedRef: SERVED_REF },
+        );
+        expect(servedSize, 'served STEP written into the model root').toBeGreaterThan(1000);
+
+        // --- render assertion --------------------------------------------------
+        const render = await page.evaluate(() => {
+            const list = document.querySelectorAll('canvas[id^="glcanvas-"]');
+            const el = list[list.length - 1] as HTMLCanvasElement;
+            const tmp = document.createElement('canvas');
+            tmp.width = el.width;
+            tmp.height = el.height;
+            const ctx = tmp.getContext('2d')!;
+            ctx.drawImage(el, 0, 0);
+            const colors = new Set<string>();
+            for (let i = 0; i < 16; i++) {
+                for (let j = 0; j < 16; j++) {
+                    const d = ctx.getImageData(Math.floor(el.width * i / 16),
+                                               Math.floor(el.height * j / 16), 1, 1).data;
+                    colors.add(`${d[0]},${d[1]},${d[2]}`);
+                }
+            }
+            return { id: el.id, w: el.width, h: el.height, distinctColors: colors.size,
+                     dataUrl: tmp.toDataURL('image/png') };
+        });
+        console.log(`[TEST] 3D canvas ${render.id} ${render.w}x${render.h}, distinct colours: ${render.distinctColors}`);
+        const b64 = render.dataUrl.replace(/^data:image\/png;base64,/, '');
+        fs.writeFileSync(`test-results/3d-viewer-models-${DEMO.name}-render.png`,
+                         Buffer.from(b64, 'base64'));
+        expect(render.distinctColors,
+            'the 3D viewer canvas should render the board + models, not a blank fill')
+            .toBeGreaterThan(8);
+
+        expect(testLogger.errors, 'no page errors during the model flow').toEqual([]);
+    });
+});

@@ -72,6 +72,24 @@ export const TOOL_LIB_KIND: Record<Tool, "symbol" | "footprint" | null> = {
 /** KiCad user settings dir for this build (PATHS::GetUserSettingsPath()). */
 export const KICAD_CONFIG_DIR = `/home/kicad/.config/kicad/kicad/${KICAD_VERSION_DIR}`;
 
+/**
+ * MEMFS root where 3D model bodies are materialized (JS prescan + the C++
+ * lazy-ensure fallback both write `<root>/<lib>.3dshapes/<name>.<ext>` here).
+ * Boot points every `KICAD*_3DMODEL_DIR` env var at this dir — official-lib
+ * footprints reference models through vintage-specific vars (KICAD6..10 all
+ * occur), and KiCad's stock FILENAME_RESOLVER picks up each var it finds — so
+ * model paths resolve with zero resolver changes.
+ */
+export const MODELS_3D_ROOT = "/pcbjam/3dmodels";
+export const MODELS_3D_ENV_VARS = [
+  "KISYS3DMOD", // pre-v6 legacy alias, still common in older boards
+  "KICAD6_3DMODEL_DIR",
+  "KICAD7_3DMODEL_DIR",
+  "KICAD8_3DMODEL_DIR",
+  "KICAD9_3DMODEL_DIR",
+  "KICAD10_3DMODEL_DIR",
+] as const;
+
 export function memfsProjectDir(slug: string): string {
   return `${MEMFS_PROJECTS_DIR}/${slug}`;
 }
