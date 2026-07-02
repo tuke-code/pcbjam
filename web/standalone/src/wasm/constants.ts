@@ -35,20 +35,32 @@ export const TOOL_ARGV0: Record<Tool, string> = {
 };
 
 /**
- * Which deployed WASM bundle actually backs each tool. `footprint_editor` and
- * `symbol_editor` are the SAME compiled engine as `pcbnew` / `eeschema` — they
- * were only ever a second launcher pinned to a different build-time frame — so
- * after editor-unification they load the parent bundle and select their frame at
- * runtime (see `TOOL_FRAME`). Every other tool backs its own bundle. Used to
- * resolve the CDN asset folder and the `<bundle>.{wasm,js}` filenames.
+ * A deployed WASM bundle (CDN folder + `<bundle>.{wasm,js}` basenames). NOT the same
+ * space as `Tool`: since editor-unification Part 2 the four editor TOOLS (pcbnew,
+ * eeschema, footprint_editor, symbol_editor) are all served by the ONE merged
+ * `kicad_editor` bundle — two engines (kifaces) statically linked, the frame chosen
+ * at runtime (`TOOL_FRAME`). Deliberately not part of the `TOOLS` enum: a bundle is
+ * a delivery artifact, not a user-facing tool/route.
  */
-export const TOOL_BUNDLE: Record<Tool, Tool> = {
-  pcbnew: "pcbnew",
-  eeschema: "eeschema",
+export type Bundle =
+  | "kicad_editor"
+  | "calculator"
+  | "pl_editor"
+  | "gerbview";
+
+/**
+ * Which deployed WASM bundle actually backs each tool. The four editors share the
+ * merged `kicad_editor` engine image (editor-unification Part 2); the remaining
+ * tools are genuinely separate engines and back their own bundles. Used to resolve
+ * the CDN asset folder and the `<bundle>.{wasm,js}` filenames.
+ */
+export const TOOL_BUNDLE: Record<Tool, Bundle> = {
+  pcbnew: "kicad_editor",
+  eeschema: "kicad_editor",
   calculator: "calculator",
   pl_editor: "pl_editor",
-  symbol_editor: "eeschema",
-  footprint_editor: "pcbnew",
+  symbol_editor: "kicad_editor",
+  footprint_editor: "kicad_editor",
   gerbview: "gerbview",
 };
 
@@ -58,10 +70,13 @@ export const TOOL_BUNDLE: Record<Tool, Tool> = {
  * opens a specific editor frame. Tools whose bundle already defaults to the right
  * frame need no token (`undefined`). Tokens mirror `kicad/kicad.cpp`'s `--frame`
  * parser, plus `symedit` for the symbol editor (which upstream's CLI lacks).
+ * The merged bundle's build-time default is the PCB editor, so every editor tool
+ * passes its token explicitly (pcbnew included — cheap insurance over relying on
+ * the default).
  */
 export const TOOL_FRAME: Record<Tool, string | undefined> = {
-  pcbnew: undefined,
-  eeschema: undefined,
+  pcbnew: "pcb",
+  eeschema: "sch",
   calculator: undefined,
   pl_editor: undefined,
   symbol_editor: "symedit",

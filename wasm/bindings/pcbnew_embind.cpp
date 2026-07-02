@@ -55,6 +55,13 @@ using json = nlohmann::json;
 // the editor frame is the app's top window and is a KIWAY_PLAYER. Returns the
 // result of OpenProjectFiles, or false if no frame is available — letting the
 // JS caller fall back to driving File→Open.
+//
+// KICAD_MERGED_EMBIND (kicad_editor, editor-unification Part 2): eeschema_embind.cpp
+// defines the identical function and registers the same JS names — in the merged image
+// the frame-agnostic duplicates (this + kicadCollabOnSave) and the shared-name
+// registrations live once in kicad_editor_embind.cpp, which dispatches the per-editor
+// entries (renamed pcbCollab*/schCollab* below; JS-facing names are unchanged).
+#ifndef KICAD_MERGED_EMBIND
 bool kicadOpenFile( std::string path )
 {
     KIWAY_PLAYER* frame =
@@ -69,6 +76,7 @@ bool kicadOpenFile( std::string path )
     return frame->OpenProjectFiles(
             std::vector<wxString>( 1, wxString::FromUTF8( path.c_str() ) ) );
 }
+#endif // !KICAD_MERGED_EMBIND
 
 // ───────────────────────────── Yjs collaborative bridge ─────────────────────────────
 //
@@ -912,7 +920,7 @@ void collabTestMove( PCB_EDIT_FRAME* aFrame, BOARD_ITEM* aItem, int aDx, int aDy
 // fiber stack: BOARD_COMMIT::Push's CHT_ADD of a freshly-built item dispatches GAL virtuals
 // (view->Add → ViewGetLayers) through asyncify-instrumented invoke_*; off the fiber stack those
 // mis-dispatch and trap inside KiCad core, on it they dispatch correctly (eeschema 0007).
-void kicadCollabApply( std::string aJson )
+void pcbCollabApply( std::string aJson )
 {
     json delta = json::parse( aJson, nullptr, /*allow_exceptions*/ false );
 
@@ -937,7 +945,7 @@ void kicadCollabApply( std::string aJson )
 
 // JS → C++, v2 items wire. Same CallAfter + COROUTINE context as kicadCollabApply
 // (the blob parse + commit must run where native edits run — see above).
-void kicadCollabApplyItems( std::string aJson )
+void pcbCollabApplyItems( std::string aJson )
 {
     json wire = json::parse( aJson, nullptr, /*allow_exceptions*/ false );
 
@@ -962,7 +970,7 @@ void kicadCollabApplyItems( std::string aJson )
 
 // JS pull of the full current model as an all-"added" delta (seed/baseline). Also registers the
 // change listener on first call.
-std::string kicadCollabSnapshot()
+std::string pcbCollabSnapshot()
 {
     BOARD* board = ensureBridge();
 
@@ -985,7 +993,7 @@ std::string kicadCollabSnapshot()
 // JS pull of the full current model as an all-"added" v2 items wire: one blob per ROOT
 // item (a footprint's blob embeds its children — the TS side flattens). Registers the
 // listener + rebaselines exactly like kicadCollabSnapshot.
-std::string kicadCollabSnapshotItems()
+std::string pcbCollabSnapshotItems()
 {
     BOARD* board = ensureBridge();
 
@@ -1020,12 +1028,24 @@ std::string kicadCollabSnapshotItems()
 // kicad fork's save chokepoint (PCB_EDIT_FRAME::SavePcbFile) after a successful
 // write to MEMFS, so the web app can route the saved bytes onward (API upload,
 // local-disk write-back, download). No-op without a JS listener.
+// KICAD_MERGED_EMBIND: identical definition in eeschema_embind.cpp; the merged image
+// gets the one in kicad_editor_embind.cpp (both fork save chokepoints call it).
+#ifndef KICAD_MERGED_EMBIND
 extern "C" void kicadCollabOnSave( const char* aPath )
 {
     EM_ASM( {
         if( window.kicadCollab && window.kicadCollab.onSave )
             window.kicadCollab.onSave( UTF8ToString( $0 ) );
     }, aPath );
+}
+#endif // !KICAD_MERGED_EMBIND
+
+// Merged-image dispatch probe (kicad_editor_embind.cpp): is the active top window the
+// PCB editor? Each shared JS entry routes to the pcb*/sch* implementation whose frame
+// is live — exactly the null-check its body starts with anyway.
+bool pcbEditorActive()
+{
+    return pcbFrame() != nullptr;
 }
 
 
@@ -1057,7 +1077,7 @@ void kicadSaveBoard( std::string path )
 // Test/PoC helper: move the first top-level board item by (dx,dy) IU via a real BOARD_COMMIT,
 // firing the listener — a deterministic local edit for the two-tab demo / e2e. Returns the
 // moved item's uuid.
-std::string kicadCollabTestMoveFirst( int aDx, int aDy )
+std::string pcbCollabTestMoveFirst( int aDx, int aDy )
 {
     PCB_EDIT_FRAME* fr = pcbFrame();
 
@@ -1090,7 +1110,7 @@ std::string kicadCollabTestMoveFirst( int aDx, int aDy )
 
 
 // Test helper: read an item's position by uuid as "x,y" (internal units).
-std::string kicadCollabGetPos( std::string aId )
+std::string pcbCollabGetPos( std::string aId )
 {
     PCB_EDIT_FRAME* fr = pcbFrame();
 
@@ -1194,19 +1214,24 @@ EMSCRIPTEN_BINDINGS(pcbnew) {
     function("Pad_GetNumber", &Pad_GetNumber, allow_raw_pointers());
     function("Pad_GetPinFunction", &Pad_GetPinFunction, allow_raw_pointers());
 
-    // Programmatic file open (preferred over UI automation from the web app).
-    function("kicadOpenFile", &kicadOpenFile);
     // Programmatic save of the in-memory board (round-trip tests, README §A).
     function("kicadSaveBoard", &kicadSaveBoard);
-
-    // Yjs collaborative bridge entry points (same contract as pl_editor / eeschema).
-    function("kicadCollabApply", &kicadCollabApply);
-    function("kicadCollabSnapshot", &kicadCollabSnapshot);
-    // v2 items bridge: per-item s-expr payloads (ysync 0008).
-    function("kicadCollabApplyItems", &kicadCollabApplyItems);
-    function("kicadCollabSnapshotItems", &kicadCollabSnapshotItems);
-    function("kicadCollabTestMoveFirst", &kicadCollabTestMoveFirst);
-    function("kicadCollabGetPos", &kicadCollabGetPos);
+    // pcbnew-only test helper (no eeschema counterpart — name is not shared).
     function("kicadCollabTestItemBlob", &kicadCollabTestItemBlob);
+
+#ifndef KICAD_MERGED_EMBIND
+    // JS names ALSO registered by eeschema_embind.cpp — in the merged image these are
+    // registered once by kicad_editor_embind.cpp, dispatching on the active frame.
+    // Programmatic file open (preferred over UI automation from the web app).
+    function("kicadOpenFile", &kicadOpenFile);
+    // Yjs collaborative bridge entry points (same contract as pl_editor / eeschema).
+    function("kicadCollabApply", &pcbCollabApply);
+    function("kicadCollabSnapshot", &pcbCollabSnapshot);
+    // v2 items bridge: per-item s-expr payloads (ysync 0008).
+    function("kicadCollabApplyItems", &pcbCollabApplyItems);
+    function("kicadCollabSnapshotItems", &pcbCollabSnapshotItems);
+    function("kicadCollabTestMoveFirst", &pcbCollabTestMoveFirst);
+    function("kicadCollabGetPos", &pcbCollabGetPos);
+#endif // !KICAD_MERGED_EMBIND
 }
 #endif

@@ -54,6 +54,13 @@ using json = nlohmann::json;
 // frame is the app's top window and is a KIWAY_PLAYER. Returns the result of
 // OpenProjectFiles, or false if no frame is available — letting the JS caller
 // fall back to driving File→Open.
+//
+// KICAD_MERGED_EMBIND (kicad_editor, editor-unification Part 2): pcbnew_embind.cpp
+// defines the identical function and registers the same JS names — in the merged image
+// the frame-agnostic duplicates (this + kicadCollabOnSave) and the shared-name
+// registrations live once in kicad_editor_embind.cpp, which dispatches the per-editor
+// entries (renamed schCollab*/pcbCollab* below; JS-facing names are unchanged).
+#ifndef KICAD_MERGED_EMBIND
 bool kicadOpenFile( std::string path )
 {
     KIWAY_PLAYER* frame =
@@ -68,6 +75,7 @@ bool kicadOpenFile( std::string path )
     return frame->OpenProjectFiles(
             std::vector<wxString>( 1, wxString::FromUTF8( path.c_str() ) ) );
 }
+#endif // !KICAD_MERGED_EMBIND
 
 // ───────────────────────────── Yjs collaborative bridge ─────────────────────────────
 //
@@ -863,7 +871,7 @@ void collabTestMove( SCH_EDIT_FRAME* aFrame, SCH_ITEM* aItem, SCH_SCREEN* aScree
 // wxEvtHandler::CallAfter queues onto the app's pending-event list, which the wasm main
 // loop drains every frame via ProcessPendingEvents() (src/wasm/evtloop.cpp) — i.e. the
 // exact context real UI edits run in. So defer the whole mutation there.
-void kicadCollabApply( std::string aJson )
+void schCollabApply( std::string aJson )
 {
     json delta = json::parse( aJson, nullptr, /*allow_exceptions*/ false );
 
@@ -896,7 +904,7 @@ void kicadCollabApply( std::string aJson )
 
 // JS pull of the full current model as an all-"added" delta (seed/baseline). Also
 // registers the change listener on first call.
-std::string kicadCollabSnapshot()
+std::string schCollabSnapshot()
 {
     ensureBridge();
     json added = snapshotItems( schFrame() );
@@ -912,7 +920,7 @@ std::string kicadCollabSnapshot()
 
 // JS → C++, v2 items wire. Same CallAfter + COROUTINE context as kicadCollabApply
 // (LoadContent + SCH_COMMIT must run where native edits run).
-void kicadCollabApplyItems( std::string aJson )
+void schCollabApplyItems( std::string aJson )
 {
     json wire = json::parse( aJson, nullptr, /*allow_exceptions*/ false );
 
@@ -938,7 +946,7 @@ void kicadCollabApplyItems( std::string aJson )
 // JS pull of the ACTIVE screen's model as an all-"added" v2 items wire: one clipboard-
 // style blob per item on the current sheet (one collab room == one .kicad_sch screen).
 // Registers the listener + rebaselines exactly like kicadCollabSnapshot.
-std::string kicadCollabSnapshotItems()
+std::string schCollabSnapshotItems()
 {
     SCH_EDIT_FRAME* fr = schFrame();
 
@@ -965,7 +973,7 @@ std::string kicadCollabSnapshotItems()
 // Test/PoC helper: move the first schematic item by (dx,dy) IU via a real SCH_COMMIT,
 // firing the listener — a deterministic local edit for the two-tab demo / e2e.
 // Returns the moved item's uuid.
-std::string kicadCollabTestMoveFirst( int aDx, int aDy )
+std::string schCollabTestMoveFirst( int aDx, int aDy )
 {
     SCH_EDIT_FRAME* fr = schFrame();
 
@@ -993,7 +1001,7 @@ std::string kicadCollabTestMoveFirst( int aDx, int aDy )
 
 
 // Test helper: read an item's position by uuid as "x,y" (internal units).
-std::string kicadCollabGetPos( std::string aId )
+std::string schCollabGetPos( std::string aId )
 {
     SCH_EDIT_FRAME* fr = schFrame();
 
@@ -1022,12 +1030,23 @@ std::string kicadCollabGetPos( std::string aId )
 // kicad fork's save chokepoint (SCH_EDIT_FRAME::saveSchematicFile) after a
 // successful write to MEMFS, so the web app can route the saved bytes onward
 // (API upload, local-disk write-back, download). No-op without a JS listener.
+// KICAD_MERGED_EMBIND: identical definition in pcbnew_embind.cpp; the merged image
+// gets the one in kicad_editor_embind.cpp (both fork save chokepoints call it).
+#ifndef KICAD_MERGED_EMBIND
 extern "C" void kicadCollabOnSave( const char* aPath )
 {
     EM_ASM( {
         if( window.kicadCollab && window.kicadCollab.onSave )
             window.kicadCollab.onSave( UTF8ToString( $0 ) );
     }, aPath );
+}
+#endif // !KICAD_MERGED_EMBIND
+
+// Merged-image dispatch probe (kicad_editor_embind.cpp): is the active top window the
+// schematic editor? Counterpart of pcbnew_embind.cpp's pcbEditorActive().
+bool schEditorActive()
+{
+    return schFrame() != nullptr;
 }
 
 
@@ -1064,17 +1083,22 @@ void kicadSaveSchematic( std::string path )
 
 
 EMSCRIPTEN_BINDINGS(eeschema) {
-    // Programmatic file open (preferred over UI automation from the web app).
-    function("kicadOpenFile", &kicadOpenFile);
     // Programmatic save of the in-memory schematic (round-trip tests, README §A).
     function("kicadSaveSchematic", &kicadSaveSchematic);
+
+#ifndef KICAD_MERGED_EMBIND
+    // JS names ALSO registered by pcbnew_embind.cpp — in the merged image these are
+    // registered once by kicad_editor_embind.cpp, dispatching on the active frame.
+    // Programmatic file open (preferred over UI automation from the web app).
+    function("kicadOpenFile", &kicadOpenFile);
     // Yjs collaborative bridge entry points (same contract as pl_editor).
-    function("kicadCollabApply", &kicadCollabApply);
-    function("kicadCollabSnapshot", &kicadCollabSnapshot);
+    function("kicadCollabApply", &schCollabApply);
+    function("kicadCollabSnapshot", &schCollabSnapshot);
     // v2 items bridge: per-item s-expr payloads (ysync 0008).
-    function("kicadCollabApplyItems", &kicadCollabApplyItems);
-    function("kicadCollabSnapshotItems", &kicadCollabSnapshotItems);
-    function("kicadCollabTestMoveFirst", &kicadCollabTestMoveFirst);
-    function("kicadCollabGetPos", &kicadCollabGetPos);
+    function("kicadCollabApplyItems", &schCollabApplyItems);
+    function("kicadCollabSnapshotItems", &schCollabSnapshotItems);
+    function("kicadCollabTestMoveFirst", &schCollabTestMoveFirst);
+    function("kicadCollabGetPos", &schCollabGetPos);
+#endif // !KICAD_MERGED_EMBIND
 }
 #endif

@@ -43,10 +43,10 @@ export async function resolveWasmBase(
 ): Promise<string> {
   if (override) return override.replace(/\/+$/, "");
   if (!WASM_MANIFEST_FILE) return WASM_ROOT; // flat (dev / same-origin)
-  // A tool may be served by a shared bundle (footprint_editor→pcbnew,
-  // symbol_editor→eeschema); resolve the folder/version of the bundle, not the
-  // logical tool (the merged bundles are the only ones published).
-  const bundle = TOOL_BUNDLE[tool] ?? tool;
+  // A tool may be served by a shared bundle (all four editors → kicad_editor);
+  // resolve the folder/version of the bundle, not the logical tool (bundles are
+  // the only thing published/listed in the manifest).
+  const bundle = TOOL_BUNDLE[tool];
   const manifest = await loadManifest();
   const ver = manifest.tools?.[bundle];
   if (!ver) {

@@ -6,12 +6,14 @@
 #   ./docker/build.sh <app>[,<app>...] [args...]
 #
 # Apps:
-#   pcbnew         PCB editor (also serves the footprint editor via --frame=fpedit)
-#   eeschema       schematic editor (also serves the symbol editor via --frame=symedit)
+#   kicad_editor   merged PCB + schematic editor image — serves all four editors
+#                  (PCB / Footprint / Schematic / Symbol) via runtime --frame
 #   calculator     PCB calculator
 #   pl_editor      drawing-sheet editor
 #   gerbview       Gerber viewer
 #   all            build all of the above
+#   pcbnew         standalone PCB engine (debug aid; not deployed — kicad_editor is)
+#   eeschema       standalone schematic engine (debug aid; not deployed)
 #
 # A comma-separated list builds just those apps in order (e.g.
 # "calculator,pl_editor" — used to exercise the multi-app pipeline cheaply).
@@ -65,7 +67,7 @@ trap 'kw_fail 130; exit 130' INT TERM
 
 cd "$(dirname "$0")/.."
 
-VALID_APPS="pcbnew | eeschema | calculator | pl_editor | gerbview | sym_convert | all"
+VALID_APPS="kicad_editor | pcbnew | eeschema | calculator | pl_editor | gerbview | sym_convert | all"
 
 usage() {
     echo "Usage: ./docker/build.sh <app>[,<app>...] [args...]" >&2
@@ -88,15 +90,17 @@ APP_NAME="$1"
 shift
 
 # Expand the app argument into APPS[]: "all", a single app, or a comma list.
-# pcbnew first in "all" — its 90-min host-side wasm-opt chain is the critical
-# path, so it must start as early as possible (especially with KICAD_PIPELINE=1).
+# kicad_editor first in "all" — the merged image is the largest bundle, so its
+# host-side wasm-opt chain is the critical path and must start as early as
+# possible (especially with KICAD_PIPELINE=1). pcbnew/eeschema stay buildable as
+# standalone debug aids but are not part of "all" (not deployed).
 if [[ "$APP_NAME" == "all" ]]; then
-    APPS=(pcbnew eeschema calculator pl_editor gerbview)
+    APPS=(kicad_editor calculator pl_editor gerbview)
 else
     IFS=',' read -r -a APPS <<< "$APP_NAME"
     for app in "${APPS[@]}"; do
         case "$app" in
-            pcbnew|eeschema|calculator|pl_editor|gerbview|sym_convert) ;;
+            kicad_editor|pcbnew|eeschema|calculator|pl_editor|gerbview|sym_convert) ;;
             *)
                 echo "Error: unknown app '$app' (expected: ${VALID_APPS})" >&2
                 usage

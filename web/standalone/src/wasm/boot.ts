@@ -8,6 +8,7 @@ import {
   TOOL_BUNDLE,
   TOOL_LIB_KIND,
   TOOL_NEEDS_CONFIG_SEED,
+  type Bundle,
 } from "./constants";
 import { installModel3dHandler } from "./libs/models-bridge";
 import type { Model3dSource } from "./libs/models-source";
@@ -125,10 +126,10 @@ function loadScript(src: string): Promise<void> {
  */
 function pthreadWorkerScript(
   base: string,
-  tool: Tool,
+  bundle: Bundle,
   traceMask?: string | null,
 ): string | Blob {
-  const abs = new URL(`${base}/${tool}.js`, window.location.href);
+  const abs = new URL(`${base}/${bundle}.js`, window.location.href);
   // ?trace=<mask>: seed `self.__KICAD_TRACE__` in EVERY pthread worker's scope
   // before it importScripts the glue. With PROXY_TO_PTHREAD the C main()/UI (and
   // thus TRACE_MANAGER) run on a pthread, so the trace env must be set in the
@@ -143,7 +144,7 @@ function pthreadWorkerScript(
       { type: "text/javascript" },
     );
   }
-  if (abs.origin === window.location.origin) return `${base}/${tool}.js`;
+  if (abs.origin === window.location.origin) return `${base}/${bundle}.js`;
   return new Blob([`importScripts(${JSON.stringify(abs.href)});`], {
     type: "text/javascript",
   });
@@ -204,7 +205,7 @@ async function doBoot(opts: BootOptions): Promise<void> {
   // The deployed bundle backing this tool. footprint_editor/symbol_editor share
   // the pcbnew/eeschema engine, so their `.wasm`/`.js`/pthread-worker files are the
   // parent's; `tool` still drives identity (thisProgram), config-seed and lib-kind.
-  const bundle = TOOL_BUNDLE[tool] ?? tool;
+  const bundle = TOOL_BUNDLE[tool];
   const w = window as ToolWindow;
 
   // The wasm reads the top-level frame geometry from a GLOBAL `mainWindow`

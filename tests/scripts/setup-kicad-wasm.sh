@@ -79,17 +79,17 @@ copy_app() {
 }
 
 found_any=0
-# symbol_editor / footprint_editor are NOT separate bundles: their harness HTMLs
-# (symbol_editor.html / footprint_editor.html) load the eeschema / pcbnew bundle
-# and select the frame at runtime via --frame (editor-unification).
-copy_app pcbnew           && found_any=1
-copy_app eeschema         && found_any=1
+# The four editors (pcbnew / eeschema / footprint_editor / symbol_editor) are ALL
+# served by the ONE merged kicad_editor bundle: their harness HTMLs load
+# kicad_editor.js and select the frame at runtime via --frame (editor-unification
+# Part 2).
+copy_app kicad_editor     && found_any=1
 copy_app calculator       && found_any=1
 copy_app pl_editor        && found_any=1
 copy_app gerbview         && found_any=1
 
 if [ "$found_any" -eq 0 ]; then
-    echo "Error: no pcbnew/eeschema/calculator/pl_editor/gerbview artifacts found in output/ or docker volume" >&2
+    echo "Error: no kicad_editor/calculator/pl_editor/gerbview artifacts found in output/ or docker volume" >&2
     exit 1
 fi
 

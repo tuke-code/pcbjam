@@ -29,14 +29,13 @@ import {
 
 // --- tools & per-file rules ---------------------------------------------------
 
-// Bundles served to the browser editor. symbol_editor / footprint_editor are NOT
-// separate bundles: they are the eeschema / pcbnew bundle booted with a runtime
-// --frame flag (editor-unification), so they publish nothing of their own. The
-// frontend maps them onto their parent bundle via TOOL_BUNDLE. sym_convert is a
-// node CLI, not served.
+// Bundles served to the browser editor. The four editor tools (pcbnew, eeschema,
+// footprint_editor, symbol_editor) are ALL served by the ONE merged kicad_editor
+// bundle, booted with a runtime --frame flag (editor-unification Part 2) — none of
+// them publishes anything of its own. The frontend maps tools onto bundles via
+// TOOL_BUNDLE. sym_convert is a node CLI, not served.
 const TOOLS = [
-  "pcbnew",
-  "eeschema",
+  "kicad_editor",
   "pl_editor",
   "gerbview",
   "calculator",

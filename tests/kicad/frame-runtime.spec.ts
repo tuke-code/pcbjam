@@ -3,34 +3,47 @@ import { test, expect } from '@playwright/test';
 /**
  * Editor-unification runtime-frame validation.
  *
- * After unification the library editors are no longer separate .wasm bundles:
- *   - the Symbol Editor   is the eeschema bundle booted with --frame=symedit
- *   - the Footprint Editor is the pcbnew  bundle booted with --frame=fpedit
- * The frame token is threaded through Module.arguments and parsed in
- * kicad/common/single_top.cpp (mirroring kicad/kicad.cpp's --frame parser).
+ * Since Part 2 ALL FOUR editors are served by the ONE merged kicad_editor bundle
+ * (pcbnew + eeschema kifaces statically linked): each harness loads kicad_editor.js
+ * with its frame token in Module.arguments —
+ *   - PCB Editor       --frame=pcb      (also the bundle's build-time default)
+ *   - Footprint Editor --frame=fpedit
+ *   - Schematic Editor --frame=sch
+ *   - Symbol Editor    --frame=symedit
+ * parsed in kicad/common/single_top.cpp (mirroring kicad/kicad.cpp's --frame parser).
  *
- * This asserts the decisive fact the launch-smoke specs don't: that the shared
- * bundle actually opens the LIBRARY editor frame, not its parent editor. The
- * window title is the discriminator — the parent bundle's default frame would
- * title itself "Schematic Editor" / "PCB Editor".
+ * This asserts the decisive fact the launch-smoke specs don't: that the merged
+ * bundle actually opens the REQUESTED frame. The window title is the discriminator —
+ * a dropped/ignored token would land on the build default ("PCB Editor") or a
+ * sibling editor's title.
  */
 
 interface FrameCase {
   harness: string;
-  /** title the library-editor frame settles on */
+  /** title the requested editor frame settles on */
   titleRe: RegExp;
-  /** the parent editor's title — must NOT appear (would mean --frame was ignored) */
-  parentRe: RegExp;
+  /** any OTHER editor's title — must NOT appear (would mean --frame went wrong) */
+  wrongRe: RegExp;
 }
 
 const CASES: FrameCase[] = [
-  { harness: 'symbol_editor.html',    titleRe: /Symbol Editor/i,    parentRe: /Schematic Editor/i },
-  { harness: 'footprint_editor.html', titleRe: /Footprint Editor/i, parentRe: /PCB Editor/i },
+  { harness: 'pcbnew.html',
+    titleRe: /PCB Editor/i,
+    wrongRe: /Schematic Editor|Symbol Editor|Footprint Editor/i },
+  { harness: 'footprint_editor.html',
+    titleRe: /Footprint Editor/i,
+    wrongRe: /PCB Editor|Schematic Editor|Symbol Editor/i },
+  { harness: 'eeschema.html',
+    titleRe: /Schematic Editor/i,
+    wrongRe: /PCB Editor|Footprint Editor|Symbol Editor/i },
+  { harness: 'symbol_editor.html',
+    titleRe: /Symbol Editor/i,
+    wrongRe: /PCB Editor|Schematic Editor|Footprint Editor/i },
 ];
 
 test.describe('editor-unification runtime frame (--frame)', () => {
   for (const tc of CASES) {
-    test(`${tc.harness} opens the library editor frame from its parent bundle`, async ({ page }) => {
+    test(`${tc.harness} opens its editor frame from the merged bundle`, async ({ page }) => {
       const consoleLines: string[] = [];
       page.on('console', (m) => consoleLines.push(m.text()));
       page.on('pageerror', (e) => consoleLines.push(`pageerror: ${e.message}`));
@@ -43,7 +56,7 @@ test.describe('editor-unification runtime frame (--frame)', () => {
       // The frame sets the document title once it is up; poll until it settles.
       await expect
         .poll(() => page.title(), {
-          message: `${tc.harness}: never reached the expected library-editor title`,
+          message: `${tc.harness}: never reached the expected editor title`,
           timeout: 120000,
           intervals: [1000],
         })
@@ -53,13 +66,14 @@ test.describe('editor-unification runtime frame (--frame)', () => {
       // eslint-disable-next-line no-console
       console.log(`[frame-runtime] ${tc.harness} -> title=${JSON.stringify(title)}`);
 
-      // The runtime --frame flag actually switched frames: the parent editor's
-      // title must not be what we ended up on.
-      expect(title, `${tc.harness}: opened the library editor, not its parent`).not.toMatch(tc.parentRe);
+      // The runtime --frame flag actually selected the right frame: no sibling
+      // editor's title.
+      expect(title, `${tc.harness}: opened the requested editor, not a sibling`).not.toMatch(tc.wrongRe);
 
-      // No WASM abort during load.
-      const aborted = consoleLines.some((l) => /Aborted\(/.test(l));
-      expect(aborted, 'no WASM abort during load').toBe(false);
+      // No WASM abort during load — and no duplicate embind registration (the
+      // merged dispatcher must register each shared JS name exactly once).
+      const aborted = consoleLines.some((l) => /Aborted\(|Cannot register public name/.test(l));
+      expect(aborted, 'no WASM abort / duplicate embind registration during load').toBe(false);
 
       await page.screenshot({ path: `test-results/frame-runtime-${tc.harness}.png`, scale: 'device' });
     });

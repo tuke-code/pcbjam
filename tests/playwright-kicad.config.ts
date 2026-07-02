@@ -62,12 +62,15 @@ function findFreePort(): number {
 
 const port = resolvePort();
 
-// pcbnew's wasm (~190M debug build) exceeds SpiderMonkey's per-process code
+// The merged kicad_editor wasm (~190M+ debug build; pcbnew+eeschema engines in one
+// image since editor-unification Part 2) exceeds SpiderMonkey's per-process code
 // budget on x86-64 CI even with the baseline-only JIT (run 27343416511:
 // "InternalError: out of memory" at instantiation; the same module compiles
-// on arm64, whose denser code fits). V8 handles it, so on CI these specs run
-// on bundled Chromium (the 'chromium-ci' project) and firefox skips them.
-const PCBNEW_FAMILY_SPECS = [
+// on arm64, whose denser code fits). V8 handles it, so on CI every spec that
+// boots the merged module — i.e. ALL FOUR editors — runs on bundled Chromium
+// (the 'chromium-ci' project) and firefox skips them. Firefox keeps the small
+// separate bundles (pl_editor / calculator / gerbview).
+const BIG_MODULE_SPECS = [
   "**/pcbnew.spec.ts",
   "**/pcbnew-collab.spec.ts",
   "**/load-pcb.spec.ts",
@@ -75,9 +78,9 @@ const PCBNEW_FAMILY_SPECS = [
   // Specs added 2026-06-11..06-13 that boot pcbnew (pcbnew.html /
   // pcbnew-collab.html). Without routing here they ran on Firefox in CI and
   // timed out at instantiation (the SpiderMonkey/x86 code-budget OOM above).
-  // The last three are parametrized across pl_editor/eeschema/pcbnew; routing
-  // the whole file moves those variants to chromium-ci too (they boot fine on
-  // V8) — only the browser exercising them changes, not whether they run.
+  // appearance/roundtrip/save-hook are parametrized across pl_editor/eeschema/
+  // pcbnew; routing the whole file moves the small-bundle variants to chromium-ci
+  // too (they boot fine on V8) — only the browser changes, not whether they run.
   "**/appearance.spec.ts",
   "**/contextmenu-scrollbar-pcbnew.spec.ts",
   "**/dark-mode.spec.ts",
@@ -94,9 +97,18 @@ const PCBNEW_FAMILY_SPECS = [
   "**/3d-viewer-deadlock.spec.ts",
   "**/3d-viewer-models.spec.ts",
   "**/footprint-3d-preview.spec.ts",
-  // Parametrized over both library editors; the footprint case boots the pcbnew
-  // module (footprint_editor.html loads pcbnew.js) — same V8 routing, whole file.
+  // Parametrized over the library editors — both cases now boot the merged module.
   "**/frame-runtime.spec.ts",
+  // eeschema family: since Part 2 these boot the SAME merged kicad_editor module
+  // (eeschema.html / symbol_editor.html load kicad_editor.js) — same V8 routing.
+  "**/eeschema.spec.ts",
+  "**/eeschema-collab.spec.ts",
+  "**/eeschema-crosshair.spec.ts",
+  "**/eeschema-load.spec.ts",
+  "**/eeschema-subschema.spec.ts",
+  "**/eeschema-ui.spec.ts",
+  "**/eeschema-url-regex.spec.ts",
+  "**/symbol_editor.spec.ts",
 ];
 
 // Runtime-perf specs run ONLY on the Chromium 'perf' project below: they need
@@ -136,10 +148,11 @@ export default defineConfig({
       // Firefox is the default for headless testing (works on ARM Mac)
       name: "firefox",
       // Perf specs always run on the dedicated 'perf' project, never here. On CI
-      // the pcbnew-family specs also move to chromium-ci (see PCBNEW_FAMILY_SPECS).
+      // every merged-module (kicad_editor) spec moves to chromium-ci (see
+      // BIG_MODULE_SPECS).
       testIgnore: [
         ...PERF_SPECS,
-        ...(process.env.CI ? PCBNEW_FAMILY_SPECS : []),
+        ...(process.env.CI ? BIG_MODULE_SPECS : []),
       ],
       use: {
         ...devices["Desktop Firefox"],
@@ -159,7 +172,7 @@ export default defineConfig({
                   // Skip the no-GPU blocklist ("AllowWebgl2:false restricts
                   // context creation") so the GAL canvas gets a WebGL context.
                   "webgl.force-enabled": true,
-                  // pcbnew.wasm (~190M) OOMs the optimizing wasm JIT at compile
+                  // kicad_editor.wasm (~190M+) OOMs the optimizing wasm JIT at compile
                   // time ("InternalError: out of memory") and the app never boots.
                   // Baseline-only compilation trades runtime speed for a compile
                   // that fits in memory.
@@ -184,13 +197,13 @@ export default defineConfig({
       },
     },
     {
-      // CI-only carrier for the pcbnew-family specs (see PCBNEW_FAMILY_SPECS):
+      // CI-only carrier for the merged-module specs (see BIG_MODULE_SPECS):
       // Playwright-bundled Chromium, headless, software WebGL via SwiftShader
       // (fine on x86 Linux; the SwiftShader bug above is ARM-Mac-specific).
       // --enable-unsafe-swiftshader: newer Chromium refuses software WebGL in
       // headless without it.
       name: "chromium-ci",
-      testMatch: PCBNEW_FAMILY_SPECS,
+      testMatch: BIG_MODULE_SPECS,
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width: 1280, height: 720 },

@@ -108,8 +108,9 @@
     var Module = {
       thisProgram: '/usr/bin/footprint_editor',  // argv[0] for KiCad's DEBUG check
 
-      // The footprint editor is served by the pcbnew bundle (editor-unification):
-      // load pcbnew.js below and select FRAME_FOOTPRINT_EDITOR at runtime.
+      // The footprint editor is served by the merged kicad_editor bundle (editor-
+      // unification Part 2): load kicad_editor.js below and select
+      // FRAME_FOOTPRINT_EDITOR at runtime.
       arguments: ['--frame=fpedit'],
 
       preRun: [createCanvas, writeResources, seedKicadConfig],
@@ -147,7 +148,7 @@
   <!-- wxWidgets WASM glue code (defines getConfigEntryLength, etc.) -->
   <script src="wx.js"></script>
   <script src="wx-dom.js"></script>
-  <!-- Footprint editor = pcbnew bundle + --frame=fpedit (editor-unification). -->
-  <script async src="pcbnew.js"></script>
+  <!-- Footprint editor = merged kicad_editor bundle + --frame=fpedit (editor-unification Part 2). -->
+  <script async src="kicad_editor.js"></script>
 </body>
 </html>

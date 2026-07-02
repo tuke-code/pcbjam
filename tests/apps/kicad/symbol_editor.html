@@ -147,8 +147,9 @@
     var Module = {
       thisProgram: '/usr/bin/symbol_editor',  // Fake absolute path for argv[0] (KiCad DEBUG check)
 
-      // The symbol editor is served by the eeschema bundle (editor-unification):
-      // load eeschema.js below and select FRAME_SCH_SYMBOL_EDITOR at runtime.
+      // The symbol editor is served by the merged kicad_editor bundle (editor-
+      // unification Part 2): load kicad_editor.js below and select
+      // FRAME_SCH_SYMBOL_EDITOR at runtime.
       arguments: ['--frame=symedit'],
 
       preRun: [createCanvas, writeResources, seedKicadConfig],
@@ -206,7 +207,7 @@
   <!-- wxWidgets WASM glue code (defines getConfigEntryLength, etc.) -->
   <script src="wx.js"></script>
   <script src="wx-dom.js"></script>
-  <!-- Symbol editor = eeschema bundle + --frame=symedit (editor-unification). -->
-  <script async src="eeschema.js"></script>
+  <!-- Symbol editor = merged kicad_editor bundle + --frame=symedit (editor-unification Part 2). -->
+  <script async src="kicad_editor.js"></script>
 </body>
 </html>

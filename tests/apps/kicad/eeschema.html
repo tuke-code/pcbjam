@@ -154,6 +154,11 @@
     var Module = {
       thisProgram: '/usr/bin/eeschema',  // Fake absolute path for argv[0] (KiCad DEBUG check)
 
+      // The schematic editor is served by the merged kicad_editor bundle (editor-
+      // unification Part 2): load kicad_editor.js below and select FRAME_SCH at
+      // runtime.
+      arguments: ['--frame=sch'],
+
       preRun: [createCanvas, writeResources, seedKicadConfig],
       postRun: [],
 
@@ -209,6 +214,7 @@
   <!-- wxWidgets WASM glue code (defines getConfigEntryLength, etc.) -->
   <script src="wx.js"></script>
   <script src="wx-dom.js"></script>
-  <script async src="eeschema.js"></script>
+  <!-- Schematic editor = merged kicad_editor bundle + --frame=sch (editor-unification Part 2). -->
+  <script async src="kicad_editor.js"></script>
 </body>
 </html>

@@ -31,7 +31,7 @@
 set -e
 
 if [ -z "$1" ]; then
-    echo "Error: missing <app> argument (pcbnew | eeschema | calculator | pl_editor | gerbview)" >&2
+    echo "Error: missing <app> argument (kicad_editor | pcbnew | eeschema | calculator | pl_editor | gerbview)" >&2
     exit 1
 fi
 APP_NAME="$1"
@@ -45,6 +45,15 @@ shift
 # The footprint/symbol editors have no target of their own — the pcbnew/eeschema
 # bundle opens them at runtime via single_top.cpp's --frame flag.
 case "$APP_NAME" in
+    kicad_editor)
+        # Merged pcbnew+eeschema image (editor-unification Part 2): one executable
+        # linking BOTH kifaces, frame chosen at runtime by --frame (pcb/fpedit/sch/
+        # symedit). Target lives in wasm/editor/ (added by the fork's top-level
+        # CMakeLists under -DKICAD_WASM_MERGED_EDITOR=ON); its binary dir doubles as
+        # the artifact subdir.
+        KICAD_TARGET="kicad_editor"
+        KICAD_SUBDIR="kicad_editor"
+        ;;
     pcbnew|eeschema|gerbview)
         KICAD_TARGET="$APP_NAME"
         KICAD_SUBDIR="$APP_NAME"
@@ -65,7 +74,7 @@ case "$APP_NAME" in
         KICAD_SUBDIR="eeschema"
         ;;
     *)
-        echo "Error: unknown app '$APP_NAME' (expected: pcbnew | eeschema | calculator | pl_editor | gerbview | sym_convert)" >&2
+        echo "Error: unknown app '$APP_NAME' (expected: kicad_editor | pcbnew | eeschema | calculator | pl_editor | gerbview | sym_convert)" >&2
         exit 1
         ;;
 esac
@@ -80,9 +89,12 @@ esac
 
 # Which app's WASM stub libraries (scripting/frame placeholders) to link.
 # sym_convert links the eeschema kiface objects, so it needs eeschema's frame
-# stub (eeschema_frame_stub.cpp).
+# stub (eeschema_frame_stub.cpp). kicad_editor links pcbnew's kiface objects, which
+# reference the action-plugin scripting placeholders (pcbnewGet*); eeschema's frame
+# stub arrives via CMake (target_sources on eeschema_kiface_objects), not this path.
 case "$APP_NAME" in
     sym_convert)      STUB_APP="eeschema" ;;
+    kicad_editor)     STUB_APP="pcbnew" ;;
     *)                STUB_APP="$APP_NAME" ;;
 esac
 
@@ -370,7 +382,15 @@ log_info "KiCad WASM support verified"
 # linker line below references "${STUBS_BUILD}/${APP_NAME}_embind.o" so we
 # create an empty placeholder when the source is missing, to keep the link
 # line stable across apps.
-EMBIND_OBJ="${STUBS_BUILD}/${EMBIND_APP}_embind.o"
+# kicad_editor (merged image) links THREE embind objects: both per-editor TUs
+# (compiled with -DKICAD_MERGED_EMBIND, which compiles out their duplicate
+# definitions and shared-name registrations) plus the dispatcher TU that registers
+# the shared JS names once — see wasm/bindings/kicad_editor_embind.cpp.
+if [ "${APP_NAME}" = "kicad_editor" ]; then
+    EMBIND_OBJ="${STUBS_BUILD}/pcbnew_embind.o ${STUBS_BUILD}/eeschema_embind.o ${STUBS_BUILD}/kicad_editor_embind.o"
+else
+    EMBIND_OBJ="${STUBS_BUILD}/${EMBIND_APP}_embind.o"
+fi
 EMBIND_SRC="${PROJECT_ROOT}/wasm/bindings/${EMBIND_APP}_embind.cpp"
 
 # Step 7: Configure KiCad with CMake
@@ -390,6 +410,15 @@ fi
 SYM_CONVERTER_CMAKE_FLAG=""
 if [ "${APP_NAME}" = "sym_convert" ]; then
     SYM_CONVERTER_CMAKE_FLAG="-DKICAD_SYM_CONVERTER_WASM=ON"
+fi
+
+# Merged pcbnew+eeschema editor: gates the wasm/editor/ subdir, the per-engine
+# Kiface()/KIFACE_GETTER renames, and the PCB-side ODR symbol renames in the fork's
+# CMake (see KICAD_WASM_MERGED_EDITOR in kicad/CMakeLists.txt). Only this tree
+# (build-wasm/kicad-kicad_editor) configures with it ON.
+MERGED_EDITOR_CMAKE_FLAG=""
+if [ "${APP_NAME}" = "kicad_editor" ]; then
+    MERGED_EDITOR_CMAKE_FLAG="-DKICAD_WASM_MERGED_EDITOR=ON"
 fi
 
 # 3D viewer: built by DEFAULT (BUILD_3D_VIEWER=ON). Opt out with BUILD_3D_VIEWER=OFF, which links the
@@ -442,6 +471,7 @@ fi
 emcmake cmake "${KICAD_DIR}" \
     ${CCACHE_OPTS} \
     ${SYM_CONVERTER_CMAKE_FLAG} \
+    ${MERGED_EDITOR_CMAKE_FLAG} \
     -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
     -DCMAKE_INSTALL_PREFIX="${SYSROOT}" \
     -DCMAKE_MODULE_PATH="${WASM_LAYER}/cmake" \
@@ -495,7 +525,51 @@ emcmake cmake "${KICAD_DIR}" \
 # Exposes KiCad objects to JavaScript for future Pyodide integration.
 # When no app-specific source exists, build an empty object so the linker line
 # referencing ${APP_NAME}_embind.o doesn't break.
-if [ -f "${EMBIND_SRC}" ]; then
+
+# Compile one embind TU with the same includes and ABI-critical flags KiCad uses
+# (KICAD_TU_ABI_FLAGS must match the core's -DDEBUG state or vtable dispatch skews —
+# task #54). Args: <src> <obj> <app-include-subdir> [extra-defines]
+compile_embind_tu() {
+    local _src="$1" _obj="$2" _subdir="$3" _defines="${4:-}"
+
+    local _includes="-I${KICAD_BUILD} -I${KICAD_DIR}/include -I${KICAD_DIR}/${_subdir} -I${KICAD_DIR}/common"
+    # Generated DSN-lexer headers (e.g. pcb_lexer.h, used transitively via kicad_clipboard.h →
+    # pcb_io_kicad_sexpr_parser.h) are emitted into the common build subdir by make_lexer.
+    _includes+=" -I${KICAD_BUILD}/common"
+    _includes+=" -I${KICAD_DIR}/libs/core/include -I${KICAD_DIR}/libs/kimath/include -I${KICAD_DIR}/libs/kiplatform/include"
+    _includes+=" -I${KICAD_DIR}/thirdparty/clipper2/Clipper2Lib/include"
+    _includes+=" -I${KICAD_DIR}/thirdparty/nlohmann_json"
+    _includes+=" -I${KICAD_DIR}/thirdparty/expected/include"
+    _includes+=" -I${KICAD_DIR}/thirdparty/rtree"
+    _includes+=" -I${KICAD_DIR}/thirdparty/fmt"
+    _includes+=" -I${KICAD_DIR}/thirdparty/dynamic_bitset"
+    _includes+=" -I${KICAD_DIR}/thirdparty/nanodbc"
+    _includes+=" -I${KICAD_DIR}/thirdparty/picosha2"
+    _includes+=" -I${KICAD_DIR}/thirdparty"
+    # libcontext.h lives one level deeper; tool/coroutine.h does #include <libcontext.h>
+    _includes+=" -I${KICAD_DIR}/thirdparty/libcontext"
+    _includes+=" -I${SYSROOT}/include"
+
+    # KiCad requires C++20 for concepts
+    em++ -std=c++20 -c ${EXTRA_FLAGS} ${KICAD_TU_ABI_FLAGS} ${WX_CXXFLAGS} ${_defines} ${_includes} "${_src}" -o "${_obj}"
+}
+
+if [ "${APP_NAME}" = "kicad_editor" ]; then
+    # Merged image: both per-editor TUs (with -DKICAD_MERGED_EMBIND compiling out
+    # their duplicate definitions / shared-name registrations) + the dispatcher TU
+    # registering the shared JS names once (wasm/bindings/kicad_editor_embind.cpp).
+    # pcbnew's TU needs the generated lexer headers — pre-build pcbcommon (no wasted
+    # work: kicad_editor depends on pcbcommon anyway; incremental no-op).
+    log_info "Pre-building pcbcommon so generated lexer headers exist for the embind compile..."
+    emmake make -j${JOBS} pcbcommon
+    log_info "Compiling merged Embind bindings (pcbnew + eeschema + dispatcher)..."
+    compile_embind_tu "${PROJECT_ROOT}/wasm/bindings/pcbnew_embind.cpp" \
+                      "${STUBS_BUILD}/pcbnew_embind.o" pcbnew "-DKICAD_MERGED_EMBIND"
+    compile_embind_tu "${PROJECT_ROOT}/wasm/bindings/eeschema_embind.cpp" \
+                      "${STUBS_BUILD}/eeschema_embind.o" eeschema "-DKICAD_MERGED_EMBIND"
+    compile_embind_tu "${PROJECT_ROOT}/wasm/bindings/kicad_editor_embind.cpp" \
+                      "${STUBS_BUILD}/kicad_editor_embind.o" common
+elif [ -f "${EMBIND_SRC}" ]; then
     # pcbnew's embind TU transitively includes generated lexer headers
     # (kicad_clipboard.h → pcb_io_kicad_sexpr_parser.h → pcb_lexer.h, emitted into
     # ${KICAD_BUILD}/common by make_lexer custom commands on the pcbcommon target).
@@ -508,26 +582,7 @@ if [ -f "${EMBIND_SRC}" ]; then
         emmake make -j${JOBS} pcbcommon
     fi
     log_info "Compiling Embind bindings (${APP_NAME})..."
-    # Use the same includes and flags that KiCad uses
-    KICAD_INCLUDES="-I${KICAD_BUILD} -I${KICAD_DIR}/include -I${KICAD_DIR}/${KICAD_SUBDIR} -I${KICAD_DIR}/common"
-    # Generated DSN-lexer headers (e.g. pcb_lexer.h, used transitively via kicad_clipboard.h →
-    # pcb_io_kicad_sexpr_parser.h) are emitted into the common build subdir by make_lexer.
-    KICAD_INCLUDES+=" -I${KICAD_BUILD}/common"
-    KICAD_INCLUDES+=" -I${KICAD_DIR}/libs/core/include -I${KICAD_DIR}/libs/kimath/include -I${KICAD_DIR}/libs/kiplatform/include"
-    KICAD_INCLUDES+=" -I${KICAD_DIR}/thirdparty/clipper2/Clipper2Lib/include"
-    KICAD_INCLUDES+=" -I${KICAD_DIR}/thirdparty/nlohmann_json"
-    KICAD_INCLUDES+=" -I${KICAD_DIR}/thirdparty/expected/include"
-    KICAD_INCLUDES+=" -I${KICAD_DIR}/thirdparty/rtree"
-    KICAD_INCLUDES+=" -I${KICAD_DIR}/thirdparty/fmt"
-    KICAD_INCLUDES+=" -I${KICAD_DIR}/thirdparty/dynamic_bitset"
-    KICAD_INCLUDES+=" -I${KICAD_DIR}/thirdparty/nanodbc"
-    KICAD_INCLUDES+=" -I${KICAD_DIR}/thirdparty/picosha2"
-    KICAD_INCLUDES+=" -I${KICAD_DIR}/thirdparty"
-    # libcontext.h lives one level deeper; tool/coroutine.h does #include <libcontext.h>
-    KICAD_INCLUDES+=" -I${KICAD_DIR}/thirdparty/libcontext"
-    KICAD_INCLUDES+=" -I${SYSROOT}/include"
-    # KiCad requires C++20 for concepts
-    em++ -std=c++20 -c ${EXTRA_FLAGS} ${KICAD_TU_ABI_FLAGS} ${WX_CXXFLAGS} ${KICAD_INCLUDES} "${EMBIND_SRC}" -o "${EMBIND_OBJ}"
+    compile_embind_tu "${EMBIND_SRC}" "${EMBIND_OBJ}" "${KICAD_SUBDIR}"
 else
     log_info "No embind source for ${APP_NAME} (expected at ${EMBIND_SRC}); using empty placeholder"
     EMPTY_C="${STUBS_BUILD}/${APP_NAME}_embind_empty.c"
@@ -545,10 +600,14 @@ log_info "Building ${APP_NAME} (CMake target: ${KICAD_TARGET})..."
 # whenever the freshly-compiled embind object is newer than the linked output.
 LINK_OUT_JS="${KICAD_BUILD}/${KICAD_SUBDIR}/${APP_NAME}.js"
 LINK_OUT_WASM="${KICAD_BUILD}/${KICAD_SUBDIR}/${APP_NAME}.wasm"
-if [ -f "${EMBIND_OBJ}" ] && [ -f "${LINK_OUT_JS}" ] && [ "${EMBIND_OBJ}" -nt "${LINK_OUT_JS}" ]; then
-    log_info "Embind object newer than ${APP_NAME}.js — forcing relink to pick up new bindings"
-    rm -f "${LINK_OUT_JS}" "${LINK_OUT_WASM}"
-fi
+# EMBIND_OBJ may hold several objects (kicad_editor) — check each.
+for _embind_obj in ${EMBIND_OBJ}; do
+    if [ -f "${_embind_obj}" ] && [ -f "${LINK_OUT_JS}" ] && [ "${_embind_obj}" -nt "${LINK_OUT_JS}" ]; then
+        log_info "Embind object newer than ${APP_NAME}.js — forcing relink to pick up new bindings"
+        rm -f "${LINK_OUT_JS}" "${LINK_OUT_WASM}"
+        break
+    fi
+done
 
 emmake make -j${JOBS} "${KICAD_TARGET}"
 

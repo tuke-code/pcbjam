@@ -27,7 +27,7 @@ on:
         type: string
         default: "-O1"
       build_3d_viewer:
-        description: "Build the WASM 3D viewer into pcbnew (ON/OFF)"
+        description: "Build the WASM 3D viewer into kicad_editor (ON/OFF)"
         type: string
         default: "ON"
       run_tests:
@@ -190,7 +190,7 @@ jobs:
           docker run --rm -v kicad-wasm-ci_kicad-build-cache:/bw -v "$PWD/deps-cache":/cache \
             alpine sh -c 'tar xzf /cache/deps.tar.gz -C /bw'
 
-      # PHASE 1 (base miss only): container compile of all 6 tools → output/ base
+      # PHASE 1 (base miss only): container compile of all 4 bundles → output/ base
       # wasm (opt-independent). 3D viewer per input. --compile-only skips the host
       # asyncify/-O tail. KICAD_PIPELINE has no effect here (no post-process to
       # overlap), but the deps short-circuit on a warm volume.
