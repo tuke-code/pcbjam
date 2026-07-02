@@ -3,6 +3,10 @@
 
 # Redirect all output to a log file (re-execs script with redirection)
 source "$(dirname "$0")/common/logging.sh"
+# Default to all cores BEFORE env.sh (its docker-safe JOBS=1 default would stick
+# otherwise); an explicit JOBS/PARALLEL_JOBS from the caller still wins. Measured
+# 2026-07-02 (16-core M4 Max): clean build 15m36s at -j1 → ~2min, peak RAM ~11 GB.
+JOBS="${JOBS:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}"
 source "$(dirname "$0")/common/env.sh"
 # This script creates library symlinks and builds the test apps
 #
@@ -136,19 +140,30 @@ fi
 # so re-running it here is safe. The .wasm gets post-link hoist + asyncify first.
 _eh_restore_wasmopt; trap - EXIT
 echo ""
-echo "=== Post-link --hoist-cpp-catches + --asyncify ==="
-while IFS= read -r w; do
-    "$SCRIPT_DIR/common/apply-asyncify.sh" --no-removelist "$w"
-    js="${w%.wasm}.js"
-    if [ -f "$js" ]; then
-        ( cd "$(dirname "$js")" && "$SCRIPT_DIR/common/inject-dyncall-shims.sh" "$(basename "$js")" )
-    fi
+echo "=== Post-link --hoist-cpp-catches + --asyncify (${JOBS:-1}-wide) ==="
+# The apps are independent here too (apply-asyncify rewrites each wasm in place; the shim
+# injector's temp file is per-js), so fan the post-link out across JOBS like the make phase.
+# This dominates the build: per-app wasm-opt can't feed many cores (small modules, serial
+# parse/write), so parallelism must come from running apps side by side — serial 3m52s even
+# with BINARYEN_CORES=16, vs 2m08s fanned out at ~11 GB peak RAM. HOIST_WASMOPT is resolved
+# once above, so workers skip the binaryen ninja check. xargs fails the build (exit 123) if
+# any app's post-link fails.
+export SCRIPT_DIR
 # Match EVERY freshly-linked app wasm, not just standalone/*/*_test.wasm: the main demo
 # (apps/minimal_test.wasm) is at the apps/ root, and the coroutine-pthread repros + wxpt app
 # are *_repro*.wasm / *_wxpt.wasm. The old '*_test.wasm under standalone' filter silently
 # skipped all of those, so under native wasm-EH they never got hoist+asyncify and crashed at
 # runtime with "asyncify_start_unwind not found".
-done < <(find "$WASM_APP_DIR" -name '*.wasm' -newer "$EH_MARKER")
+find "$WASM_APP_DIR" -name '*.wasm' -newer "$EH_MARKER" -print0 \
+  | xargs -0 -n1 -P "${JOBS:-1}" bash -c '
+    set -eo pipefail
+    w="$1"
+    "$SCRIPT_DIR/common/apply-asyncify.sh" --no-removelist "$w"
+    js="${w%.wasm}.js"
+    if [ -f "$js" ]; then
+        ( cd "$(dirname "$js")" && "$SCRIPT_DIR/common/inject-dyncall-shims.sh" "$(basename "$js")" )
+    fi
+' _
 rm -f "$EH_MARKER"
 
 echo ""

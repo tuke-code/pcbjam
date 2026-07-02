@@ -5,6 +5,13 @@
 # Redirect all output to a log file (re-execs script with redirection)
 source "$(dirname "$0")/common/logging.sh"
 
+# Default to all cores BEFORE sourcing env.sh — env.sh exports a docker-safe
+# JOBS=1 when unset, which would make the "${JOBS:-nproc}" fallback below it
+# dead code (this build ran make -j1 everywhere for that reason). An explicit
+# JOBS/PARALLEL_JOBS from the caller still wins (e.g. the docker pipeline's -j
+# via build-kicad-target.sh).
+JOBS="${JOBS:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}"
+
 # Source common environment (sets up local emsdk)
 source "$(dirname "$0")/common/env.sh"
 # Build-progress markers (parsed by scripts/build-monitor.sh).
@@ -52,9 +59,6 @@ export CONFIG_SHELL="$SCRIPT_DIR/config/config-sub-wrapper.sh"
 
 # Disable autom4te cache to keep submodules clean
 export AUTOM4TE="$SCRIPT_DIR/config/autom4te-wrapper.sh"
-
-# Use JOBS from env.sh if set, otherwise use all available cores
-JOBS="${JOBS:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}"
 
 echo "=== Building wxWidgets for WASM ==="
 echo "Project root: $PROJECT_ROOT"
@@ -187,7 +191,8 @@ if [ $NEEDS_CONFIGURE -eq 1 ]; then
     # PCRE headers (pcre2.h) must be generated before regex.cpp compiles
     echo ""
     echo "=== Building PCRE first (dependency) ==="
-    emmake make -C 3rdparty/pcre
+    # Serial relative to the main build (it fully completes first); parallel inside.
+    emmake make -j${JOBS} -C 3rdparty/pcre
 fi
 
 # Ensure the Emscripten zlib port exists before compiling. We configure with

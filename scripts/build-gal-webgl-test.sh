@@ -21,6 +21,10 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Default to all cores BEFORE env.sh (its docker-safe JOBS=1 default would stick
+# otherwise); an explicit JOBS/PARALLEL_JOBS from the caller still wins.
+JOBS="${JOBS:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}"
+
 # Source common environment (sets up local emsdk)
 QUIET=1 source "$SCRIPT_DIR/common/env.sh"
 
@@ -76,9 +80,9 @@ python3 generate_shaders.py
 echo ""
 echo "Building..."
 if [ "$DEBUG_BUILD" = "1" ]; then
-    make DEBUG=1
+    make -j"${JOBS:-1}" DEBUG=1
 else
-    make
+    make -j"${JOBS:-1}"
 fi
 
 echo ""
