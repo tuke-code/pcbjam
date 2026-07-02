@@ -102,6 +102,9 @@ const appsDir = 'apps';
 export default defineConfig({
   globalSetup: './global-setup.ts',
   testDir: './kicad',
+  // See playwright.config.ts: keep CI's outputDir cleanup off test-results/ so the kicad +
+  // perf runs don't wipe the accumulated screenshots.
+  outputDir: process.env.CI ? 'pw-artifacts/kicad' : 'test-results',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   // 1 local retry absorbs the known under-parallel-load flakes (same rationale

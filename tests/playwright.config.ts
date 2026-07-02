@@ -67,6 +67,11 @@ const appsDir = 'apps';
 export default defineConfig({
   globalSetup: './global-setup.ts',
   testDir: './e2e',
+  // In CI, redirect Playwright's start-of-run outputDir cleanup to a throwaway dir so it
+  // never wipes test-results/ — the committed-baseline screenshots (page.screenshot to
+  // 'test-results/…') must survive across the sequential wx/asyncify/kicad/perf runs for the
+  // screenshot compare. Local dev keeps the default (test-results cleaned each single run).
+  outputDir: process.env.CI ? 'pw-artifacts/wx' : 'test-results',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   // 1 local retry absorbs transient `npx serve` connection refusals under heavy

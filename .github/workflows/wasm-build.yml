@@ -368,5 +368,6 @@ jobs:
           path: |
             tests/logs/**
             tests/test-results/**
+            tests/pw-artifacts/**
             tests/playwright-report/**
           if-no-files-found: ignore

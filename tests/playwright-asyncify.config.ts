@@ -42,6 +42,9 @@ export default defineConfig({
   globalSetup: './global-setup.ts',
   testDir: './asyncify',
   testMatch: /asyncify-races.*\.spec\.ts$/,
+  // See playwright.config.ts: keep CI's outputDir cleanup off test-results/ (this run is
+  // what would otherwise wipe the wx screenshots inside `npm run test`).
+  outputDir: process.env.CI ? 'pw-artifacts/asyncify' : 'test-results',
   fullyParallel: false, // one heavy WASM app at a time
   forbidOnly: !!process.env.CI,
   retries: 0,

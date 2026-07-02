@@ -217,11 +217,25 @@ async function main(): Promise<void> {
 
     const sha = process.env.GITHUB_SHA;
     const report = readReport(root);
-    // Defensive: if the run produced no screenshots at all (renders missing), don't
-    // post a bogus "everything removed" report. (The workflow already gates this step
-    // to successful runs, where renders exist.)
+    // Loud pipeline alert: if the run produced ZERO screenshots (every baseline shows as
+    // "removed"), that's almost always a build/pipeline failure — not a real mass removal.
+    // Post a distinct, image-less alert instead of dumping a giant REMOVED list.
     if (report && report.changed.length + report.added.length + report.unchangedCount === 0) {
-        console.log('[discord] no screenshots rendered — nothing to report');
+        const shortSha = sha ? sha.slice(0, 7) : 'local';
+        const runUrl =
+            process.env.GITHUB_SERVER_URL && process.env.GITHUB_REPOSITORY && process.env.GITHUB_RUN_ID
+                ? `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
+                : '';
+        const alert =
+            `⚠️ **No screenshots produced this run** · \`${shortSha}\` — compare saw 0 rendered ` +
+            `vs ${report.removed.length} baselines. Likely a build/pipeline failure, not a mass removal.` +
+            (runUrl ? `\n${runUrl}` : '');
+        if (args.dryRun) {
+            console.log('--- message 1/1 (0 files) ---\n' + alert);
+        } else {
+            await postMessage(webhook!, { content: alert, files: [] });
+            console.log('[discord] posted pipeline alert (0 screenshots rendered)');
+        }
         return;
     }
     const prevDir = fetchPreviousPerf((args.repo as string) || process.env.GITHUB_REPOSITORY, sha);
