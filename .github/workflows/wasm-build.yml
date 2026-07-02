@@ -119,17 +119,21 @@ jobs:
           echo "WASM output-cache restore skip=$SKIP"
 
       # Binaryen post-process tools (submodule fork): otherwise built from source on
-      # every fresh VM (~46s on 30 cores, measured run 28577824366). Cache just bin/
-      # keyed on the exact submodule SHA; on a hit BINARYEN_TRUST_PREBUILT tells
-      # build-wasm-opt.sh to skip cmake+ninja and trust the restored binaries.
+      # every fresh VM (~46s on 30 cores, measured run 28577824366). Cache bin/ AND
+      # lib/ (the tools dynamically link lib/libbinaryen.so — bin/ alone is a loader
+      # error at first exec, run 28585074335), keyed on the exact submodule SHA; on a
+      # hit BINARYEN_TRUST_PREBUILT tells build-wasm-opt.sh to skip cmake+ninja and
+      # trust the restored binaries. v2: v1 entries hold a poisoned bin-only layout.
       # Needed by BOTH the host post-process (final-miss path) and the test-app
       # build, hence not gated on run_tests.
       - name: Cache Binaryen post-process tools
         id: binopt-cache
         uses: actions/cache@v4
         with:
-          path: build-wasm/tools/binaryen-hoist-build/bin
-          key: binopt-${{ runner.os }}-${{ steps.keys.outputs.bin }}
+          path: |
+            build-wasm/tools/binaryen-hoist-build/bin
+            build-wasm/tools/binaryen-hoist-build/lib
+          key: binopt-v2-${{ runner.os }}-${{ steps.keys.outputs.bin }}
 
       - name: Trust prebuilt Binaryen tools (cache hit)
         if: steps.binopt-cache.outputs.cache-hit == 'true'

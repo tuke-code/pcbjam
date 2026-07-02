@@ -22,12 +22,16 @@ if [ ! -f "${SRC}/src/passes/HoistCppCatches.cpp" ]; then
     exit 1
 fi
 
-# CI fast-path: the workflow cache-restores bin/ keyed on the exact submodule SHA and
-# sets this var on a hit, so the restored binaries are authoritative — skip cmake+ninja.
-# Never set it locally when iterating on the pass: uncommitted source edits would be
-# silently ignored (the SHA key can't see them).
+# CI fast-path: the workflow cache-restores bin/ + lib/ keyed on the exact submodule
+# SHA and sets this var on a hit, so the restored binaries are authoritative — skip
+# cmake+ninja. Trust only if both tools actually RUN: the binaries dynamically link
+# lib/libbinaryen.so, so an existence check alone passes on an incomplete restore
+# (bin/ without lib/ shipped a red main, run 28585074335) while --version proves the
+# loader resolves everything. Never set the var locally when iterating on the pass:
+# uncommitted source edits would be silently ignored (the SHA key can't see them).
 if [ "${BINARYEN_TRUST_PREBUILT:-0}" = "1" ] \
-   && [ -x "${BUILD}/bin/wasm-opt" ] && [ -x "${BUILD}/bin/wasm-emscripten-finalize" ]; then
+   && "${BUILD}/bin/wasm-opt" --version >/dev/null 2>&1 \
+   && "${BUILD}/bin/wasm-emscripten-finalize" --version >/dev/null 2>&1; then
     echo "Using prebuilt Binaryen tools (BINARYEN_TRUST_PREBUILT=1): ${BUILD}/bin" >&2
     echo "${BUILD}/bin/wasm-opt"
     exit 0
