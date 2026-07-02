@@ -68,6 +68,20 @@ describe("ensureModelInMemfs format fallback", () => {
     expect(files.has("/pcbjam/3dmodels/FallbackLibA.3dshapes/M1.wrl")).toBe(false);
   });
 
+  it("returns the substituted .step path on the memoized second ensure", async () => {
+    // Regression: the first ensure (e.g. the prescan) writes the .step body and
+    // memoizes it; a second ensure for the SAME .wrl ref (the C++ viewer's lazy
+    // fallback) must hand back the .step path that exists on disk — NOT the
+    // ref's own .wrl path, which was never written. Returning the .wrl path
+    // pointed KiCad at a missing file → "Failed to retrieve file times '…​.wrl'".
+    const files = installFakes((r) => r.endsWith(".step"));
+    const first = await ensureModelInMemfs("FallbackLibD.3dshapes/M4.wrl");
+    const second = await ensureModelInMemfs("FallbackLibD.3dshapes/M4.wrl");
+    expect(first).toBe("/pcbjam/3dmodels/FallbackLibD.3dshapes/M4.step");
+    expect(second).toBe(first);
+    expect(files.has("/pcbjam/3dmodels/FallbackLibD.3dshapes/M4.wrl")).toBe(false);
+  });
+
   it("prefers the exact ref when it exists", async () => {
     const files = installFakes(() => true);
     const dest = await ensureModelInMemfs("FallbackLibB.3dshapes/M2.wrl");

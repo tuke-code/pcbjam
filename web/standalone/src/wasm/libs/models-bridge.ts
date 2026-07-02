@@ -75,8 +75,16 @@ function toolFS(): ModelFS | null {
 
 let installedSource: Model3dSource | null = null;
 let installedLog: (msg: string) => void = () => {};
-/** Refs already materialized in MEMFS this session (bodies are immutable). */
-const written = new Set<string>();
+/**
+ * Refs materialized in MEMFS this session → the ABSOLUTE path actually written.
+ * The written path can differ in extension from the ref: a `.wrl` ref with no
+ * `.wrl` body is served by the `.step` fallback and written under `.step` (see
+ * refCandidates). We must memoize — and return — the REAL path. Returning the
+ * ref's own `.wrl` path (a value the ref implies but was never written) points
+ * KiCad at a missing file, surfacing as "Failed to retrieve file times for
+ * '…​.wrl'". Bodies are immutable, so the mapping never goes stale.
+ */
+const materialized = new Map<string, string>();
 /** In-flight ensures, coalesced per ref (prescan and the C++ fallback race). */
 const ensuring = new Map<string, Promise<string | null>>();
 
@@ -92,11 +100,11 @@ export function installModel3dHandler(
 /** Fetch one model body and write it under MODELS_3D_ROOT. Resolves to the
  *  absolute MEMFS path when present, null when the source can't serve it. */
 export async function ensureModelInMemfs(ref: string): Promise<string | null> {
-  const dest = `${MODELS_3D_ROOT}/${ref}`;
-  if (written.has(ref)) return dest;
+  const cached = materialized.get(ref);
+  if (cached !== undefined) return cached;
   let p = ensuring.get(ref);
   if (!p) {
-    p = doEnsure(ref, dest).finally(() => ensuring.delete(ref));
+    p = doEnsure(ref).finally(() => ensuring.delete(ref));
     ensuring.set(ref, p);
   }
   return p;
@@ -125,21 +133,27 @@ function refCandidates(ref: string): string[] {
   return [ref, ...(FALLBACK_EXTS[ext] ?? []).map((e) => `${stem}${e}`)];
 }
 
-async function doEnsure(ref: string, dest: string): Promise<string | null> {
+async function doEnsure(ref: string): Promise<string | null> {
   const source = installedSource;
   const fs = toolFS();
   if (!source || !fs) return null;
-  if (fs.analyzePath(dest).exists) {
-    written.add(ref);
-    return dest;
-  }
+
+  // Try the exact ref, then the format-fallback candidates. The ACTUAL written
+  // path (which may differ in extension from the ref — a `.wrl` served by a
+  // `.step` body) is memoized and returned, so a later ensure for the same ref
+  // hands KiCad the file that exists, not the ref's own (never-written) path.
   for (const candidate of refCandidates(ref)) {
+    const target = `${MODELS_3D_ROOT}/${candidate}`;
+    // Already on disk (a prior ensure — this ref or another — wrote this body).
+    if (fs.analyzePath(target).exists) {
+      materialized.set(ref, target);
+      return target;
+    }
     const body = await source.getModelBody(candidate);
     if (!body) continue;
-    const target = `${MODELS_3D_ROOT}/${candidate}`;
     fs.mkdirTree(target.slice(0, target.lastIndexOf("/")));
     fs.writeFile(target, body);
-    written.add(ref);
+    materialized.set(ref, target);
     installedLog(
       `[3d] materialized ${candidate}${candidate === ref ? "" : ` (for ${ref})`} (${body.length} bytes)`,
     );
