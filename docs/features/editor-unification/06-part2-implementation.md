@@ -148,16 +148,18 @@ submodule bump** — a new upstream same-name class ships as silent corruption o
    This is the same path the symbol chooser's footprint preview uses, and a
    user-visible improvement: the other engine's preference pages now populate.
 
-### Known pre-existing failure (NOT a merge regression)
+### Pre-existing failure, RESOLVED by the rebase (was NOT a merge regression)
 
-`3d-viewer.spec.ts` "draggable, X-closable DOM title bar": dragging the 3D viewer
-re-renders via the raytracer, which needs fresh pthread workers from a drained pool —
-the on-demand worker boot deadlocks the main thread. Fixed on `origin/main` by
-`7630c7e` ("raytrace deadlock — pre-warm 2N+8 pthread Workers", a `PTHREAD_POOL_SIZE`
-link-flag change this branch predates; branch base is 14 commits behind). Goes green
-when the branch is synced with main (`/git-feature-sync`) and `kicad_editor` is
-relinked. Everything else in the 3d-viewer spec (open over a loaded board, raytrace
-render) passes.
+`3d-viewer.spec.ts` "draggable, X-closable DOM title bar" failed during initial
+validation: dragging the 3D viewer re-renders via the raytracer, which needs fresh
+pthread workers from a drained pool — the on-demand worker boot deadlocks the main
+thread. The fix pre-dated on `origin/main` as `7630c7e` ("raytrace deadlock — pre-warm
+2N+8 pthread Workers", a `PTHREAD_POOL_SIZE` link-flag change the branch base
+predated). The branch has since been **rebased onto main** (root + kicad; conflicts
+were the kicad gitlink, the boot.ts/WasmTool.tsx additive hunks vs main's lazy-3D-model
+work, and the BIG_MODULE_SPECS rename vs main's added 3D specs/reformat) and
+`kicad_editor` relinked — **3d-viewer + frame-runtime rerun: all green** (7 passed +
+1 flaky-passed under parallel load, 0 failures).
 
 ## Build & size facts
 
@@ -172,8 +174,6 @@ render) passes.
 
 ## What's next
 
-- Sync the branch with main (picks up `7630c7e` → 3d-viewer drag test green;
-  relink kicad_editor after).
 - Run `tests/web/tools-open.spec.ts` against the real web app once ports 3048/3060
   are free (at validation time another worktree's dev stack held them; the
   frontend path itself — `resolveWasmBase`→`TOOL_BUNDLE`→boot→`--frame` — is
