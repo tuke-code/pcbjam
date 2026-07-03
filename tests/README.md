@@ -304,3 +304,36 @@ Button positions (relative to canvas):
   shim ablated*. **To do:** sweep the real apps (modals, nested fibers, long sleeps,
   pthread pool) with each shim ablated; if all stay green, drop the shim injection and
   these pins. Until proven, they stay injected (belt-and-suspenders).
+
+## Collab e2e — legacy vs v2 bundles, and repro markers
+
+Two esbuild bundles (`npm run build:collab`, rebuilt by the specs' `beforeAll`):
+
+- `apps/kicad/collab-bundle.js` — the LEGACY scalar wire (`startCollab` /
+  `kicadCollabSnapshot/Apply` / `onDelta`). Dead in production (nothing registers
+  `onDelta`); driven by the pre-existing `*-collab.spec.ts` two-tab tests. Kept only
+  until the scalar wire is deleted.
+- `apps/kicad/collab-bundle-v2.js` — the PRODUCTION v2 "items" stack
+  (`bindKicadCollab` over `kicadCollabSnapshotItems/ApplyItems/onItems`, Y keys
+  `kdoc_*`), from `collab/browser-entry-v2.ts`. Driven by `kicad/ysync-two-tab.spec.ts`.
+  The build aliases `yjs` to ONE copy (the two web pnpm workspaces otherwise bundle two,
+  and Y types are instanceof-checked).
+
+### ysync repro tests
+
+`kicad/ysync-two-tab.spec.ts`, `kicad/ysync-repros-{pcbnew,eeschema}.spec.ts` reproduce
+the bugs of the 2026-07-02 Yjs⇄KiCad sync review (`docs/features/ysync-review/` on the
+`ysync-review` branch; unit-level repros live in
+`web/pcbjam-shared/test/ysync-repros.test.ts` and
+`web/standalone/src/wasm/collab/ysync-repros.test.ts`).
+
+Convention: a repro asserts the CORRECT behavior and is marked expected-fail
+(`test.fail()` / vitest `it.fails`) with a comment naming the bug doc. The suite stays
+green while the bug is open; fixing the bug flips the repro to "unexpected pass",
+forcing the marker's removal — the repro becomes the regression test. Green companion
+tests pin each repro's preconditions (harness, apply path, emit path) so an expected
+failure can only come from the bug itself. The "local move emits" controls double as
+the headless-emit probes gating the emit-dependent repros.
+
+Follow-up (tracked in review miss 11): once the v2 specs are trusted, un-skip/retire
+the legacy two-tab specs together with the legacy wire.

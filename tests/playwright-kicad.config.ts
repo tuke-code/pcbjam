@@ -111,6 +111,12 @@ const BIG_MODULE_SPECS = [
   "**/symbol_editor.spec.ts",
   // Cross-face probe: schematic session lazily starts the PCB kiface (Preferences).
   "**/xface-probe.spec.ts",
+  // ysync v2-wire repros/coverage: the two-tab file boots pcbnew + eeschema
+  // (pl_editor cases ride along — only the browser changes), the repro files
+  // boot pcbnew-collab.html / eeschema.html — same V8 routing.
+  "**/ysync-two-tab.spec.ts",
+  "**/ysync-repros-pcbnew.spec.ts",
+  "**/ysync-repros-eeschema.spec.ts",
 ];
 
 // Runtime-perf specs run ONLY on the Chromium 'perf' project below: they need

@@ -20,6 +20,7 @@
 #include <pad.h>
 #include <pcb_track.h>
 #include <pcb_field.h>
+#include <pcb_shape.h>
 #include <pcb_text.h>
 #include <pcb_group.h>
 #include <zone.h>
@@ -1149,6 +1150,141 @@ std::string kicadCollabTestItemBlob( std::string aId )
     return "";
 }
 
+// ── ysync-review repro hooks ─────────────────────────────────────────────────
+// Local-edit test hooks for the ysync-review repro e2e (docs/features/
+// ysync-review on the ysync-review branch): each drives a REAL BOARD_COMMIT on
+// the app main stack inside a COROUTINE fiber (the collabTestMove wrapping —
+// virtual item mutators mis-dispatch off the fiber stack), so the
+// COLLAB_LISTENER → flushDiff emit path runs exactly as for a UI edit. Each
+// returns false when the uuid doesn't resolve, letting the spec distinguish
+// "hook missed the item" from "differ missed the edit" (bug 04).
+
+// Resolve a live board item by uuid, or null (shared by the hooks below).
+static BOARD_ITEM* testResolve( PCB_EDIT_FRAME* aFrame, const std::string& aId )
+{
+    if( !aFrame )
+        return nullptr;
+
+    return aFrame->GetBoard()->ResolveItem( KIID( wxString::FromUTF8( aId.c_str() ) ),
+                                            /*allowNullptr*/ true );
+}
+
+// Delete an item by uuid. With a footprint CHILD uuid this is the bug-03
+// sending half (the UI's fp-text delete): the emit must lift to a parent
+// re-blob; today it goes out as a bare child removal.
+bool pcbCollabTestRemoveItem( std::string aId )
+{
+    PCB_EDIT_FRAME* fr = pcbFrame();
+    BOARD_ITEM*     item = testResolve( fr, aId );
+
+    if( !item )
+        return false;
+
+    fr->CallAfter( [fr, item]() {
+        COROUTINE<int, int> cor( [fr, item]( int ) -> int
+                                 {
+                                     BOARD_COMMIT commit( fr );
+                                     commit.Remove( item );
+                                     commit.Push( wxT( "Collab test remove" ) );
+                                     return 0;
+                                 } );
+        cor.Call( 0 );
+    } );
+
+    return true;
+}
+
+// Rotate an item about its OWN anchor — bug 04: the scalar json carries no
+// orientation for footprints, so an anchor-centred rotation is invisible to
+// the differ unless a child's absolute position happens to move.
+bool pcbCollabTestRotateItem( std::string aId, double aDeg )
+{
+    PCB_EDIT_FRAME* fr = pcbFrame();
+    BOARD_ITEM*     item = testResolve( fr, aId );
+
+    if( !item )
+        return false;
+
+    fr->CallAfter( [fr, item, aDeg]() {
+        COROUTINE<int, int> cor( [fr, item, aDeg]( int ) -> int
+                                 {
+                                     BOARD_COMMIT commit( fr );
+                                     commit.Modify( item );
+                                     item->Rotate( item->GetPosition(),
+                                                   EDA_ANGLE( aDeg, DEGREES_T ) );
+                                     commit.Push( wxT( "Collab test rotate" ) );
+                                     return 0;
+                                 } );
+        cor.Call( 0 );
+    } );
+
+    return true;
+}
+
+// Resize a pad (the pad-properties dialog edit) — bug 04: pads are not visited
+// by forEachTopItem at all, so the edit never reaches either wire.
+bool pcbCollabTestSetPadSize( std::string aId, int aW, int aH )
+{
+    PCB_EDIT_FRAME* fr = pcbFrame();
+    BOARD_ITEM*     item = testResolve( fr, aId );
+
+    if( !item || item->Type() != PCB_PAD_T )
+        return false;
+
+    PAD* pad = static_cast<PAD*>( item );
+
+    fr->CallAfter( [fr, pad, aW, aH]() {
+        COROUTINE<int, int> cor( [fr, pad, aW, aH]( int ) -> int
+                                 {
+                                     BOARD_COMMIT commit( fr );
+                                     commit.Modify( pad );
+                                     pad->SetSize( PADSTACK::ALL_LAYERS, VECTOR2I( aW, aH ) );
+                                     commit.Push( wxT( "Collab test pad size" ) );
+                                     return 0;
+                                 } );
+        cor.Call( 0 );
+    } );
+
+    return true;
+}
+
+// Drag a track/shape END point only — bug 04: Drawings' json is position-only
+// and GetPosition() is the START, so an end-point reshape of a graphic shape
+// is invisible (tracks DO carry endpoints — the visible control case).
+bool pcbCollabTestMoveEndpoint( std::string aId, int aDx, int aDy )
+{
+    PCB_EDIT_FRAME* fr = pcbFrame();
+    BOARD_ITEM*     item = testResolve( fr, aId );
+
+    if( !item || ( !isTrackType( item->Type() ) && item->Type() != PCB_SHAPE_T ) )
+        return false;
+
+    fr->CallAfter( [fr, item, aDx, aDy]() {
+        COROUTINE<int, int> cor( [fr, item, aDx, aDy]( int ) -> int
+                                 {
+                                     BOARD_COMMIT commit( fr );
+                                     commit.Modify( item );
+
+                                     if( isTrackType( item->Type() ) )
+                                     {
+                                         auto* t = static_cast<PCB_TRACK*>( item );
+                                         t->SetEnd( t->GetEnd() + VECTOR2I( aDx, aDy ) );
+                                     }
+                                     else
+                                     {
+                                         auto* s = static_cast<PCB_SHAPE*>( item );
+                                         s->SetEnd( s->GetEnd() + VECTOR2I( aDx, aDy ) );
+                                     }
+
+                                     commit.Push( wxT( "Collab test endpoint" ) );
+                                     return 0;
+                                 } );
+        cor.Call( 0 );
+    } );
+
+    return true;
+}
+
 // Wrapper to return footprints as vector for JS iteration
 std::vector<FOOTPRINT*> Board_GetFootprints(BOARD* board) {
     if (!board) return {};
@@ -1218,6 +1354,9 @@ EMSCRIPTEN_BINDINGS(pcbnew) {
     function("kicadSaveBoard", &kicadSaveBoard);
     // pcbnew-only test helper (no eeschema counterpart — name is not shared).
     function("kicadCollabTestItemBlob", &kicadCollabTestItemBlob);
+    // pcbnew-only ysync-review repro hooks (names not shared with eeschema).
+    function("kicadCollabTestSetPadSize", &pcbCollabTestSetPadSize);
+    function("kicadCollabTestMoveEndpoint", &pcbCollabTestMoveEndpoint);
 
 #ifndef KICAD_MERGED_EMBIND
     // JS names ALSO registered by eeschema_embind.cpp — in the merged image these are
@@ -1232,6 +1371,9 @@ EMSCRIPTEN_BINDINGS(pcbnew) {
     function("kicadCollabSnapshotItems", &pcbCollabSnapshotItems);
     function("kicadCollabTestMoveFirst", &pcbCollabTestMoveFirst);
     function("kicadCollabGetPos", &pcbCollabGetPos);
+    // ysync-review repro hooks shared with eeschema (dispatched when merged).
+    function("kicadCollabTestRemoveItem", &pcbCollabTestRemoveItem);
+    function("kicadCollabTestRotateItem", &pcbCollabTestRotateItem);
 #endif // !KICAD_MERGED_EMBIND
 }
 #endif
