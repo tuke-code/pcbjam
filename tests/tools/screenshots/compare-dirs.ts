@@ -113,6 +113,10 @@ function main(): void {
     const levelName = (args.level as string) || null;
     const floorFor = makeFloorResolver(args);
 
+    // Recreate the output dir from scratch: triptychs/heatmaps are only written
+    // for CHANGED pairs, so artifacts from earlier (redder) runs would otherwise
+    // linger and misreport scenarios that have since gone green.
+    fs.rmSync(outDir, { recursive: true, force: true });
     fs.mkdirSync(outDir, { recursive: true });
     const oldNames = listPngs(oldDir);
     const newNames = new Set(listPngs(newDir));
