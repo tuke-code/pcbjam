@@ -1,6 +1,6 @@
 import { test, expect } from './fixtures';
 import { waitForPcbnew } from './utils/pcbnew-ready';
-import { countGlCanvases, loadBoard, openThreeDViewer } from './utils/threed-viewer';
+import { countGlCanvases, loadBoard, logThreeDDiag, openThreeDViewer } from './utils/threed-viewer';
 
 /**
  * Regression for the camera-move-on-canvas raytrace DEADLOCK.
@@ -58,6 +58,7 @@ test.describe('3D viewer camera-move deadlock', () => {
 
         // Let the INITIAL raytrace settle through the safe per-frame pump (Workers boot here).
         await page.waitForTimeout(5000);
+        await logThreeDDiag(page, 'deadlock: after open+settle');
 
         // Read the newest glcanvas-* (the 3D viewer) client rect in viewport coords.
         const canvasRect = () => page.evaluate(() => {
@@ -181,6 +182,7 @@ test.describe('3D viewer camera-move deadlock', () => {
         await page.screenshot({ path: 'test-results/3d-viewer-deadlock.png', scale: 'device' });
 
         // Sanity: the board still renders (not blank / crashed) after both moves.
+        await logThreeDDiag(page, 'deadlock: after moves');
         const after = await sampleCanvas();
         console.log(`[TEST] 3D render after interaction: ${after.distinctColors} distinct colours`);
         expect(after.distinctColors,

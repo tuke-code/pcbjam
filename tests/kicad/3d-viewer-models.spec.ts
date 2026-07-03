@@ -4,6 +4,7 @@ import { clickMenuBarItem, clickMenuItem } from '../e2e/utils/element-tracker';
 import { injectFromSubmodule } from './utils/fs-inject';
 import { waitForBoardLoaded } from './utils/board-ready';
 import { waitForPcbnew } from './utils/pcbnew-ready';
+import { logThreeDDiag } from './utils/threed-viewer';
 
 /**
  * 3D viewer COMPONENT MODELS e2e (docs/features/3d-models): load pic_programmer,
@@ -193,6 +194,7 @@ test.describe('3D viewer component models', () => {
 
         // Scene build + progressive raytrace passes.
         await page.waitForTimeout(8000);
+        await logThreeDDiag(page, 'models: before screenshot');
         await page.screenshot({ path: `test-results/3d-viewer-models-${DEMO.name}.png`, scale: 'css' });
 
         // --- bridge assertions -------------------------------------------------

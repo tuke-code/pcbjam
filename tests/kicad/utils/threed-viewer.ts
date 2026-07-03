@@ -63,6 +63,37 @@ export function countGlCanvases(page: Page): Promise<number> {
     return page.evaluate(() => document.querySelectorAll('canvas[id^="glcanvas-"]').length);
 }
 
+// Resource-diagnostic snapshot for the heavy 3D-viewer specs. On CI these can kill the tab
+// (renderer OOM, a lost WebGL context when the shared GPU process passes its ~16-context cap,
+// or a raytracer pthread deadlock) and the failure surfaces identically ("Target crashed" /
+// black canvas). Logging hardwareConcurrency, the emscripten pthread-pool ledger, the live
+// GL-canvas count, and the wasm/JS heap sizes right before an interaction makes any recurrence
+// attributable (GL-context exhaustion vs heap-OOM vs deadlock) — and confirms, on the real CI
+// VM, what navigator.hardwareConcurrency actually is (the whole 2N+8 pool sizing depends on it).
+// Best-effort: never throws, so it can't itself fail a spec.
+export async function logThreeDDiag(page: Page, label: string): Promise<void> {
+    const snap = await page.evaluate(() => {
+        const w = window as unknown as { Module?: Record<string, unknown> };
+        const M = (w.Module ?? {}) as Record<string, unknown>;
+        const P = (M.PThread ?? {}) as { unusedWorkers?: unknown[]; runningWorkers?: unknown[] };
+        const heap = M.HEAPU8 as { length?: number } | undefined;
+        const perf = (performance as unknown as { memory?: Record<string, number> }).memory ?? {};
+        const mb = (b?: number) => (typeof b === 'number' ? Math.round(b / 1048576) : null);
+        return {
+            hardwareConcurrency: navigator.hardwareConcurrency,
+            // emscripten pool ledger: pre-warmed-but-idle + currently-running Workers.
+            pthreadUnused: Array.isArray(P.unusedWorkers) ? P.unusedWorkers.length : null,
+            pthreadRunning: Array.isArray(P.runningWorkers) ? P.runningWorkers.length : null,
+            glCanvases: document.querySelectorAll('canvas[id^="glcanvas-"]').length,
+            canvases: document.querySelectorAll('canvas').length,
+            wasmHeapMB: mb(heap?.length),
+            jsHeapUsedMB: mb(perf.usedJSHeapSize),
+            jsHeapLimitMB: mb(perf.jsHeapSizeLimit),
+        };
+    }).catch((e: unknown) => ({ error: String(e) }));
+    console.log(`[DIAG ${label}] ${JSON.stringify(snap)}`);
+}
+
 // Open the 3D viewer (View → 3D Viewer, with an Alt+3 fallback) and wait for the
 // secondary frame + its NEW `glcanvas-*` to appear. The main pcbnew board view is
 // itself a wxGLCanvas, so the viewer is detected by the GL-canvas COUNT increasing.

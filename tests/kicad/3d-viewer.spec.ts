@@ -1,6 +1,6 @@
 import { test, expect } from './fixtures';
 import { waitForPcbnew } from './utils/pcbnew-ready';
-import { DEMO, loadBoard, countGlCanvases, openThreeDViewer } from './utils/threed-viewer';
+import { DEMO, loadBoard, countGlCanvases, logThreeDDiag, openThreeDViewer } from './utils/threed-viewer';
 
 /**
  * 3D viewer e2e: load a real board in pcbnew, open the native 3D viewer
@@ -318,6 +318,7 @@ test.describe('3D viewer from pcbnew', () => {
         const beforeFrame = await frameWidth(winId as string);
         const beforeGl = await glWidth();
         expect(beforeFrame, 'frame should have a width').toBeGreaterThan(0);
+        await logThreeDDiag(page, 'resize: before edge drag');
 
         // Drag the right edge inward (left) to shrink the frame width.
         const edge = page.locator(`#${winId} .window-resize-e`);
