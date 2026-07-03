@@ -1,0 +1,10 @@
+glEnable
+glDisable
+glIsEnabled
+glDrawArrays
+glDrawElements
+glGetFloatv
+glBindTexture
+glBlendFunc
+glLineWidth
+glHint

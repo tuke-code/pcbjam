@@ -48,6 +48,7 @@ KICAD_INCLUDES = -I../native \
                  -I$(KICAD_ROOT)/thirdparty/nlohmann_json \
                  -I$(KICAD_ROOT)/thirdparty \
                  -I$(PROJECT_ROOT)/wasm/stubs \
+                 -I$(PROJECT_ROOT)/wasm/gl1/include \
                  -I$(SYSROOT)/include
 
 ifdef DEBUG
@@ -74,11 +75,11 @@ BASE_LDFLAGS = $(DEPS_EH_FLAGS) \
                -sEXPORT_NAME='create3DTest' \
                -sENVIRONMENT=web,worker
 
-# Pure WebGL 2.0 context; the FFP calls are stubbed C no-ops (no
+# Pure WebGL 2.0 context; the FFP surface is implemented by wasm/gl1 (no
 # LEGACY_GL_EMULATION), same as the production kicad_editor build.
 EM_GL_FLAGS = -sMAX_WEBGL_VERSION=2
 
-LDFLAGS = $(DEBUG_LDFLAGS) $(BASE_LDFLAGS) $(EM_GL_FLAGS) $(WX_LDFLAGS)
+LDFLAGS = $(DEBUG_LDFLAGS) $(BASE_LDFLAGS) $(EM_GL_FLAGS) $(WX_LDFLAGS) $(GL1_WRAP_LDFLAGS)
 
 MAIN_SRCS = 3d_webgl_test.cpp
 
@@ -157,11 +158,18 @@ KICAD_3D_SRCS = \
     $(KICAD_ROOT)/thirdparty/clipper2/Clipper2Lib/src/clipper.offset.cpp \
     $(KICAD_ROOT)/thirdparty/clipper2/Clipper2Lib/src/clipper.rectclip.cpp
 
-# THE RED STATE: legacy fixed-function GL as no-ops.
-FFP_STUB_SRCS = $(PROJECT_ROOT)/wasm/stubs/gl_ffp_stub.c
+# The GL1->WebGL2 emulation layer (wasm/gl1): implements the FFP surface the
+# renderer needs and --wrap-intercepts the Emscripten-owned names it must
+# observe. sources.txt / wrapped_symbols.txt are shared with the production
+# link site (scripts/kicad/build-kicad-target.sh).
+GL1_DIR = $(PROJECT_ROOT)/wasm/gl1
+GL1_SRCS := $(addprefix $(GL1_DIR)/src/,$(shell cat $(GL1_DIR)/sources.txt))
 
-SRCS = $(MAIN_SRCS) $(SCENARIO_SRCS) $(TESTIMPL_SRCS) $(KICAD_3D_SRCS)
-OBJS = $(SRCS:.cpp=.o) $(FFP_STUB_SRCS:.c=.o)
+comma := ,
+GL1_WRAP_LDFLAGS := $(foreach sym,$(shell cat $(GL1_DIR)/wrapped_symbols.txt),-Wl$(comma)--wrap=$(sym))
+
+SRCS = $(MAIN_SRCS) $(SCENARIO_SRCS) $(TESTIMPL_SRCS) $(KICAD_3D_SRCS) $(GL1_SRCS)
+OBJS = $(SRCS:.cpp=.o)
 DEPS = $(SRCS:.cpp=.d)
 
 TARGET = $(OUTPUT_DIR)/3d_webgl_test.js
@@ -188,6 +196,7 @@ clean:
 	rm -f $(OUTPUT_DIR)/3d_webgl_test.wasm
 	rm -f $(OUTPUT_DIR)/3d_webgl_test.html
 	rm -f ../scenarios/*.o ../scenarios/*.d ../native/*.o ../native/*.d
+	rm -f $(GL1_DIR)/src/*.o $(GL1_DIR)/src/*.d
 
 .PHONY: all clean
 
