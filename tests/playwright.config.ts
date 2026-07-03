@@ -51,7 +51,9 @@ function findFreePort(): number {
   try {
     const result = execSync(
       'python3 -c "import socket; s=socket.socket(); s.bind((\'\',0)); print(s.getsockname()[1]); s.close()"',
-      { encoding: 'utf-8' }
+      // timeout: a broken python3 must fall back to the random port below, not
+      // hang the whole run at config-load time.
+      { encoding: 'utf-8', timeout: 5000 }
     );
     return parseInt(result.trim());
   } catch {
