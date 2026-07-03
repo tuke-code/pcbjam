@@ -1,0 +1,14 @@
+{
+  "native-self": {
+    "default": { "changedRatio": 0.001, "meanChannelGuard": 2.0 },
+    "overrides": {}
+  },
+  "webgl-vs-native": {
+    "default": { "changedRatio": 0.02, "meanChannelGuard": 4.0 },
+    "overrides": {}
+  },
+  "webgl-self": {
+    "default": { "changedRatio": 0.005, "meanChannelGuard": 2.0 },
+    "overrides": {}
+  }
+}

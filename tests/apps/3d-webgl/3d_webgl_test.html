@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>3D Renderer WebGL Test</title>
+  <style>
+    body { margin: 0; background: #202020; }
+    #canvas { display: block; width: 800px; height: 600px; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas" width="800" height="600"></canvas>
+  <script>
+    let ready = false;
+    let wasmModule = null;
+
+    window._threeDTestReady = () => { ready = true; };
+
+    window.threeDTest = {
+      isReady: () => ready,
+      runScenario: (i) => wasmModule.ccall('runScenario', 'number', ['number'], [i]),
+      getTotalScenarios: () => wasmModule.ccall('getTotalScenarios', 'number', [], []),
+      getScenarioName: (i) => wasmModule.ccall('getScenarioName', 'string', ['number'], [i]),
+      getCanvasWidth: () => wasmModule.ccall('getCanvasWidth', 'number', [], []),
+      getCanvasHeight: () => wasmModule.ccall('getCanvasHeight', 'number', [], []),
+    };
+  </script>
+  <script src="3d_webgl_test.js"></script>
+  <script>
+    create3DTest({ canvas: document.getElementById('canvas') })
+      .then((mod) => { wasmModule = mod; })
+      .catch((err) => { console.error('[3d-webgl] module init failed:', err); });
+  </script>
+</body>
+</html>
