@@ -63,4 +63,86 @@ void onCapChanged( GLenum cap )
     }
 }
 
+
+void stateEnable( GLenum cap, bool enable )
+{
+    if( bool* slot = ffpCapSlot( cap ) )
+    {
+        if( *slot != enable )
+        {
+            *slot = enable;
+            onCapChanged( cap );
+        }
+
+        return;
+    }
+
+    if( enable )
+        __real_glEnable( cap );
+    else
+        __real_glDisable( cap );
+}
+
+
+void stateBindTexture( GLenum target, GLuint texture )
+{
+    if( target == GL_TEXTURE_2D )
+        S().boundTexture2D = texture;
+
+    __real_glBindTexture( target, texture );
+}
+
+
+void stateBlendFunc( GLenum sfactor, GLenum dfactor )
+{
+    __real_glBlendFunc( sfactor, dfactor );
+}
+
+
+void stateLineWidth( GLfloat width )
+{
+    S().lineWidth = width;
+    __real_glLineWidth( width );
+}
+
+
+void stateAlphaFunc( GLenum func, GLclampf ref )
+{
+    State& s = S();
+    s.alphaFunc = func;
+    s.alphaRef = ref;
+    s.miscDirty = true;
+}
+
+
+bool attribNormalized( int arrayIndex, GLenum type )
+{
+    // GL1 fixed-function semantics: integer color components map to [0,1] and
+    // integer normals to [-1,1]; float data is used as-is.
+    if( type == GL_FLOAT )
+        return false;
+
+    return arrayIndex == CA_COLOR || arrayIndex == CA_NORMAL;
+}
+
+
+static GLsizei componentSize( GLenum type )
+{
+    switch( type )
+    {
+    case GL_BYTE:
+    case GL_UNSIGNED_BYTE:  return 1;
+    case GL_SHORT:
+    case GL_UNSIGNED_SHORT: return 2;
+    case GL_FLOAT:
+    default:                return 4;
+    }
+}
+
+
+GLsizei attribEffectiveStride( GLint size, GLenum type, GLsizei stride )
+{
+    return stride != 0 ? stride : size * componentSize( type );
+}
+
 } // namespace gl1

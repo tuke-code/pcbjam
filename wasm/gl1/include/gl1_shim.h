@@ -209,6 +209,35 @@ bool* ffpCapSlot( GLenum cap );
 // Marks the state blocks a cap flip invalidates.
 void onCapChanged( GLenum cap );
 
+// Immediate-execution state mutators shared by the __wrap_* interceptors and
+// display-list replay (identical semantics, minus the recording check).
+void stateEnable( GLenum cap, bool enable );
+void stateBindTexture( GLenum target, GLuint texture );
+void stateBlendFunc( GLenum sfactor, GLenum dfactor );
+void stateLineWidth( GLfloat width );
+void stateAlphaFunc( GLenum func, GLclampf ref );
+
+// GL1 normalized-attribute rule: integer colors and normals are normalized,
+// floats are not (positions/texcoords are float-only in this codebase).
+bool attribNormalized( int arrayIndex, GLenum type );
+
+// Effective byte stride of a client array (GL stride 0 = tightly packed).
+GLsizei attribEffectiveStride( GLint size, GLenum type, GLsizei stride );
+
+// One vertex attribute's data source for an array draw: either client memory
+// to be uploaded (cpuData) or a byte offset into a user VBO (buffer/offset).
+struct AttribSource
+{
+    bool        enabled = false;
+    GLint       size = 4;
+    GLenum      type = GL_FLOAT;
+    bool        normalized = false;
+    GLsizei     stride = 0; // effective byte stride, never 0
+    const void* cpuData = nullptr;
+    GLuint      buffer = 0;
+    GLintptr    offset = 0;
+};
+
 // --- matrix module (gl1_matrix.cpp) ---
 void matrixLoadIdentity();
 void matrixLoadf( const GLfloat* m );
@@ -231,7 +260,10 @@ bool immActive();
 // Uploads `count` interleaved ImmVertex records to the streaming VBO and draws
 // them with the FFP program. `mode` must already be a WebGL2-legal primitive.
 void drawImmVertices( GLenum mode, const ImmVertex* verts, GLsizei count );
-// Routed glDrawArrays/glDrawElements over FFP client-array state (M3/M5).
+// Non-indexed draw over explicit per-attribute sources (client arrays,
+// display-list snapshots). Sources are pre-rebased: vertex 0 = first vertex.
+void drawArraysWithSources( GLenum mode, GLsizei count, const AttribSource aSrc[CA_COUNT] );
+// Routed glDrawArrays/glDrawElements over FFP client-array state.
 void drawClientArrays( GLenum mode, GLint first, GLsizei count );
 void drawClientElements( GLenum mode, GLsizei count, GLenum type, const GLvoid* indices );
 

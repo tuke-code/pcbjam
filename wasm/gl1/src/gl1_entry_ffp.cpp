@@ -590,9 +590,7 @@ void glAlphaFunc( GLenum func, GLclampf ref )
         return;
     }
 
-    S().alphaFunc = func;
-    S().alphaRef = ref;
-    S().miscDirty = true;
+    stateAlphaFunc( func, ref );
 }
 
 

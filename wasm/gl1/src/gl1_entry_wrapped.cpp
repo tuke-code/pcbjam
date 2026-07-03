@@ -32,18 +32,7 @@ void __wrap_glEnable( GLenum cap )
         return;
     }
 
-    if( bool* slot = ffpCapSlot( cap ) )
-    {
-        if( !*slot )
-        {
-            *slot = true;
-            onCapChanged( cap );
-        }
-
-        return;
-    }
-
-    __real_glEnable( cap );
+    stateEnable( cap, true );
 }
 
 
@@ -55,18 +44,7 @@ void __wrap_glDisable( GLenum cap )
         return;
     }
 
-    if( bool* slot = ffpCapSlot( cap ) )
-    {
-        if( *slot )
-        {
-            *slot = false;
-            onCapChanged( cap );
-        }
-
-        return;
-    }
-
-    __real_glDisable( cap );
+    stateEnable( cap, false );
 }
 
 
@@ -144,10 +122,7 @@ void __wrap_glBindTexture( GLenum target, GLuint texture )
         return;
     }
 
-    if( target == GL_TEXTURE_2D )
-        S().boundTexture2D = texture;
-
-    __real_glBindTexture( target, texture );
+    stateBindTexture( target, texture );
 }
 
 
@@ -159,7 +134,7 @@ void __wrap_glBlendFunc( GLenum sfactor, GLenum dfactor )
         return;
     }
 
-    __real_glBlendFunc( sfactor, dfactor );
+    stateBlendFunc( sfactor, dfactor );
 }
 
 
@@ -171,8 +146,7 @@ void __wrap_glLineWidth( GLfloat width )
         return;
     }
 
-    S().lineWidth = width;
-    __real_glLineWidth( width );
+    stateLineWidth( width );
 }
 
 
