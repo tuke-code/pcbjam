@@ -116,6 +116,12 @@ const BIG_MODULE_SPECS = [
   // only boots the (small) occ_service module but shares the harness page.
   "**/occ-export.spec.ts",
   "**/occ-probe.spec.ts",
+  // ysync v2-wire repros/coverage: the two-tab file boots pcbnew + eeschema
+  // (pl_editor cases ride along — only the browser changes), the repro files
+  // boot pcbnew-collab.html / eeschema.html — same V8 routing.
+  "**/ysync-two-tab.spec.ts",
+  "**/ysync-repros-pcbnew.spec.ts",
+  "**/ysync-repros-eeschema.spec.ts",
 ];
 
 // Runtime-perf specs run ONLY on the Chromium 'perf' project below: they need

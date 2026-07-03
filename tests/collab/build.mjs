@@ -23,3 +23,28 @@ await build({
 });
 
 console.log("collab bundle built → apps/kicad/collab-bundle.js");
+
+// The V2 ("items") bundle — the PRODUCTION collab stack (see browser-entry-v2.ts).
+await build({
+  entryPoints: [path.join(testsDir, "collab/browser-entry-v2.ts")],
+  bundle: true,
+  format: "iife",
+  outfile: path.join(testsDir, "apps/kicad/collab-bundle-v2.js"),
+  nodePaths: [path.join(testsDir, "node_modules")],
+  external: ["y-partyserver/provider", "@hocuspocus/provider"],
+  alias: {
+    // web/standalone and web/pcbjam-shared are separate pnpm workspaces, so
+    // their `yjs` imports resolve to two physical copies. The v2 binding hands
+    // Y types across that boundary (instanceof-checked), so force ONE copy —
+    // the tests devDep — exactly like the standalone vitest `dedupe: ["yjs"]`.
+    yjs: path.join(testsDir, "node_modules/yjs"),
+    // Lets this entry (which lives under tests/, outside the web workspaces)
+    // import the shared lib by name, resolving to the SAME source instance the
+    // standalone collab modules bundle.
+    "@pcbjam/shared": path.join(testsDir, "../web/pcbjam-shared/src/index.ts"),
+  },
+  logLevel: "info",
+  target: "es2020",
+});
+
+console.log("collab v2 bundle built → apps/kicad/collab-bundle-v2.js");

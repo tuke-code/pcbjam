@@ -1020,6 +1020,120 @@ std::string schCollabGetPos( std::string aId )
 }
 
 
+// ── ysync-review repro hooks ─────────────────────────────────────────────────
+// Local-edit test hooks for the ysync-review repro e2e (docs/features/
+// ysync-review on the ysync-review branch): each drives a REAL SCH_COMMIT via
+// CallAfter + COROUTINE (the doApply wrapping), so the SCHEMATIC_LISTENER →
+// flushDiff emit path runs exactly as for a UI edit. Each returns false when
+// the uuid doesn't resolve, letting the spec distinguish "hook missed the
+// item" from "differ missed the edit" (bug 04).
+
+// Delete an item by uuid via a real SCH_COMMIT.
+bool schCollabTestRemoveItem( std::string aId )
+{
+    SCH_EDIT_FRAME* fr = schFrame();
+
+    if( !fr )
+        return false;
+
+    SCH_SHEET_PATH path;
+    SCH_ITEM* item = fr->Schematic().ResolveItem( KIID( wxString::FromUTF8( aId.c_str() ) ),
+                                                  &path, /*allowNull*/ true );
+
+    if( !item )
+        return false;
+
+    SCH_SCREEN* screen = path.LastScreen();
+
+    fr->CallAfter( [fr, item, screen]() {
+        COROUTINE<int, int> cor( [fr, item, screen]( int ) -> int
+                                 {
+                                     SCH_COMMIT commit( fr );
+                                     commit.Remove( item, screen );
+                                     commit.Push( wxT( "Collab test remove" ) );
+                                     return 0;
+                                 } );
+        cor.Call( 0 );
+    } );
+
+    return true;
+}
+
+// Rotate an item in place (aDeg snapped to 90° CCW steps) — bug 04: a symbol's
+// GetPosition() is unchanged by an in-place rotation and its json carries no
+// orientation, so the rotation is invisible to the scalar differ.
+bool schCollabTestRotateItem( std::string aId, double aDeg )
+{
+    SCH_EDIT_FRAME* fr = schFrame();
+
+    if( !fr )
+        return false;
+
+    SCH_SHEET_PATH path;
+    SCH_ITEM* item = fr->Schematic().ResolveItem( KIID( wxString::FromUTF8( aId.c_str() ) ),
+                                                  &path, /*allowNull*/ true );
+
+    if( !item )
+        return false;
+
+    SCH_SCREEN* screen = path.LastScreen();
+    int         steps = ( (int) ( aDeg / 90.0 + ( aDeg >= 0 ? 0.5 : -0.5 ) ) % 4 + 4 ) % 4;
+
+    fr->CallAfter( [fr, item, screen, steps]() {
+        COROUTINE<int, int> cor( [fr, item, screen, steps]( int ) -> int
+                                 {
+                                     SCH_COMMIT commit( fr );
+                                     commit.Modify( item, screen );
+
+                                     for( int i = 0; i < steps; ++i )
+                                         item->Rotate( item->GetPosition(), /*aRotateCCW*/ true );
+
+                                     commit.Push( wxT( "Collab test rotate" ) );
+                                     return 0;
+                                 } );
+        cor.Call( 0 );
+    } );
+
+    return true;
+}
+
+// Set a symbol's Value field text — bug 04: fields live inside the symbol (not
+// in screen->Items()) and the symbol json carries no field text, so the most
+// common schematic edit after moving things never syncs.
+bool schCollabTestSetFieldText( std::string aId, std::string aText )
+{
+    SCH_EDIT_FRAME* fr = schFrame();
+
+    if( !fr )
+        return false;
+
+    SCH_SHEET_PATH path;
+    SCH_ITEM* item = fr->Schematic().ResolveItem( KIID( wxString::FromUTF8( aId.c_str() ) ),
+                                                  &path, /*allowNull*/ true );
+
+    if( !item || item->Type() != SCH_SYMBOL_T )
+        return false;
+
+    SCH_SYMBOL* sym = static_cast<SCH_SYMBOL*>( item );
+    SCH_SCREEN* screen = path.LastScreen();
+    wxString    text = wxString::FromUTF8( aText.c_str() );
+
+    fr->CallAfter( [fr, sym, screen, text]() {
+        COROUTINE<int, int> cor( [fr, sym, screen, text]( int ) -> int
+                                 {
+                                     SCH_COMMIT commit( fr );
+                                     commit.Modify( sym, screen );
+                                     sym->SetValueFieldText( text );
+                                     commit.Push( wxT( "Collab test field text" ) );
+                                     return 0;
+                                 } );
+        cor.Call( 0 );
+    } );
+
+    return true;
+}
+
+
 // Programmatically save the in-memory schematic to a .kicad_sch file, without
 // driving the Save As dialog — eeschema's analogue of pl_editor's
 // kicadSaveDrawingSheet. Serializes the root sheet via the same SCH_IO_KICAD_SEXPR
@@ -1085,6 +1199,8 @@ void kicadSaveSchematic( std::string path )
 EMSCRIPTEN_BINDINGS(eeschema) {
     // Programmatic save of the in-memory schematic (round-trip tests, README §A).
     function("kicadSaveSchematic", &kicadSaveSchematic);
+    // eeschema-only ysync-review repro hook (name not shared with pcbnew).
+    function("kicadCollabTestSetFieldText", &schCollabTestSetFieldText);
 
 #ifndef KICAD_MERGED_EMBIND
     // JS names ALSO registered by pcbnew_embind.cpp — in the merged image these are
@@ -1099,6 +1215,9 @@ EMSCRIPTEN_BINDINGS(eeschema) {
     function("kicadCollabSnapshotItems", &schCollabSnapshotItems);
     function("kicadCollabTestMoveFirst", &schCollabTestMoveFirst);
     function("kicadCollabGetPos", &schCollabGetPos);
+    // ysync-review repro hooks shared with pcbnew (dispatched when merged).
+    function("kicadCollabTestRemoveItem", &schCollabTestRemoveItem);
+    function("kicadCollabTestRotateItem", &schCollabTestRotateItem);
 #endif // !KICAD_MERGED_EMBIND
 }
 #endif

@@ -43,6 +43,8 @@ std::string pcbCollabSnapshot();
 std::string pcbCollabSnapshotItems();
 std::string pcbCollabTestMoveFirst( int aDx, int aDy );
 std::string pcbCollabGetPos( std::string aId );
+bool        pcbCollabTestRemoveItem( std::string aId );
+bool        pcbCollabTestRotateItem( std::string aId, double aDeg );
 
 bool        schEditorActive();
 void        schCollabApply( std::string aJson );
@@ -51,6 +53,8 @@ std::string schCollabSnapshot();
 std::string schCollabSnapshotItems();
 std::string schCollabTestMoveFirst( int aDx, int aDy );
 std::string schCollabGetPos( std::string aId );
+bool        schCollabTestRemoveItem( std::string aId );
+bool        schCollabTestRotateItem( std::string aId, double aDeg );
 
 
 // Programmatically open a project file in the running editor frame, without UI
@@ -118,6 +122,17 @@ static std::string collabGetPos( std::string aId )
     return pcbEditorActive() ? pcbCollabGetPos( aId ) : schCollabGetPos( aId );
 }
 
+static bool collabTestRemoveItem( std::string aId )
+{
+    return pcbEditorActive() ? pcbCollabTestRemoveItem( aId ) : schCollabTestRemoveItem( aId );
+}
+
+static bool collabTestRotateItem( std::string aId, double aDeg )
+{
+    return pcbEditorActive() ? pcbCollabTestRotateItem( aId, aDeg )
+                             : schCollabTestRotateItem( aId, aDeg );
+}
+
 
 EMSCRIPTEN_BINDINGS(kicad_editor) {
     // Programmatic file open (preferred over UI automation from the web app).
@@ -131,6 +146,10 @@ EMSCRIPTEN_BINDINGS(kicad_editor) {
     function("kicadCollabSnapshotItems", &collabSnapshotItems);
     function("kicadCollabTestMoveFirst", &collabTestMoveFirst);
     function("kicadCollabGetPos", &collabGetPos);
+    // ysync-review repro hooks (shared names; per-editor-only hooks — pad size,
+    // endpoint, field text — flow from the per-editor blocks unchanged).
+    function("kicadCollabTestRemoveItem", &collabTestRemoveItem);
+    function("kicadCollabTestRotateItem", &collabTestRotateItem);
 }
 
 #endif // __EMSCRIPTEN__
