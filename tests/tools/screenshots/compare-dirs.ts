@@ -60,6 +60,7 @@ function parseArgs(argv: string[]): Record<string, string | boolean> {
         else if (a === '--floor') out.floor = argv[++i];
         else if (a === '--label') out.label = argv[++i];
         else if (a === '--fail-on-change') out.failOnChange = true;
+        else if (a === '--artifacts') out.artifacts = argv[++i];
         else {
             console.error(`[compare-dirs] unknown argument: ${a}`);
             process.exit(2);
@@ -72,7 +73,8 @@ function usageError(msg: string): never {
     console.error(`[compare-dirs] ${msg}`);
     console.error(
         '[compare-dirs] usage: --old <dir> --new <dir> --out <dir> ' +
-            '[--floors <json> --level <level>] [--floor <ratio>] [--fail-on-change] [--label <text>]'
+            '[--floors <json> --level <level>] [--floor <ratio>] [--fail-on-change] [--label <text>] ' +
+            '[--artifacts changed|always]'
     );
     process.exit(2);
 }
@@ -131,7 +133,12 @@ function main(): void {
         unchangedCount: 0,
     };
 
-    const caption = (status: 'added' | 'removed' | 'changed', name: string) => labelText(status, name, label);
+    const artifacts = (args.artifacts as string) || 'changed';
+    if (artifacts !== 'changed' && artifacts !== 'always')
+        usageError(`--artifacts must be "changed" or "always", got "${artifacts}"`);
+
+    const caption = (status: 'added' | 'removed' | 'changed' | 'unchanged', name: string) =>
+        labelText(status, name, label);
 
     for (const name of oldNames) {
         if (!newNames.has(name)) {
@@ -155,6 +162,16 @@ function main(): void {
         const { result, heatmap, triptych } = pair;
         if (result.verdict === 'unchanged') {
             report.unchangedCount++;
+
+            // Review mode: keep the triptych/heatmap for passing pairs too, so a
+            // human can eyeball old-vs-new side by side without a failing gate.
+            if (artifacts === 'always') {
+                const triptychPath = path.join(outDir, `${name}.triptych.png`);
+                savePng(triptychPath,
+                        withBottomLabel(triptych, caption('unchanged', name), LABEL.colors.unchanged));
+                savePng(path.join(outDir, `${name}.heatmap.png`), heatmap);
+            }
+
             continue;
         }
         const triptychPath = path.join(outDir, `${name}.triptych.png`);

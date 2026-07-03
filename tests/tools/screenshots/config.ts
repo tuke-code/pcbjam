@@ -103,10 +103,11 @@ export const LABEL = {
         added: [46, 125, 50] as [number, number, number], // green
         removed: [198, 40, 40] as [number, number, number], // red
         changed: [239, 108, 0] as [number, number, number], // orange
+        unchanged: [69, 90, 100] as [number, number, number], // blue-grey (review-only artifacts)
     },
 };
 
-export type LabelStatus = 'added' | 'removed' | 'changed';
+export type LabelStatus = 'added' | 'removed' | 'changed' | 'unchanged';
 
 /** Caption text: `CHANGED  name.png · kicad/pcbnew.spec.ts` (spec omitted if unknown). */
 export function labelText(status: LabelStatus, name: string, spec: string | null): string {
