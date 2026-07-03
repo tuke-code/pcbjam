@@ -92,6 +92,8 @@ const BIG_MODULE_SPECS = [
   "**/pcbnew-move.spec.ts",
   // boots pcbnew.html and opens the Page Settings dialog (H-1 modal input-lock repro).
   "**/modal-input-lock.spec.ts",
+  // boots pcbnew.html and opens Board Setup > Text Variables (H-2 DC-clip repro).
+  "**/grid-clip-bleed.spec.ts",
   // 3D viewer specs boot pcbnew.html (3D-enabled build) — same V8 routing.
   "**/3d-viewer.spec.ts",
   // Isolated (own file → own worker) so its heavy single load isn't degraded by the
