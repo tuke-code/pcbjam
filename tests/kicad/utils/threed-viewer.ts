@@ -111,9 +111,10 @@ export async function openThreeDViewer(page: Page, glBefore: number): Promise<nu
         await page.keyboard.press('Alt+3');
     }
 
-    // 180s (not 60s): opening the viewer kicks the FIRST full board raytrace, which on CI's
-    // software WebGL (Mesa llvmpipe, GPU-less VM) takes ~60s — right at the old limit. Real GPU
-    // returns in ~2s, so the larger cap is only a CI headroom.
+    // 180s (not 60s): opening the viewer kicks the scene build + FIRST full board raytrace.
+    // On CI (headless SwiftShader software WebGL, 30 contended vCPUs) run 28649537489 opened
+    // in <60s but with little margin; a real GPU returns in ~2s. The larger cap is CI headroom
+    // only — it never slows a passing run.
     await page.waitForFunction(() => {
         // A new top-level window div beyond the main pcbnew frame.
         return !!document.querySelector('#window-container [id^="window-"]')

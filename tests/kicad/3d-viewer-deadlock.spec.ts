@@ -37,10 +37,11 @@ import { countGlCanvases, loadBoard, logThreeDDiag, openThreeDViewer } from './u
 test.describe('3D viewer camera-move deadlock', () => {
     // CI-skip: this test asserts the wasm main thread stays responsive within ~15s DURING a
     // raytrace. That premise only holds on a real GPU (fast render); on CI's software WebGL
-    // (Mesa llvmpipe, GPU-less VM) a legitimately-slow raytrace is indistinguishable from a
-    // deadlock, so the test can't run meaningfully there. The pthread-Worker-boot deadlock
-    // MECHANISM it guards is already covered on CI by the standalone wx harnesses
-    // (coroutine-pthread-ondemand, raytrace-threads). Runs locally on a real GPU.
+    // (headless SwiftShader, GPU-less contended VM) a legitimately-slow raytrace is
+    // indistinguishable from a deadlock, so the test can't run meaningfully there. The
+    // pthread-Worker-boot deadlock MECHANISM it guards is already covered on CI by the
+    // standalone wx harnesses (coroutine-pthread-ondemand, raytrace-threads). Runs locally
+    // on a real GPU.
     test.skip(!!process.env.CI, 'raytracer liveness assertions require a real GPU; deadlock '
         + 'mechanism is covered on CI by the standalone coroutine-pthread-ondemand/raytrace-threads harnesses');
     // One 187 MB wasm runtime is already heavy; keep this serial and generous.
@@ -83,16 +84,21 @@ test.describe('3D viewer camera-move deadlock', () => {
             const el = list[list.length - 1] as HTMLCanvasElement;
             const tmp = document.createElement('canvas');
             tmp.width = el.width; tmp.height = el.height;
-            const ctx = tmp.getContext('2d')!;
+            // One full-frame read on a CPU-backed canvas, then sample in JS. This sampler is
+            // POLLED every 1.5s during an active raytrace (settleRender) — as 256 per-pixel
+            // getImageData GPU round-trips per poll it was the worst "GPU stall due to
+            // ReadPixels" offender on software WebGL (see 3d-viewer.spec.ts).
+            const ctx = tmp.getContext('2d', { willReadFrequently: true })!;
             ctx.drawImage(el, 0, 0);
+            const img = ctx.getImageData(0, 0, el.width, el.height).data;
             const colors = new Set<string>();
             let sig = '';
             for (let i = 0; i < 16; i++) {
                 for (let j = 0; j < 16; j++) {
-                    const d = ctx.getImageData(Math.floor(el.width * i / 16),
-                                               Math.floor(el.height * j / 16), 1, 1).data;
-                    colors.add(`${d[0]},${d[1]},${d[2]}`);
-                    sig += `${d[0]}.${d[1]}.${d[2]}|`;
+                    const p = (Math.floor(el.height * j / 16) * el.width
+                             + Math.floor(el.width * i / 16)) * 4;
+                    colors.add(`${img[p]},${img[p + 1]},${img[p + 2]}`);
+                    sig += `${img[p]}.${img[p + 1]}.${img[p + 2]}|`;
                 }
             }
             return { distinctColors: colors.size, sig };

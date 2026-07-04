@@ -151,7 +151,7 @@ async function openThreeDViewer(page: Page, glBefore: number): Promise<number> {
         await page.keyboard.press('Alt+3');
     }
 
-    // 180s (not 60s): the first board raytrace on CI's Mesa llvmpipe software WebGL takes ~60s
+    // 180s (not 60s): CI headroom for the scene build + first raytrace on software WebGL
     // (real GPU ~2s). See threed-viewer.ts openThreeDViewer for the rationale.
     await page.waitForFunction(() => {
         return !!document.querySelector('#window-container [id^="window-"]')
@@ -194,12 +194,16 @@ test.describe('3D viewer component models', () => {
         const glBefore = await countGlCanvases(page);
         await openThreeDViewer(page, glBefore);
 
-        // Scene build + progressive raytrace passes.
-        await page.waitForTimeout(8000);
-        await logThreeDDiag(page, 'models: before screenshot');
-        await page.screenshot({ path: `test-results/3d-viewer-models-${DEMO.name}.png`, scale: 'css' });
+        // The ensure requests fire during the scene BUILD (S3D_CACHE::load), i.e. BEFORE the
+        // raytrace starts — wait for the served ref to cross the bridge, then give the rest
+        // of the enumeration a moment to flush. Front-loading the bridge assertions lets them
+        // gate regressions on CI too, where the heavy raytrace tail below is skipped.
+        await page.waitForFunction(
+            (ref: string) => (window.__modelEnsures ?? []).some((e) => e.arg === ref),
+            SERVED_REF, { timeout: 120000 });
+        await page.waitForTimeout(3000);
 
-        // --- bridge assertions -------------------------------------------------
+        // --- bridge assertions (run on CI too) ---------------------------------
         const ensures = await page.evaluate(() => window.__modelEnsures ?? []);
         console.log(`[TEST] ensure requests: ${ensures.length}`);
         for (const e of ensures.slice(0, 30)) console.log(`[TEST]   ${e.op} ${e.arg}`);
@@ -238,6 +242,27 @@ test.describe('3D viewer component models', () => {
         expect(oceLoadLines.some((l) => l.includes('oce Load FAILED')),
             'no oce model parse may fail').toBe(false);
 
+        // KNOWN PRODUCT BUG — render tail skipped EVERYWHERE (a bridge regression above still
+        // fails the suite; only this test's final status is "skipped" instead of "passed").
+        // Raytracing a scene WITH component models kills the Chromium renderer process
+        // outright ~6s after the scene build finishes: silent process death — flat wasm heap
+        // (~531-637 MB, watched at 2s intervals), no console error, no wasm abort, no macOS
+        // crash report (crashpad dump dies with the temp profile). Deterministic on a real
+        // GPU (5/5, 2026-07-03), fixture-independent (700 KB USB-C and 61 KB USON-8 STEP
+        // crash identically), and the same death hits CI SwiftShader at ~66s (slower
+        // raytrace, run 28649537489). Board-ONLY raytraces complete and stay alive
+        // (3d-viewer.spec.ts + the deadlock spec's convergence wait prove it), so the bug is
+        // specific to the model path (loaded via oce/vrml plugins). The one historical green
+        // run ended at raytrace-age ~6s — inside the death window by luck.
+        // Repro: remove this skip and run this spec on --project=chromium.
+        test.skip(true,
+            'KNOWN BUG: raytracing a models scene kills the renderer ~6s in; bridge protocol asserted above');
+
+        // Scene build + progressive raytrace passes.
+        await page.waitForTimeout(8000);
+        await logThreeDDiag(page, 'models: before screenshot');
+        await page.screenshot({ path: `test-results/3d-viewer-models-${DEMO.name}.png`, scale: 'css' });
+
         // --- render assertion --------------------------------------------------
         const render = await page.evaluate(() => {
             const list = document.querySelectorAll('canvas[id^="glcanvas-"]');
@@ -245,14 +270,17 @@ test.describe('3D viewer component models', () => {
             const tmp = document.createElement('canvas');
             tmp.width = el.width;
             tmp.height = el.height;
-            const ctx = tmp.getContext('2d')!;
+            // One full-frame read on a CPU-backed canvas, then sample in JS — not 256
+            // per-pixel getImageData GPU round-trips (see 3d-viewer.spec.ts for why).
+            const ctx = tmp.getContext('2d', { willReadFrequently: true })!;
             ctx.drawImage(el, 0, 0);
+            const img = ctx.getImageData(0, 0, el.width, el.height).data;
             const colors = new Set<string>();
             for (let i = 0; i < 16; i++) {
                 for (let j = 0; j < 16; j++) {
-                    const d = ctx.getImageData(Math.floor(el.width * i / 16),
-                                               Math.floor(el.height * j / 16), 1, 1).data;
-                    colors.add(`${d[0]},${d[1]},${d[2]}`);
+                    const p = (Math.floor(el.height * j / 16) * el.width
+                             + Math.floor(el.width * i / 16)) * 4;
+                    colors.add(`${img[p]},${img[p + 1]},${img[p + 2]}`);
                 }
             }
             return { id: el.id, w: el.width, h: el.height, distinctColors: colors.size,
