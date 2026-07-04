@@ -111,10 +111,10 @@ export async function openThreeDViewer(page: Page, glBefore: number): Promise<nu
         await page.keyboard.press('Alt+3');
     }
 
-    // 180s (not 60s): opening the viewer kicks the scene build + FIRST full board raytrace.
-    // On CI (headless SwiftShader software WebGL, 30 contended vCPUs) run 28649537489 opened
-    // in <60s but with little margin; a real GPU returns in ~2s. The larger cap is CI headroom
-    // only — it never slows a passing run.
+    // 180s (not 60s): opening the viewer kicks the scene build + first render. On CI
+    // (headless SwiftShader software WebGL, 30 contended vCPUs) the raytracer-era run
+    // 28649537489 opened in <60s but with little margin; a real GPU returns in ~2s. The
+    // larger cap is CI headroom only — it never slows a passing run.
     await page.waitForFunction(() => {
         // A new top-level window div beyond the main pcbnew frame.
         return !!document.querySelector('#window-container [id^="window-"]')
@@ -129,4 +129,36 @@ export async function openThreeDViewer(page: Page, glBefore: number): Promise<nu
     console.log(`[TEST] glcanvas count after opening 3D viewer: ${glAfter}`);
     expect(glAfter, 'a new WebGL canvas should appear for the 3D viewer').toBeGreaterThan(glBefore);
     return glAfter;
+}
+
+// Wait until the NEWEST glcanvas actually shows a rendered scene (> minColors distinct
+// colours on a 16×16 grid) instead of sleeping a fixed interval. The viewer's first frame
+// can lag the canvas's creation, especially on CI's software WebGL under parallel load —
+// sampling too early reads an all-black backbuffer, which is exactly main's live 3D flake
+// (run 28698861536: 3d-viewer.spec:26 flaky; run 28666407570: the deadlock spec red with an
+// all-zero pixel signature). One full-frame read per 1s poll on a CPU-backed 2D canvas —
+// NOT per-pixel getImageData calls, which are a GPU round-trip each and stall SwiftShader
+// ("GPU stall due to ReadPixels").
+export async function waitForThreeDRender(
+    page: Page, minColors = 8, timeoutMs = 90000,
+): Promise<void> {
+    await page.waitForFunction((min: number) => {
+        const list = document.querySelectorAll('canvas[id^="glcanvas-"]');
+        const el = list[list.length - 1] as HTMLCanvasElement | undefined;
+        if (!el || !el.width || !el.height) return false;
+        const tmp = document.createElement('canvas');
+        tmp.width = el.width; tmp.height = el.height;
+        const ctx = tmp.getContext('2d', { willReadFrequently: true })!;
+        ctx.drawImage(el, 0, 0);
+        const img = ctx.getImageData(0, 0, el.width, el.height).data;
+        const colors = new Set<string>();
+        for (let i = 0; i < 16; i++) {
+            for (let j = 0; j < 16; j++) {
+                const p = (Math.floor(el.height * j / 16) * el.width
+                         + Math.floor(el.width * i / 16)) * 4;
+                colors.add(`${img[p]},${img[p + 1]},${img[p + 2]}`);
+            }
+        }
+        return colors.size > min;
+    }, minColors, { timeout: timeoutMs, polling: 1000 });
 }

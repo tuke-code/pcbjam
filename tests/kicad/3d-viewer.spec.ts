@@ -1,6 +1,7 @@
 import { test, expect } from './fixtures';
 import { waitForPcbnew } from './utils/pcbnew-ready';
-import { DEMO, loadBoard, countGlCanvases, logThreeDDiag, openThreeDViewer } from './utils/threed-viewer';
+import { DEMO, loadBoard, countGlCanvases, logThreeDDiag, openThreeDViewer, waitForThreeDRender }
+    from './utils/threed-viewer';
 
 /**
  * 3D viewer e2e: load a real board in pcbnew, open the native 3D viewer
@@ -35,9 +36,11 @@ test.describe('3D viewer from pcbnew', () => {
 
         await openThreeDViewer(page, glBefore);
 
-        // The 3D reload + raytrace run through asyncify; give them time to build
-        // the scene and render a few progressive passes.
-        await page.waitForTimeout(5000);
+        // Gate on the scene actually being ON the canvas, not a fixed sleep: the first frame
+        // can lag the canvas creation (CI software WebGL under parallel load), and sampling
+        // too early reads an all-black backbuffer — main's live 3D flake (see
+        // waitForThreeDRender).
+        await waitForThreeDRender(page);
 
         await page.screenshot({ path: `test-results/3d-viewer-${DEMO.name}.png`, scale: 'css' });
 
@@ -306,16 +309,6 @@ test.describe('3D viewer from pcbnew', () => {
         // It is wxRESIZE_BORDER → exactly the 5 edge/corner handles.
         const handles = await page.locator(`#${winId} .window-resize-handle`).count();
         expect(handles, 'the 3D viewer (wxRESIZE_BORDER) should have edge-resize handles').toBe(5);
-
-        // CI-skip THE DRAG (the open + handle assertions above still ran): every resize step
-        // clears the canvas and re-runs a synchronous full raytrace on the wasm main thread;
-        // on CI's software WebGL + contended 30-vCPU VM the 12-step drag blocked mouse.move
-        // past the 240s test budget even single-tab (run 28649537489). The interactive drag
-        // needs real-GPU pacing — it runs locally; the same wx_window_resize → SetSize →
-        // setGLCanvasRect path is what the drag would exercise, and the handles' existence
-        // and wiring are asserted above.
-        test.skip(!!process.env.CI,
-            'resize-drag re-raytraces need a real GPU; frame/handle wiring asserted above, drag covered locally');
 
         // Frame width from its style; GL canvas width from the newest glcanvas-*.
         const frameWidth = (wid: string) =>

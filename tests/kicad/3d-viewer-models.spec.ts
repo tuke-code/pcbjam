@@ -4,7 +4,7 @@ import { clickMenuBarItem, clickMenuItem } from '../e2e/utils/element-tracker';
 import { injectFromSubmodule } from './utils/fs-inject';
 import { waitForBoardLoaded } from './utils/board-ready';
 import { waitForPcbnew } from './utils/pcbnew-ready';
-import { logThreeDDiag } from './utils/threed-viewer';
+import { logThreeDDiag, waitForThreeDRender } from './utils/threed-viewer';
 
 /**
  * 3D viewer COMPONENT MODELS e2e (docs/features/3d-models): load pic_programmer,
@@ -194,10 +194,10 @@ test.describe('3D viewer component models', () => {
         const glBefore = await countGlCanvases(page);
         await openThreeDViewer(page, glBefore);
 
-        // The ensure requests fire during the scene BUILD (S3D_CACHE::load), i.e. BEFORE the
-        // raytrace starts — wait for the served ref to cross the bridge, then give the rest
-        // of the enumeration a moment to flush. Front-loading the bridge assertions lets them
-        // gate regressions on CI too, where the heavy raytrace tail below is skipped.
+        // The ensure requests fire during the scene BUILD (S3D_CACHE::load), i.e. BEFORE any
+        // rendering — wait for the served ref to cross the bridge, then give the rest of the
+        // enumeration a moment to flush. Front-loading the bridge assertions keeps the
+        // protocol regression signal independent of the render below.
         await page.waitForFunction(
             (ref: string) => (window.__modelEnsures ?? []).some((e) => e.arg === ref),
             SERVED_REF, { timeout: 120000 });
@@ -235,31 +235,22 @@ test.describe('3D viewer component models', () => {
         // OCC split: the .step parse runs in the occ_service worker (the oce3d
         // shadow bridges to it) and must SUCCEED — a boot/bridge failure logs
         // 'oce Load FAILED' and silently skips the model, which the render
-        // assertions below can miss (hollow green).
+        // assertions below can miss (hollow green). The worker parse is async
+        // relative to the bridge ensures asserted above, so poll for its verdict
+        // instead of assuming it already landed.
+        await expect.poll(
+            () => testLogger.consoleLogs.some((l) => l.includes('oce Load')),
+            { timeout: 90000, message: 'the occ_service worker should report the served STEP parse' },
+        ).toBe(true);
         const oceLoadLines = testLogger.consoleLogs.filter((l) => l.includes('oce Load'));
         expect(oceLoadLines.some((l) => l.includes('oce Load ok')),
             'the served STEP must parse in the occ_service worker').toBe(true);
         expect(oceLoadLines.some((l) => l.includes('oce Load FAILED')),
             'no oce model parse may fail').toBe(false);
 
-        // KNOWN PRODUCT BUG — render tail skipped EVERYWHERE (a bridge regression above still
-        // fails the suite; only this test's final status is "skipped" instead of "passed").
-        // Raytracing a scene WITH component models kills the Chromium renderer process
-        // outright ~6s after the scene build finishes: silent process death — flat wasm heap
-        // (~531-637 MB, watched at 2s intervals), no console error, no wasm abort, no macOS
-        // crash report (crashpad dump dies with the temp profile). Deterministic on a real
-        // GPU (5/5, 2026-07-03), fixture-independent (700 KB USB-C and 61 KB USON-8 STEP
-        // crash identically), and the same death hits CI SwiftShader at ~66s (slower
-        // raytrace, run 28649537489). Board-ONLY raytraces complete and stay alive
-        // (3d-viewer.spec.ts + the deadlock spec's convergence wait prove it), so the bug is
-        // specific to the model path (loaded via oce/vrml plugins). The one historical green
-        // run ended at raytrace-age ~6s — inside the death window by luck.
-        // Repro: remove this skip and run this spec on --project=chromium.
-        test.skip(true,
-            'KNOWN BUG: raytracing a models scene kills the renderer ~6s in; bridge protocol asserted above');
-
-        // Scene build + progressive raytrace passes.
-        await page.waitForTimeout(8000);
+        // Gate on the scene actually being ON the canvas (not a fixed sleep) before
+        // reading pixels — see waitForThreeDRender for the all-black-first-frame flake.
+        await waitForThreeDRender(page);
         await logThreeDDiag(page, 'models: before screenshot');
         await page.screenshot({ path: `test-results/3d-viewer-models-${DEMO.name}.png`, scale: 'css' });
 

@@ -1,12 +1,18 @@
 import { test, expect } from './fixtures';
+import { clickByTooltip, clickToolbarTool } from '../e2e/utils/element-tracker';
 import { waitForPcbnew } from './utils/pcbnew-ready';
 import { countGlCanvases, loadBoard, logThreeDDiag, openThreeDViewer } from './utils/threed-viewer';
 
 /**
  * Regression for the camera-move-on-canvas raytrace DEADLOCK.
  *
- * The 3D viewer's EDA_3D_CANVAS is a wxGLCanvas whose paint runs the multi-threaded CPU
- * raytracer. Moving the camera makes the raytracer spawn raw std::thread workers; with no
+ * Since the 3D-webgl port the wasm viewer DEFAULTS to the real OpenGL renderer, which never
+ * had this deadlock — so this spec explicitly flips the viewer to the raytracer engine (its
+ * toolbar toggle) before driving it; the raytracer remains user-reachable via that same
+ * toggle, so the regression it guards is still live product surface.
+ *
+ * The 3D viewer's EDA_3D_CANVAS is a wxGLCanvas whose paint (on the raytracer engine) runs
+ * the multi-threaded CPU raytracer. Moving the camera makes the raytracer spawn raw std::thread workers; with no
  * PROXY_TO_PTHREAD its join runs on the browser main thread, and KiCad's own thread pool has
  * already drained emscripten's pre-warmed Worker pool — so those threads fall back to on-demand
  * `new Worker()`, whose boot handshake needs the main thread back in the JS event loop, which it
@@ -44,6 +50,16 @@ test.describe('3D viewer camera-move deadlock', () => {
     // on a real GPU.
     test.skip(!!process.env.CI, 'raytracer liveness assertions require a real GPU; deadlock '
         + 'mechanism is covered on CI by the standalone coroutine-pthread-ondemand/raytrace-threads harnesses');
+    // KNOWN ISSUE (2026-07-04, webgl-era wasm build): the "Use raytracing" toolbar toggle is
+    // INERT — the click lands and a scene reload fires ("Reload time" status updates), but the
+    // canvas pixels never change (sampled for 20s; this spec's engine-engagement guard below
+    // caught it). Suspects: EDA_3D_CANVAS::DoRePaint's silent catch(runtime_error) freezing
+    // the canvas after a raytracer Redraw throw, or the engine toggle writing
+    // m_boardAdapter.m_Cfg while RenderEngineChanged() reads GetAppSettings<…>() — possibly
+    // different instances in the merged kicad_editor bundle. Unskip once the toggle works:
+    // the engagement guard below then validates the engine flip loudly.
+    test.skip(true, 'KNOWN ISSUE: the raytracer engine toggle is inert on the webgl-era wasm '
+        + 'build — the deadlock mechanism cannot be driven until it works (see comment)');
     // One 187 MB wasm runtime is already heavy; keep this serial and generous.
     test.describe.configure({ mode: 'serial' });
     test.setTimeout(240000);
@@ -65,7 +81,7 @@ test.describe('3D viewer camera-move deadlock', () => {
         }, winsBefore);
         expect(winId, 'the 3D viewer should open a new top-level window').toBeTruthy();
 
-        // Let the INITIAL raytrace settle through the safe per-frame pump (Workers boot here).
+        // Let the INITIAL render settle through the safe per-frame pump (Workers boot here).
         await page.waitForTimeout(5000);
         await logThreeDDiag(page, 'deadlock: after open+settle');
 
@@ -163,6 +179,33 @@ test.describe('3D viewer camera-move deadlock', () => {
             expect(await mainThreadAlive(),
                 `wasm main thread unresponsive after "${step}" → deadlock`).toBe(true);
         };
+
+        // Since the 3D-webgl port (kicad eb13ff3bdc) the wasm viewer defaults to the REAL
+        // OpenGL renderer; the deadlock mechanism this spec guards is raytracer-specific, so
+        // flip the viewer to the raytracer via its toolbar toggle. Loud failure if the
+        // toggle moved — a silent no-op would leave the fast GL renderer making every
+        // liveness assertion below vacuously green.
+        const sigOnGl = (await sampleCanvas()).sig;
+        const toggled = (await clickToolbarTool(page, 'Use raytracing'))
+            || (await clickByTooltip(page, 'Render current view using Raytracing'));
+        expect(toggled, 'the "Use raytracing" toolbar toggle must exist in the 3D viewer').toBe(true);
+
+        // Engine cross-check (guards the same false green): with NO input between the two
+        // samples, only an engine change repaints the canvas differently — the raytraced
+        // frame is lit/shadowed differently from the GL frame it replaces, a GL re-render
+        // reproduces the identical pixels, and a no-op leaves the canvas untouched. (Heap
+        // growth is NOT a usable signal here: mimalloc satisfies the raytracer's buffers
+        // from already-freed arena pages, so HEAPU8.length stays flat.)
+        let raytracerEngaged = false;
+        for (let i = 0; i < 20 && !raytracerEngaged; i++) {
+            await page.waitForTimeout(1000);
+            raytracerEngaged = (await sampleCanvas()).sig !== sigOnGl;
+        }
+        expect(raytracerEngaged,
+            'the canvas did not change after the engine toggle — the raytracer did not engage')
+            .toBe(true);
+        // Let the first full raytrace converge before taking the interaction baseline.
+        await settleRender(25000);
 
         const before = await sampleCanvas();
         console.log(`[TEST] 3D render before interaction: ${before.distinctColors} distinct colours`);

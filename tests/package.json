@@ -16,7 +16,7 @@
     "test:kicad:firefox": "npm run setup:kicad && playwright test --config=playwright-kicad.config.ts --project=firefox",
     "test:kicad:chrome": "npm run setup:kicad && playwright test --config=playwright-kicad.config.ts --project=chromium --headed",
     "test:kicad": "npm run test:kicad:firefox",
-    "test:kicad:ci": "npm run setup:kicad && sh -c 'playwright test --config=playwright-kicad.config.ts --project=firefox --project=chromium-ci; a=$?; playwright test --config=playwright-kicad.config.ts --project=chromium-ci-3d --workers=1; b=$?; exit $((a||b))'",
+    "test:kicad:ci": "npm run setup:kicad && playwright test --config=playwright-kicad.config.ts --project=firefox --project=chromium-ci",
     "test:kicad:headed": "npm run test:kicad:chrome",
     "test:perf": "npm run setup:kicad && playwright test --config=playwright-kicad.config.ts --project=perf --workers=1",
     "test:pcbnew:firefox": "npm run setup:kicad && playwright test --config=playwright-kicad.config.ts --project=firefox kicad/pcbnew.spec.ts",

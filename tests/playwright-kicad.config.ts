@@ -118,24 +118,6 @@ const BIG_MODULE_SPECS = [
   "**/occ-probe.spec.ts",
 ];
 
-// The heavy 3D-viewer specs each boot the 3D-enabled pcbnew build, which pre-warms
-// ~hardwareConcurrency*2+8 Web Workers AND runs a multi-threaded CPU raytracer over
-// SwiftShader software-WebGL. Under fullyParallel these separate spec FILES land in
-// separate browser processes CONCURRENTLY, and the simultaneous raytrace tabs exhaust
-// Workers / wasm heap / the shared GPU process's ~16 live-WebGL-context limit → the tab
-// crashes ("Target crashed" / "browser has been closed" / a black frozen canvas). Per-file
-// isolation (own worker) prevents in-process Worker accumulation but NOT this cross-process
-// concurrency. They STAY in BIG_MODULE_SPECS (so firefox keeps ignoring them — the ~190 MB
-// module OOMs SpiderMonkey/x86), but on CI they run in the dedicated 'chromium-ci-3d' project,
-// which test:kicad:ci invokes with --workers=1 so at most ONE raytrace tab is alive at a time.
-// (footprint-3d-preview.spec.ts is a placeholder glob — no such file exists yet — harmless.)
-const THREE_D_HEAVY_SPECS = [
-  "**/3d-viewer.spec.ts",
-  "**/3d-viewer-deadlock.spec.ts",
-  "**/3d-viewer-models.spec.ts",
-  "**/footprint-3d-preview.spec.ts",
-];
-
 // Runtime-perf specs run ONLY on the Chromium 'perf' project below: they need
 // CDP CPU throttling (Chromium-only) and pcbnew needs V8. Excluded from the
 // firefox/chromium projects so they don't double-run there.
@@ -155,13 +137,10 @@ export default defineConfig({
   // as playwright.config.ts): the load-pcb post-load clipboard crash that can
   // close the page on Firefox, and the calculator first-run-wizard timing race.
   retries: process.env.CI ? 2 : 1,
-  // Run parallel workers on CI too, same as local — the serial CI run was the dominant
-  // wall-clock cost. Capped to a fixed 12 on CI (down from Playwright's default ≈ 50% of
-  // cores = ~15 on the 30-core VM) as defense-in-depth for the ~16 live-WebGL-context limit
-  // in Chromium's shared GPU process: ~15 GAL-canvas tabs already brush that cap. The heavy
-  // 3D-viewer specs (a *second* WebGL context each) no longer run here — they're isolated to
-  // the serial 'chromium-ci-3d' project — so 12 is only headroom, not the primary fix.
-  workers: process.env.CI ? 12 : undefined,
+  // Run parallel workers on CI too (Playwright default ≈ 50% of cores), same as
+  // local — the serial CI run was the dominant wall-clock cost. Cap (e.g. '50%'
+  // or a fixed count) if contention OOMs/flakes; retries:2 covers transient.
+  workers: undefined,
   reporter: "html",
   timeout: 180000, // KiCad WASM needs more time to load (3 minutes)
 
@@ -231,67 +210,12 @@ export default defineConfig({
       // --enable-unsafe-swiftshader: newer Chromium refuses software WebGL in
       // headless without it.
       name: "chromium-ci",
-      // Every big-module spec EXCEPT the heavy 3D-viewer ones — those move to the
-      // serial 'chromium-ci-3d' project below so they never raytrace concurrently.
-      testMatch: BIG_MODULE_SPECS.filter((s) => !THREE_D_HEAVY_SPECS.includes(s)),
+      testMatch: BIG_MODULE_SPECS,
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width: 1280, height: 720 },
         launchOptions: {
           args: ["--enable-unsafe-swiftshader"],
-        },
-      },
-    },
-    {
-      // CI-only carrier for the heavy 3D-viewer specs (see THREE_D_HEAVY_SPECS). Two reasons
-      // it is split out of chromium-ci:
-      //  1. Runs in a SEPARATE `playwright test` pass with --workers=1 (test:kicad:ci), so at
-      //     most one raytrace tab is alive at a time (15 concurrent 3D tabs exhausted the VM:
-      //     run 28604015154).
-      //  2. GPU-process hardening flags for the raytracer's WebGL blit + the specs' canvas
-      //     pixel reads under software WebGL (below).
-      //
-      // GL environment — hard-won across three CI iterations, don't re-litigate casually:
-      //  - Headless SwiftShader (--enable-unsafe-swiftshader) is the ONLY WebGL Chromium gets
-      //    on the GPU-less ubicloud VM. Headed-under-Xvfb with --use-gl=angle --use-angle=gl
-      //    (the Mesa/GLX path the Firefox project uses) yields NO WebGL AT ALL for Chromium:
-      //    runs 28652367347 + 28664038296 both log `glcanvas count before opening 3D viewer: 0`
-      //    (even the pcbnew GAL canvas fails to create) and time out at the first viewer-open
-      //    wait. Their "timeouts instead of crashes" were a misdiagnosis of progress — there
-      //    was simply no GL context left to crash.
-      //  - Single-tab SwiftShader raytracing WORKS (run 28649537489: viewer open, full render,
-      //    56-colour sampling all green), but sustained churn (camera-drag re-raytraces) can
-      //    stall the software-GL GPU process long enough that its watchdog kills it, cascading
-      //    into CONTEXT_LOST / removed GL canvases / "Target crashed". --disable-gpu-watchdog +
-      //    --disable-gpu-process-crash-limit remove that killer (a slow op completes instead of
-      //    being shot); the drag-pounding interactions that even then need real-GPU pacing are
-      //    CI-skipped in the spec files with per-case rationale. The specs' pixel sampling is
-      //    also storm-proofed (one full-frame getImageData on a willReadFrequently 2D canvas
-      //    instead of 256 per-pixel GPU round-trips per sample).
-      //  - The models spec's render tail is skipped EVERYWHERE (not CI-specific): raytracing a
-      //    scene with component models kills the renderer process outright — a real product
-      //    bug, documented in 3d-viewer-models.spec.ts at the skip site.
-      //
-      // Own outputDir so its start-of-run cleanup doesn't wipe chromium-ci's retained traces,
-      // and its own failure traces survive the later `test:perf` run's pw-artifacts/kicad wipe;
-      // the CI upload glob tests/pw-artifacts/** already captures it (no workflow change needed).
-      name: "chromium-ci-3d",
-      testMatch: THREE_D_HEAVY_SPECS,
-      outputDir: process.env.CI ? "pw-artifacts/kicad-3d" : "test-results",
-      use: {
-        ...devices["Desktop Chrome"],
-        viewport: { width: 1280, height: 720 },
-        // Same args on CI and locally (a real local GPU ignores the swiftshader allowance,
-        // and the two GPU-process flags are no-ops on a healthy GPU) — one config to reason
-        // about. NOTE for local ARM-Mac runs: bundled headless Chromium + SwiftShader WebGL
-        // is broken there anyway (see the 'chromium' project note) — run the 3D specs locally
-        // via --project=chromium (system Chrome, real GPU).
-        launchOptions: {
-          args: [
-            "--enable-unsafe-swiftshader",
-            "--disable-gpu-watchdog",
-            "--disable-gpu-process-crash-limit",
-          ],
         },
       },
     },
