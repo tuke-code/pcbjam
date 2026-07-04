@@ -223,7 +223,12 @@ export function HomePage() {
 
   return (
     <div className="container max-w-3xl py-10">
-      <h1 className="text-2xl font-semibold tracking-tight">PCBJam</h1>
+      <h1 className="flex items-center gap-2.5 text-2xl font-semibold tracking-tight">
+        PCBJam
+        <span className="rounded-full border border-amber-500/50 bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
+          Early-access alpha
+        </span>
+      </h1>
       <p className="mb-8 text-sm text-muted-foreground">
         {staticMode
           ? "Edit KiCad files in your browser — open an example below or your own local folder. Nothing is uploaded; Save downloads to your machine."

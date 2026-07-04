@@ -25,7 +25,10 @@ const {
 
 // Pages may pass a complete title (containing "PCBJam"); otherwise append the suffix.
 const fullTitle = title.includes('PCBJam') ? title : `${title} — PCBJam`;
-const canonical = Astro.url.href;
+// Resolve against `site` — prerendered Astro.url is localhost, and OG crawlers
+// require absolute URLs anyway.
+const canonical = new URL(Astro.url.pathname, Astro.site ?? Astro.url).href;
+const ogImageAbs = new URL(ogImage, Astro.site ?? Astro.url).href;
 ---
 
 <!doctype html>
@@ -49,11 +52,11 @@ const canonical = Astro.url.href;
     <meta property="og:title" content={fullTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
-    <meta property="og:image" content={ogImage} />
+    <meta property="og:image" content={ogImageAbs} />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={fullTitle} />
     <meta name="twitter:description" content={description} />
-    <meta name="twitter:image" content={ogImage} />
+    <meta name="twitter:image" content={ogImageAbs} />
 
     {/* Per-page extras (e.g. JSON-LD) */}
     <slot name="head" />

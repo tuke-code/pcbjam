@@ -8,6 +8,9 @@ import mdx from '@astrojs/mdx';
 // per-request SSR later with `export const prerender = false;`.
 // See README.md ("SSR per route") for how.
 export default defineConfig({
+  // Canonical origin (apex 308s to www). Without this, prerendered Astro.url
+  // is localhost, which leaked into canonical/OG tags on production.
+  site: 'https://www.pcbjam.com',
   output: 'static',
   adapter: vercel(),
   // MDX lets the Gerber-viewer blog post embed the <GerberDemo /> component
