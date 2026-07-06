@@ -59,6 +59,7 @@ import { createOomWatch, respawnInNewTab } from "@/recovery/oom-watch";
 import { MemoryExhaustedDialog } from "@/recovery/MemoryExhaustedDialog";
 import type { SourceDescriptor } from "@/lib/project-source-shared";
 import { SourceChip } from "@/components/SourceChip";
+import { isMobileMode } from "@/lib/mobile-mode";
 
 // Tools with the v2 items bridge (kicadCollabSnapshotItems/ApplyItems embind exports).
 const COLLAB_TOOLS = new Set<Tool>(["pl_editor", "eeschema", "pcbnew"]);
@@ -569,6 +570,9 @@ export function WasmTool({
 }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const startedRef = React.useRef(false);
+  // Canvas-only mobile mode (features/mobile): the shell hides its persistent
+  // overlays, boot installs the touch-gesture shim + hides the editor chrome.
+  const mobileUi = React.useMemo(() => isMobileMode(), []);
   const driftRef = React.useRef<{ stop(): void } | null>(null);
   const sheetManagerRef = React.useRef<SheetCollabManager | null>(null);
   // The single-room collab doc (pcbnew/pl_editor), for the layout save-sync
@@ -786,6 +790,7 @@ export function WasmTool({
           // footprint_editor/symbol_editor load the pcbnew/eeschema bundle; the
           // frame token tells its single_top launcher which editor frame to open.
           frame: TOOL_FRAME[tool],
+          mobile: mobileUi,
         });
         // Register the save sink before the file opens: from here on, every
         // editor File→Save (MEMFS write) is routed onward through saveBytes.
@@ -1035,7 +1040,7 @@ export function WasmTool({
       )}
 
       {/* Where this project lives + whether Save persists (top-right). */}
-      {ready && sourceDescriptor && (
+      {ready && sourceDescriptor && !mobileUi && (
         <div className="absolute right-3 top-3 z-20">
           <SourceChip descriptor={sourceDescriptor} />
         </div>
@@ -1074,20 +1079,22 @@ export function WasmTool({
         </button>
       )}
 
-      <div className="absolute bottom-0 left-0 right-0 z-20">
-        <button
-          className="flex items-center gap-1 bg-black/70 px-3 py-1 font-mono text-xs text-white"
-          onClick={() => setShowLog((s) => !s)}
-        >
-          {showLog ? <ChevronDown size={14} /> : <ChevronUp size={14} />} console
-          ({logs.length})
-        </button>
-        {showLog && (
-          <pre className="max-h-64 overflow-auto bg-black/85 p-3 font-mono text-[11px] leading-tight text-green-300">
-            {logs.join("\n")}
-          </pre>
-        )}
-      </div>
+      {!mobileUi && (
+        <div className="absolute bottom-0 left-0 right-0 z-20">
+          <button
+            className="flex items-center gap-1 bg-black/70 px-3 py-1 font-mono text-xs text-white"
+            onClick={() => setShowLog((s) => !s)}
+          >
+            {showLog ? <ChevronDown size={14} /> : <ChevronUp size={14} />} console
+            ({logs.length})
+          </button>
+          {showLog && (
+            <pre className="max-h-64 overflow-auto bg-black/85 p-3 font-mono text-[11px] leading-tight text-green-300">
+              {logs.join("\n")}
+            </pre>
+          )}
+        </div>
+      )}
     </div>
   );
 }

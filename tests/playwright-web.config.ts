@@ -43,11 +43,21 @@ export default defineConfig({
   projects: [
     {
       name: 'firefox',
+      testIgnore: /mobile-.*\.spec\.ts/,
       use: { ...devices['Desktop Firefox'], viewport: { width: 1280, height: 720 } },
     },
     {
       name: 'chromium',
+      testIgnore: /mobile-.*\.spec\.ts/,
       use: { channel: 'chrome', viewport: { width: 1280, height: 720 } },
+    },
+    {
+      // Canvas-only mobile mode (features/mobile). Mobile emulation is
+      // Chromium-only, and headless SwiftShader WebGL is broken on ARM Mac (see
+      // header) — run this project headed locally: --project=mobile-chromium --headed.
+      name: 'mobile-chromium',
+      testMatch: /mobile-.*\.spec\.ts/,
+      use: { ...devices['Pixel 7'], channel: 'chrome' },
     },
   ],
 

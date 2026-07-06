@@ -1,5 +1,6 @@
 import { Route, Routes } from "react-router-dom";
 import { VersionBadge } from "@/components/VersionBadge";
+import { isMobileMode } from "@/lib/mobile-mode";
 import { HomePage } from "@/pages/HomePage";
 import { LibToolPage } from "@/pages/LibToolPage";
 import { ProjectView } from "@/pages/ProjectView";
@@ -17,8 +18,9 @@ export default function App() {
         <Route path="/:scope/projects/:name/*" element={<ToolPage />} />
         <Route path="/:scope/libs/:name" element={<LibToolPage />} />
       </Routes>
-      {/* Version + source link, bottom-right on every route (home + editor). */}
-      <VersionBadge />
+      {/* Version + source link, bottom-right on every route (home + editor).
+          Mobile mode is canvas-only — no persistent overlays. */}
+      {!isMobileMode() && <VersionBadge />}
     </>
   );
 }

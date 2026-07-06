@@ -3,6 +3,7 @@ import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BlockingDialog } from "./BlockingDialog";
 import { probeCapabilities, type CapabilityReport } from "./capabilities";
+import { isMobileMode } from "@/lib/mobile-mode";
 
 /**
  * Wraps the tool boot with a device-capability check (feature 0001). On mount it
@@ -35,8 +36,19 @@ function readDismissed(key: string): boolean {
 }
 
 export function PreflightGate({ children }: { children: React.ReactNode }) {
-  // Probe once; capabilities don't change within a page load.
-  const [report] = React.useState<CapabilityReport>(() => probeCapabilities());
+  // Probe once; capabilities don't change within a page load. In mobile mode
+  // (features/mobile) the warnings inherent to BEING mobile are noise — the
+  // user is deliberately here — so drop them; real fatals still block.
+  const [report] = React.useState<CapabilityReport>(() => {
+    const r = probeCapabilities();
+    if (!isMobileMode()) return r;
+    return {
+      ...r,
+      warnings: r.warnings.filter(
+        (w) => w.code !== "mobile" && w.code !== "small-screen",
+      ),
+    };
+  });
   const [override, setOverride] = React.useState(false);
   const key = dismissKey(report);
   const [bannerHidden, setBannerHidden] = React.useState(() => readDismissed(key));
