@@ -46,6 +46,7 @@
 #include <view/view_overlay.h>
 #include <pcb_draw_panel_gal.h>
 #include <nlohmann/json.hpp>
+#include "collab_presence_style.h"
 #include <chrono>
 #include <map>
 #include <memory>
@@ -1112,6 +1113,7 @@ struct PEER
 struct PIN
 {
     std::string    id;
+    std::string    name;                 // author (palette-override rehash key)
     VECTOR2D       pos;                  // world coords (IU)
     KIGFX::COLOR4D color;
     bool           resolved = false;
@@ -1119,6 +1121,9 @@ struct PIN
 
 std::vector<PEER>                    g_peers;
 std::vector<PIN>                     g_pins;
+// Every visual knob (shapes, widths, alphas, label placement, color overrides)
+// — see collab_presence_style.h; live-patched by kicadCollabSetStyle (tuner).
+pcbjam_presence::STYLE               g_style;
 std::shared_ptr<KIGFX::VIEW_OVERLAY> g_overlay;
 bool        g_started         = false;
 bool        g_redrawScheduled = false;
@@ -1213,12 +1218,12 @@ void redrawOverlay()
     // ~7 orders of magnitude (invisible cursors).
     double px = view->ToWorld( 1.0 );
 
+    // All shapes/sizes/placements come from g_style (collab_presence_style.h);
+    // the drawing itself is shared with eeschema's TU so the editors never
+    // diverge visually.
     for( const PEER& peer : g_peers )
     {
-        g_overlay->SetIsFill( false );
-        g_overlay->SetIsStroke( true );
-        g_overlay->SetStrokeColor( peer.color );
-        g_overlay->SetLineWidth( 2.5 * px );
+        KIGFX::COLOR4D color = pcbjam_presence::peerColor( g_style, peer.name, peer.color );
 
         for( const KIID& id : peer.selection )
         {
@@ -1227,48 +1232,20 @@ void redrawOverlay()
             if( !item )
                 continue;   // not on this board (yet) — skip silently
 
-            BOX2I bb = item->ViewBBox();
-            bb.Inflate( KiROUND( 4 * px ) );
-            g_overlay->Rectangle( bb.GetOrigin(), bb.GetEnd() );
-
-            // Who selected it — name tag just above the box's top-left corner
-            // (world y grows downward, so "above" is -y).
-            if( !peer.name.empty() )
-            {
-                g_overlay->SetGlyphSize( VECTOR2I( KiROUND( 9 * px ), KiROUND( 9 * px ) ) );
-                g_overlay->BitmapText( wxString::FromUTF8( peer.name.c_str() ),
-                                       VECTOR2I( bb.GetOrigin().x,
-                                                 KiROUND( bb.GetOrigin().y - 8 * px ) ),
-                                       ANGLE_0 );
-            }
+            pcbjam_presence::drawSelectionBox( g_overlay.get(), item->ViewBBox(), peer.name,
+                                               color, px, g_style );
         }
 
         if( peer.hasCursor )
-        {
-            g_overlay->SetLineWidth( 2.0 * px );
-            g_overlay->Cross( peer.cursor, KiROUND( 7 * px ) );
-
-            if( !peer.name.empty() )
-            {
-                g_overlay->SetGlyphSize( VECTOR2I( KiROUND( 10 * px ), KiROUND( 10 * px ) ) );
-                g_overlay->BitmapText( wxString::FromUTF8( peer.name.c_str() ),
-                                       VECTOR2I( KiROUND( peer.cursor.x + 10 * px ),
-                                                 KiROUND( peer.cursor.y + 16 * px ) ),
-                                       ANGLE_0 );
-            }
-        }
+            pcbjam_presence::drawCursor( g_overlay.get(), peer.cursor, peer.name, color, px,
+                                         g_style );
     }
 
-    // Comment pin dots (0005): filled circle in the author's color with a white
-    // ring; resolved pins dim. Drawn last so they sit above selection outlines.
+    // Comment pin dots (0005), drawn last so they sit above selection outlines.
     for( const PIN& pin : g_pins )
     {
-        g_overlay->SetIsStroke( true );
-        g_overlay->SetIsFill( true );
-        g_overlay->SetFillColor( pin.resolved ? pin.color.WithAlpha( 0.3 ) : pin.color );
-        g_overlay->SetStrokeColor( KIGFX::COLOR4D( 1, 1, 1, pin.resolved ? 0.35 : 0.9 ) );
-        g_overlay->SetLineWidth( 1.5 * px );
-        g_overlay->Circle( pin.pos, 7 * px );
+        KIGFX::COLOR4D color = pcbjam_presence::peerColor( g_style, pin.name, pin.color );
+        pcbjam_presence::drawPin( g_overlay.get(), pin.pos, color, pin.resolved, px, g_style );
     }
 
     view->Update( g_overlay.get() );
@@ -1700,6 +1677,7 @@ void pcbCollabSetPins( std::string aJson )
     {
         presence::PIN pin;
         pin.id       = p.value( "id", "" );
+        pin.name     = p.value( "name", "" );
         pin.pos      = VECTOR2D( p.value( "x", 0.0 ), p.value( "y", 0.0 ) );
         pin.color    = presence::parseColor( p.value( "color", "" ) );
         pin.resolved = p.value( "resolved", false );
@@ -1709,6 +1687,40 @@ void pcbCollabSetPins( std::string aJson )
     presence::g_pins = std::move( pins );
     pcbCollabPresenceStart();
     presence::scheduleRedraw();
+}
+
+// JS → C++ (presence tuner): live-patch the overlay STYLE (partial JSON —
+// see collab_presence_style.h) and repaint. Dev-time only in practice, but
+// harmless in production (nothing calls it without VITE_PRESENCE_TUNER).
+void pcbCollabSetStyle( std::string aJson )
+{
+    json j = json::parse( aJson, nullptr, /*allow_exceptions*/ false );
+
+    if( j.is_discarded() )
+        return;
+
+    pcbjam_presence::patchStyle( presence::g_style, j );
+    presence::scheduleRedraw();
+}
+
+// Test/tuner helper: the first N top-level item uuids — real, resolvable KIIDs
+// for synthetic remote-selection previews (a solo tab has no peer to borrow from).
+std::string pcbCollabTestListItems( int aCount )
+{
+    PCB_EDIT_FRAME* fr = pcbFrame();
+
+    json out = json::array();
+
+    if( fr )
+    {
+        forEachTopItem( *fr->GetBoard(), [&]( BOARD_ITEM* item )
+                        {
+                            if( (int) out.size() < aCount && !item->GetParentFootprint() )
+                                out.push_back( toUtf8( item->m_Uuid.AsString() ) );
+                        } );
+    }
+
+    return out.dump();
 }
 
 // JS → C++ (0005): pan the view to a world position (comment panel "jump to
@@ -2063,6 +2075,8 @@ EMSCRIPTEN_BINDINGS(pcbnew) {
     function("kicadCollabSetRemote", &pcbCollabSetRemote);
     function("kicadCollabSetPins", &pcbCollabSetPins);
     function("kicadCollabSetViewport", &pcbCollabSetViewport);
+    function("kicadCollabSetStyle", &pcbCollabSetStyle);
+    function("kicadCollabTestListItems", &pcbCollabTestListItems);
     function("kicadCollabGetViewport", &pcbCollabGetViewport);
     function("kicadCollabGetSelection", &pcbCollabGetSelection);
     function("kicadCollabTestSelectFirst", &pcbCollabTestSelectFirst);

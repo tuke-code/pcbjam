@@ -132,6 +132,9 @@ export function createComments(opts: {
           .filter((t) => !t.resolved)
           .map((t) => ({
             id: t.id,
+            // Author name rides along so the tuner's palette override can
+            // recolor pins consistently with that user's cursor/boxes.
+            name: t.createdBy,
             x: t.world.x,
             y: t.world.y,
             color: colorForUser(t.createdBy),

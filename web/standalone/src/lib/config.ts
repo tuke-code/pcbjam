@@ -182,6 +182,14 @@ export function presenceUser(): PresenceUser {
 }
 
 /**
+ * DEV-TIME presence style tuner (collab-presence): VITE_PRESENCE_TUNER=1 mounts
+ * a floating panel that live-patches the wasm overlay style
+ * (kicadCollabSetStyle) — shapes, widths, alphas, label placement, palettes —
+ * so we can pick the shipped look. Off (and tree-shaken) in normal builds.
+ */
+export const PRESENCE_TUNER_ENABLED = import.meta.env.VITE_PRESENCE_TUNER === "1";
+
+/**
  * The active scope (first URL segment) for API calls. Mirrors how `userSlug()`
  * reads the URL, so the source layer scopes requests without threading scope
  * through every signature. Falls back to `?scope=` / `VITE_SCOPE` / the personal

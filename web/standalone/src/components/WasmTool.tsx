@@ -20,6 +20,7 @@ import {
   libsSourceConfig,
   modelsSourceConfig,
   presenceUser,
+  PRESENCE_TUNER_ENABLED,
   yjsProviderConfig,
   type DocSource,
 } from "@/lib/config";
@@ -65,6 +66,7 @@ import {
 } from "@/wasm/collab/comments";
 import { PresenceRoster } from "@/components/PresenceRoster";
 import { CommentLayer } from "@/components/CommentLayer";
+import { hasTunerBridge, PresenceTuner, type TunerModule } from "@/components/PresenceTuner";
 import {
   createSheetCollabManager,
   registerSheetChangedHook,
@@ -646,6 +648,9 @@ export function WasmTool({
   const [commentsCtl, setCommentsCtl] = React.useState<CommentsController | null>(null);
   const [viewportState, setViewportState] = React.useState<ViewportState | null>(null);
   const commentsRef = React.useRef<CommentsController | null>(null);
+  // Dev-time presence style tuner (VITE_PRESENCE_TUNER=1) — set once the wasm
+  // exposes the style bridge, mounts the floating panel.
+  const [tunerMod, setTunerMod] = React.useState<TunerModule | null>(null);
 
   const append = React.useCallback(
     (msg: string) => setLogs((prev) => [...prev.slice(-800), msg]),
@@ -822,6 +827,9 @@ export function WasmTool({
       // Test/debug handle (mirrors window.kicadCollab): lets the e2e reset
       // persisted threads deterministically without driving the whole UI.
       (win as { __pcbjamComments?: CommentsController }).__pcbjamComments = ctl;
+      if (PRESENCE_TUNER_ENABLED && hasTunerBridge(win.Module)) {
+        setTunerMod(win.Module);
+      }
       // Seed the transform (pushes only happen on input events after this).
       try {
         const vp = JSON.parse(win.Module.kicadCollabGetViewport() || "null");
@@ -1166,6 +1174,9 @@ export function WasmTool({
           currentUser={presenceUser().id}
         />
       )}
+
+      {/* DEV: presence style tuner (VITE_PRESENCE_TUNER=1). */}
+      {ready && tunerMod && <PresenceTuner mod={tunerMod} />}
 
       {/* Lib pre-sync still warming IDB after the editor opened (big set) — small
           unobtrusive indicator so the user knows browsing is still filling in. */}

@@ -50,6 +50,8 @@ void        pcbCollabPresenceStart();
 void        pcbCollabSetRemote( std::string aJson );
 void        pcbCollabSetPins( std::string aJson );
 void        pcbCollabSetViewport( double aCx, double aCy );
+void        pcbCollabSetStyle( std::string aJson );
+std::string pcbCollabTestListItems( int aCount );
 std::string pcbCollabGetViewport();
 std::string pcbCollabGetSelection();
 std::string pcbCollabTestSelectFirst();
@@ -69,6 +71,8 @@ void        schCollabPresenceStart();
 void        schCollabSetRemote( std::string aJson );
 void        schCollabSetPins( std::string aJson );
 void        schCollabSetViewport( double aCx, double aCy );
+void        schCollabSetStyle( std::string aJson );
+std::string schCollabTestListItems( int aCount );
 std::string schCollabGetViewport();
 std::string schCollabGetSelection();
 std::string schCollabTestSelectFirst();
@@ -173,6 +177,16 @@ static void collabSetViewport( double aCx, double aCy )
     pcbEditorActive() ? pcbCollabSetViewport( aCx, aCy ) : schCollabSetViewport( aCx, aCy );
 }
 
+static void collabSetStyle( std::string aJson )
+{
+    pcbEditorActive() ? pcbCollabSetStyle( aJson ) : schCollabSetStyle( aJson );
+}
+
+static std::string collabTestListItems( int aCount )
+{
+    return pcbEditorActive() ? pcbCollabTestListItems( aCount ) : schCollabTestListItems( aCount );
+}
+
 static std::string collabGetViewport()
 {
     return pcbEditorActive() ? pcbCollabGetViewport() : schCollabGetViewport();
@@ -215,6 +229,8 @@ EMSCRIPTEN_BINDINGS(kicad_editor) {
     function("kicadCollabSetRemote", &collabSetRemote);
     function("kicadCollabSetPins", &collabSetPins);
     function("kicadCollabSetViewport", &collabSetViewport);
+    function("kicadCollabSetStyle", &collabSetStyle);
+    function("kicadCollabTestListItems", &collabTestListItems);
     function("kicadCollabGetViewport", &collabGetViewport);
     function("kicadCollabGetSelection", &collabGetSelection);
     function("kicadCollabTestSelectFirst", &collabTestSelectFirst);
