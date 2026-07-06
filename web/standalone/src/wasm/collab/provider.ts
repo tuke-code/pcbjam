@@ -1,5 +1,7 @@
 import type * as Y from "yjs";
+import { Awareness } from "y-protocols/awareness";
 import { connectBroadcastChannel } from "./broadcast-transport";
+import { connectAwarenessBroadcast } from "./awareness-bc";
 
 /**
  * A Y.Doc transport, normalized across backends. The reconciler/seed logic only
@@ -18,6 +20,13 @@ export interface YjsProvider {
    */
   whenSynced(): Promise<void>;
   destroy(): void;
+  /**
+   * The room's Yjs awareness sidecar (presence: roster/cursor/selection —
+   * collab-presence 0001). Network providers surface their own instance (the
+   * server relays it); the BroadcastChannel provider ferries one over a
+   * sibling channel. Absent for `none` — presence UI then renders nothing.
+   */
+  awareness?: Awareness;
 }
 
 export type ProviderKind =
@@ -59,11 +68,19 @@ function broadcastChannelProvider(
   settleMs: number,
 ): YjsProvider {
   const transport = connectBroadcastChannel(doc, room);
+  // Presence sidecar over its own channel — the doc transport stays untouched.
+  const awareness = new Awareness(doc);
+  const awarenessRelay = connectAwarenessBroadcast(awareness, `${room}:awareness`);
   return {
     // No server to sync with — keep the original seed-once heuristic: give a
     // peer tab a moment to answer the state query before deciding seed/adopt.
     whenSynced: () => new Promise((resolve) => setTimeout(resolve, settleMs)),
-    destroy: () => transport.destroy(),
+    destroy: () => {
+      awarenessRelay.destroy();
+      awareness.destroy();
+      transport.destroy();
+    },
+    awareness,
   };
 }
 
@@ -92,6 +109,9 @@ async function partyKitProvider(
         provider.on("sync", onSync);
       }),
     destroy: () => provider.destroy(),
+    // y-partyserver's provider carries its own awareness; the BoardRoom DO
+    // (YServer) relays awareness messages as part of the protocol.
+    awareness: provider.awareness,
   };
 }
 
@@ -119,6 +139,7 @@ async function hocuspocusProvider(
         provider.on("synced", onSync);
       }),
     destroy: () => provider.destroy(),
+    awareness: provider.awareness ?? undefined,
   };
 }
 

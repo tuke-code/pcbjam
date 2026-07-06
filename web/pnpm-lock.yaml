@@ -125,6 +125,9 @@ importers:
       y-partyserver:
         specifier: ^2.2.0
         version: 2.2.0(@cloudflare/workers-types@4.20260610.1)(partyserver@0.5.6(@cloudflare/workers-types@4.20260610.1))(yjs@13.6.31)
+      y-protocols:
+        specifier: ^1.0.6
+        version: 1.0.7(yjs@13.6.31)
       yjs:
         specifier: ^13.6.18
         version: 13.6.31

@@ -98,6 +98,7 @@ export const PROJECT_MANIFEST_URL = import.meta.env.VITE_PROJECT_MANIFEST_URL ||
 export const LOCAL_PROJECTS_ENABLED =
   import.meta.env.VITE_LOCAL_PROJECTS === "idb";
 
+import { colorForUser, type PresenceUser } from "@pcbjam/shared";
 import type { ProviderConfig, ProviderKind } from "@/wasm/collab";
 import { cdnLibsSource } from "@/wasm/libs/cdn-source";
 import { cdnModelsSource, type Model3dSource } from "@/wasm/libs/models-source";
@@ -167,6 +168,17 @@ export function userSlug(): string {
   return (
     import.meta.env.VITE_USER ?? import.meta.env.VITE_LIBS_OWNER ?? "local-user"
   );
+}
+
+/**
+ * The local user's presence identity (collab-presence 0001): the pre-auth slug
+ * doubles as id + display name, color is the deterministic palette hash — so
+ * every peer computes the same identity for this user with no coordination.
+ * Real auth/avatars later replace only how this object is built.
+ */
+export function presenceUser(): PresenceUser {
+  const slug = userSlug();
+  return { id: slug, name: slug, color: colorForUser(slug) };
 }
 
 /**

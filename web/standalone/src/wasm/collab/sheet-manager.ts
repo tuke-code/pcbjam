@@ -8,7 +8,7 @@ import {
   type KicadItemsModule,
   type KicadItemsWindow,
 } from "./kicad-binding";
-import type { ProviderConfig } from "./provider";
+import type { ProviderConfig, YjsProvider } from "./provider";
 import { clog, cwarn } from "./debug";
 
 /**
@@ -46,10 +46,18 @@ export interface SheetCollabManager {
    * otherwise only carries them from seed time. No-op for unknown sheets.
    */
   syncLayoutFromSave(sheetPath: string, fileText: string): void;
-  /** The currently-bound sheet, for drift-detection wiring (null before first switch). */
-  active(): { sheetPath: string; doc: Y.Doc } | null;
+  /** The currently-bound sheet, for drift-detection + presence wiring (null
+   *  before first switch). `provider` carries the room's awareness. */
+  active(): ActiveSheet | null;
   /** Tear down ALL bindings + providers + docs (session end / unmount). */
   destroy(): void;
+}
+
+/** The bound sheet's room: its doc (drift detection) + provider (presence). */
+export interface ActiveSheet {
+  sheetPath: string;
+  doc: Y.Doc;
+  provider: YjsProvider;
 }
 
 export interface SheetManagerOptions {
@@ -70,7 +78,7 @@ export interface SheetManagerOptions {
    * Called whenever the active sheet changes (or clears on destroy) so the host can
    * (re)start drift detection on the now-active doc.
    */
-  onActiveChange?: (active: { sheetPath: string; doc: Y.Doc } | null) => void;
+  onActiveChange?: (active: ActiveSheet | null) => void;
   log: (m: string) => void;
   /**
    * `docSource: "ydoc"` only: the entry sheet's room is already connected (and possibly
@@ -210,7 +218,7 @@ export function createSheetCollabManager(opts: SheetManagerOptions): SheetCollab
     room.dirty = false;
     room.editorMatchesDoc = false; // only meaningful for the first ydoc-entry seed
     activePath = sheetPath;
-    opts.onActiveChange?.({ sheetPath, doc: room.doc });
+    opts.onActiveChange?.({ sheetPath, doc: room.doc, provider: room.session.provider });
   }
 
   function switchTo(sheetPath: string): Promise<void> {
@@ -282,10 +290,11 @@ export function createSheetCollabManager(opts: SheetManagerOptions): SheetCollab
     );
   }
 
-  function active(): { sheetPath: string; doc: Y.Doc } | null {
+  function active(): ActiveSheet | null {
     if (!activePath) return null;
     const room = rooms.get(activePath);
-    return room ? { sheetPath: activePath, doc: room.doc } : null;
+    if (!room) return null;
+    return { sheetPath: activePath, doc: room.doc, provider: room.session.provider };
   }
 
   function destroy(): void {

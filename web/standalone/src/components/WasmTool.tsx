@@ -19,6 +19,7 @@ import {
   currentScope,
   libsSourceConfig,
   modelsSourceConfig,
+  presenceUser,
   yjsProviderConfig,
   type DocSource,
 } from "@/lib/config";
@@ -44,11 +45,19 @@ import type {
   KicadCollabHandle,
   KicadDocSession,
   KicadItemsWindow,
+  YjsProvider,
 } from "@/wasm/collab";
+import {
+  createPresence,
+  type PresenceHandle,
+  type PresencePeer,
+} from "@/wasm/collab/presence";
+import { PresenceRoster } from "@/components/PresenceRoster";
 import {
   createSheetCollabManager,
   registerSheetChangedHook,
   registerSheetCreatedHook,
+  type ActiveSheet,
   type SheetChangedWindow,
   type SheetCollabManager,
   type SheetCreatedWindow,
@@ -400,7 +409,7 @@ async function startSheetCollab(
     session?: KicadDocSession;
     /** The entry file was materialized from `session`'s doc (baseline-only first seed). */
     editorMatchesDoc?: boolean;
-    onActiveChange: (active: { sheetPath: string; doc: Y.Doc } | null) => void;
+    onActiveChange: (active: ActiveSheet | null) => void;
     /** Upload sink (project-backed sessions) — used to register a just-created subsheet. */
     saveBytes?: SaveBytes;
     log: (m: string) => void;
@@ -570,6 +579,7 @@ export function WasmTool({
   const containerRef = React.useRef<HTMLDivElement>(null);
   const startedRef = React.useRef(false);
   const driftRef = React.useRef<{ stop(): void } | null>(null);
+  const presenceRef = React.useRef<PresenceHandle | null>(null);
   const sheetManagerRef = React.useRef<SheetCollabManager | null>(null);
   // The single-room collab doc (pcbnew/pl_editor), for the layout save-sync
   // (miss 08B); eeschema routes per sheet through the manager instead.
@@ -607,6 +617,10 @@ export function WasmTool({
   // Board 3D-model prefetch in flight (background; the viewer works without it —
   // anything still missing lazy-loads per model). Small badge, not an overlay.
   const [modelsSync, setModelsSync] = React.useState<string | null>(null);
+  // The OTHER users in this document's collab room (awareness roster) — drives
+  // the PresenceRoster chip next to SourceChip. Empty when collab is off, the
+  // provider has no awareness (kind "none"), or nobody else is here.
+  const [peers, setPeers] = React.useState<PresencePeer[]>([]);
 
   const append = React.useCallback(
     (msg: string) => setLogs((prev) => [...prev.slice(-800), msg]),
@@ -728,6 +742,29 @@ export function WasmTool({
     });
     const { proceed } = oom.start();
     if (!proceed) return;
+
+    // (Re)bind presence to a collab room's awareness (collab-presence 0001):
+    // publish this user's identity and mirror the peers into the roster chip.
+    // pcbnew/pl_editor bind once; eeschema rebinds per active sheet, so the
+    // roster shows who is on the SAME sheet (room = sheet).
+    const startPresence = (provider: YjsProvider | undefined, sheetPath?: string) => {
+      presenceRef.current?.destroy();
+      presenceRef.current = null;
+      const awareness = provider?.awareness;
+      if (!awareness) {
+        setPeers([]);
+        return;
+      }
+      const presence = createPresence({
+        awareness,
+        user: presenceUser(),
+        tool,
+        sheetPath,
+      });
+      presenceRef.current = presence;
+      presence.subscribe(setPeers);
+      setPeers(presence.peers());
+    };
 
     // Cmd/Ctrl+S belongs to the editor: preventDefault suppresses ONLY the
     // browser's "save page" dialog (observed in Firefox) — the keydown still
@@ -854,10 +891,11 @@ export function WasmTool({
               session,
               saveBytes,
               editorMatchesDoc: !!targetBytes,
-              // Re-point drift detection at whichever sheet is currently bound.
+              // Re-point drift detection + presence at whichever sheet is bound.
               onActiveChange: (activeRoom) => {
                 driftRef.current?.stop();
                 driftRef.current = null;
+                startPresence(activeRoom?.provider, activeRoom?.sheetPath);
                 if (activeRoom) {
                   driftRef.current = startDriftDetection({
                     doc: activeRoom.doc,
@@ -885,6 +923,7 @@ export function WasmTool({
             onStatus: setStatus,
           });
           collabDocRef.current = collabHandle?.doc ?? null;
+          startPresence(collabHandle?.provider);
           if (collabHandle && targetPath && COLLAB_TOOLS.has(tool)) {
             driftRef.current = startDriftDetection({
               doc: collabHandle.doc,
@@ -910,6 +949,8 @@ export function WasmTool({
 
     return () => {
       win.removeEventListener("keydown", swallowBrowserSave, true);
+      presenceRef.current?.destroy();
+      presenceRef.current = null;
       driftRef.current?.stop();
       driftRef.current = null;
       // Tears down every warm room's provider/doc (the only place providers are
@@ -1034,10 +1075,12 @@ export function WasmTool({
         </div>
       )}
 
-      {/* Where this project lives + whether Save persists (top-right). */}
-      {ready && sourceDescriptor && (
-        <div className="absolute right-3 top-3 z-20">
-          <SourceChip descriptor={sourceDescriptor} />
+      {/* Top-right overlay chips: who else is in this file (awareness roster) +
+          where this project lives / whether Save persists. */}
+      {ready && (peers.length > 0 || sourceDescriptor) && (
+        <div className="absolute right-3 top-3 z-20 flex items-center gap-2">
+          {peers.length > 0 && <PresenceRoster peers={peers} />}
+          {sourceDescriptor && <SourceChip descriptor={sourceDescriptor} />}
         </div>
       )}
 
