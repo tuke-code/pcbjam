@@ -48,7 +48,7 @@ test.describe('web app — tool switching', () => {
   test('eeschema → Switch to PCB Editor navigates to pcbnew', async ({ page }) => {
     test.setTimeout(420000); // two full wasm boots
 
-    await page.goto('/p/demo/eeschema/demo.kicad_sch');
+    await page.goto('/default/projects/demo/demo.kicad_sch');
     await waitForToolReady(page, /demo — Schematic Editor/i);
 
     await switchTool(
@@ -64,7 +64,7 @@ test.describe('web app — tool switching', () => {
   test('pcbnew → Switch to Schematic Editor navigates to eeschema', async ({ page }) => {
     test.setTimeout(420000);
 
-    await page.goto('/p/demo/pcbnew/demo.kicad_pcb');
+    await page.goto('/default/projects/demo/demo.kicad_pcb');
     await waitForToolReady(page, /demo — PCB Editor/i);
 
     await switchTool(

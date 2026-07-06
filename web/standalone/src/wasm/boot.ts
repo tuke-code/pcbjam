@@ -21,6 +21,7 @@ import {
   type LibsSource,
 } from "./libs/source";
 import { libUri, PCBJAM_LIB_MOUNT } from "./libs/uri";
+import { installTouchGestures } from "./touch-gestures";
 
 /** The default user lib boot ensures exists, so there's a writable save target. */
 const DEFAULT_USER_LIB_NAME = "My Symbols";
@@ -77,6 +78,10 @@ export interface BootOptions {
    *  `--frame=<token>` in `Module.arguments`; parsed in single_top.cpp. Omitted
    *  ⇒ the bundle's build-time default frame. See `TOOL_FRAME` in constants.ts. */
   frame?: string;
+  /** Canvas-only mobile mode (features/mobile): install the touch-gesture shim
+   *  (pinch-zoom / one-finger pan / tap-select) on the input canvas and hide the
+   *  editor chrome (toolbars/panels/menubar) once the frame is up. */
+  mobile?: boolean;
 }
 
 let booted: { tool: Tool; promise: Promise<void> } | null = null;
@@ -350,6 +355,13 @@ async function doBoot(opts: BootOptions): Promise<void> {
     );
     container.appendChild(canvas);
     (w.Module as { canvas: HTMLCanvasElement }).canvas = canvas;
+    if (opts.mobile) {
+      // Mobile gestures (features/mobile). Installed HERE (preRun) on purpose:
+      // the shim's listeners must be registered before the wasm app's own touch
+      // callbacks so it can suppress the wx single-finger→LEFT-drag mapping.
+      installTouchGestures(canvas);
+      log("[boot] mobile: touch gestures installed");
+    }
     log(`[boot] canvas created ${width}x${height}`);
   };
 
@@ -456,6 +468,32 @@ async function doBoot(opts: BootOptions): Promise<void> {
       log("[boot] runtime initialized");
       const canvas = (w.Module as { canvas?: HTMLCanvasElement }).canvas;
       if (canvas) canvas.style.display = "block";
+      if (opts.mobile) {
+        // Hide the editor chrome (toolbars/panels/menubar) so the canvas fills
+        // the frame. kicadSetChrome (embind) returns false until the editor
+        // frame exists — main() builds it after runtime init — so poll.
+        const mod = w.Module as unknown as {
+          kicadSetChrome?: (show: boolean) => boolean;
+        };
+        const t0 = Date.now();
+        const tick = setInterval(() => {
+          let hidden = false;
+          try {
+            hidden = mod.kicadSetChrome?.(false) === true;
+          } catch (err) {
+            log(`[boot] mobile: kicadSetChrome failed: ${String(err)}`);
+            clearInterval(tick);
+            return;
+          }
+          if (hidden) {
+            log("[boot] mobile: editor chrome hidden");
+            clearInterval(tick);
+          } else if (Date.now() - t0 > 120_000) {
+            log("[boot] mobile: gave up waiting for the editor frame");
+            clearInterval(tick);
+          }
+        }, 300);
+      }
       onStatus("");
     },
     // Resolve wasm + pthread worker against the asset base, not the SPA route.

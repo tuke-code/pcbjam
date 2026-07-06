@@ -29,6 +29,10 @@
 #include <wx/app.h>
 #include <wx/string.h>
 #include <wx/window.h>
+#include <wx/frame.h>
+#include <wx/menu.h>
+#include <wx/statusbr.h>
+#include <wx/aui/framemanager.h>
 #include <kiway.h>
 #include <kiway_player.h>
 
@@ -117,6 +121,52 @@ static bool kicadOpenFile( std::string path )
 
     return frame->OpenProjectFiles(
             std::vector<wxString>( 1, wxString::FromUTF8( path.c_str() ) ) );
+}
+
+
+// Canvas-only mobile chrome toggle (features/mobile): hide/show every AUI pane
+// except the central draw canvas, plus the menubar and status bar, so the GAL
+// canvas fills the frame. Generic wxFrame/wxAui surface only (keeps this TU
+// header-light and serves both editor frames). Hidden bars release their space
+// because the wasm port's frame client-area math skips !IsShown() bars (native
+// parity, see wxwidgets/src/wasm/frame.cpp). Returns false until the editor
+// frame exists — main() builds it after runtime init — so JS polls this.
+static bool kicadSetChrome( bool aShow )
+{
+    wxFrame* frame =
+            wxTheApp ? dynamic_cast<wxFrame*>( wxTheApp->GetTopWindow() ) : nullptr;
+
+    if( !frame )
+        return false;
+
+    if( wxMenuBar* menuBar = frame->GetMenuBar() )
+        menuBar->Show( aShow );
+
+    // Kept alive rather than detached: KiCad SetStatusText()s on every cursor
+    // move, and wxFrameBase wxCHECKs a null status bar.
+    if( wxStatusBar* statusBar = frame->GetStatusBar() )
+        statusBar->Show( aShow );
+
+    if( wxAuiManager* mgr = wxAuiManager::GetManager( frame ) )
+    {
+        wxAuiPaneInfoArray& panes = mgr->GetAllPanes();
+
+        for( size_t i = 0; i < panes.GetCount(); ++i )
+        {
+            wxAuiPaneInfo& pane = panes.Item( i );
+
+            // keep the central editor canvas (named "DrawFrame" in both editors)
+            if( pane.dock_direction == wxAUI_DOCK_CENTER || pane.name == wxT( "DrawFrame" ) )
+                continue;
+
+            pane.Show( aShow );
+        }
+
+        mgr->Update();
+    }
+
+    frame->SendSizeEvent();
+    return true;
 }
 
 
@@ -274,6 +324,9 @@ static bool collabTestClearSelection()
 EMSCRIPTEN_BINDINGS(kicad_editor) {
     // Programmatic file open (preferred over UI automation from the web app).
     function("kicadOpenFile", &kicadOpenFile);
+
+    // Canvas-only mobile mode (features/mobile).
+    function("kicadSetChrome", &kicadSetChrome);
 
     // Yjs collaborative bridge entry points — same JS contract as the standalone
     // bundles, dispatched on the active editor frame.
