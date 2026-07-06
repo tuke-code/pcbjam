@@ -12,4 +12,8 @@ import { API_BASE_URL, userSlug } from "./config";
 export const client = initClient(contract, {
   baseUrl: API_BASE_URL,
   baseHeaders: { [USER_HEADER]: userSlug() },
+  // Send the backend's session cookie (same-site, different origin): backends
+  // with real auth resolve the user from it and ignore the thin header. On a
+  // cookie-less setup this changes nothing.
+  credentials: "include",
 });

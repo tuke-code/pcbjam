@@ -29,6 +29,8 @@ export function remoteLibsSource(
   const client = initClient(contract, {
     baseUrl: apiBase,
     baseHeaders: reqHeaders,
+    // Session-cookie auth (backends with real auth ignore the thin headers).
+    credentials: "include",
   });
   const enc = encodeURIComponent;
 
@@ -62,6 +64,7 @@ export function remoteLibsSource(
     ): Promise<string | null> {
       const res = await fetch(itemUrl(libId, kind, name), {
         headers: reqHeaders,
+        credentials: "include",
       });
       if (!res.ok) return null;
       return await res.text();
@@ -77,6 +80,7 @@ export function remoteLibsSource(
         method: "PUT",
         headers: { ...reqHeaders, "Content-Type": "text/plain; charset=utf-8" },
         body,
+        credentials: "include",
       });
       return res.ok;
     },

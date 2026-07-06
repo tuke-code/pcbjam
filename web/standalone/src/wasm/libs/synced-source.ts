@@ -95,7 +95,9 @@ async function resolveAndOpen(
   };
   const res = await fetch(
     `${opts.apiBase}/api/scopes/${encodeURIComponent(opts.scope)}/libs/${encodeURIComponent(libId)}/sync-stack`,
-    { method: "POST", headers },
+    // credentials: session-cookie auth; the layer descriptors this returns keep
+    // their own bearer-token channel (sync-client transport is cookie-free).
+    { method: "POST", headers, credentials: "include" },
   );
   if (!res.ok) throw new Error(`sync-stack resolve failed: HTTP ${res.status}`);
   const body = (await res.json()) as {

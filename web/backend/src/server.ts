@@ -150,7 +150,11 @@ async function project(scope: string): Promise<Project> {
 async function main(): Promise<void> {
   const app = Fastify({ logger: true, bodyLimit: 1024 * 1024 * 1024 });
   await app.register(cors, {
+    // `true` REFLECTS the request origin (never the literal `*`), so it stays
+    // valid for the editor's credentialed fetches; allow-credentials is what
+    // lets the browser accept those responses (cookie-less callers unaffected).
     origin: CORS_ORIGIN === "*" ? true : CORS_ORIGIN.split(","),
+    credentials: true,
   });
   app.get("/health", async () => ({ ok: true }));
 

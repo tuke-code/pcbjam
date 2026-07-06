@@ -80,7 +80,12 @@ function remoteProjectSource(): ProjectSource {
       return res.body;
     },
     async fetchFileBytes(slug, relPath) {
-      const res = await fetch(fileUrl(slug, relPath));
+      // credentials: session-cookie auth (see contract-client.ts). The static
+      // gallery fetches below stay credential-less — a CDN's wildcard CORS
+      // rejects credentialed requests.
+      const res = await fetch(fileUrl(slug, relPath), {
+        credentials: "include",
+      });
       if (!res.ok) throw new Error(`download failed (${res.status}): ${relPath}`);
       return new Uint8Array(await res.arrayBuffer());
     },
@@ -93,6 +98,7 @@ function remoteProjectSource(): ProjectSource {
       const res = await fetch(`${projectsBase()}/${encodeURIComponent(slug)}/files`, {
         method: "POST",
         body: form,
+        credentials: "include",
       });
       if (!res.ok) throw new Error(`upload failed (${res.status}): ${relPath}`);
     },

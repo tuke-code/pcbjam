@@ -138,5 +138,11 @@ export function reportDriftBeacon(slug: string, body: DriftReportBody): void {
   } catch {
     /* fall through to keepalive fetch */
   }
-  void fetch(url, { method: "POST", body: blob, keepalive: true }).catch(() => {});
+  // credentials: parity with the beacon path (beacons carry same-site cookies).
+  void fetch(url, {
+    method: "POST",
+    body: blob,
+    keepalive: true,
+    credentials: "include",
+  }).catch(() => {});
 }
