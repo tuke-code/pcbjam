@@ -12,6 +12,7 @@ import type { LibInfo, LibItemInfo, LibsSource } from "./source";
  *
  * Layout under the manifest's directory (`<cdn>/libs/kicad/<tag>/`):
  *   manifest.json            top index: every lib (id, name, kind, itemCount)
+ *   fp-index.json            footprint index: per-lib [name, uniquePadCount]
  *   <libId>/manifest         per-lib SyncManifest (GET .../manifest)
  *   <libId>/bundle           per-lib bundle: manifest + all bodies (cold init)
  * Item paths inside a lib follow the `"<kind>/<name>"` scheme.
@@ -40,6 +41,7 @@ export function cdnLibsSource(
   const fetchImpl = opts?.fetchImpl ?? fetch;
 
   let manifestP: Promise<CdnLibsManifest> | null = null;
+  let fpIndexP: Promise<string | null> | null = null;
   const fetchManifest = async (): Promise<CdnLibsManifest> => {
     // Retry with backoff. Firefox can fail a cross-origin fetch issued in the
     // first moments after navigation under COEP (the lazy path runs seconds
@@ -176,6 +178,25 @@ export function cdnLibsSource(
       const stack = await openStack(libId);
       const bytes = await stack.read(`${kind}/${name}`);
       return bytes ? new TextDecoder().decode(bytes) : null;
+    },
+    async getFpIndex(): Promise<string | null> {
+      // Published next to the top manifest (immutable, ~100 KB compressed) —
+      // passed through as raw text; the WASM side parses it once and caches.
+      // A missing index (tag predates fp-index publishing, or a fetch error)
+      // resolves null and the editor falls back to per-lib lazy loads; null is
+      // NOT cached so a transient failure retries on the next chooser use.
+      if (!fpIndexP) {
+        fpIndexP = (async () => {
+          const r = await fetchImpl(`${baseDir}/fp-index.json`);
+          if (r.status === 404) return null;
+          if (!r.ok) throw new Error(`cdn fp-index ${r.status}`);
+          return await r.text();
+        })().catch(() => {
+          fpIndexP = null;
+          return null;
+        });
+      }
+      return fpIndexP;
     },
     // Read-only: no saveItemBody / createLib (the demo's default libs are fixed).
   };

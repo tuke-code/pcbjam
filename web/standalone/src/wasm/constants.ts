@@ -108,10 +108,13 @@ export const TOOL_NEEDS_CONFIG_SEED: Record<Tool, boolean> = {
 };
 
 /**
- * Which library kind a tool consumes — drives which lib-table boot populates
- * from the lib source (symbol → sym-lib-table; footprint → fp-lib-table). A
- * user lib is a kind-agnostic container, so the same lib id can land in both
- * tables depending on the tool. `null` = the tool uses no libraries.
+ * The library kind a tool PRIMARILY consumes — drives the IDB presync warm-up
+ * (WasmTool) and which lib-table boot populates for single-engine bundles. The
+ * merged kicad_editor bundle seeds BOTH tables regardless of this (cross-face
+ * features like the symbol chooser's footprint selector read the other kind;
+ * see `libKinds` in boot.ts) — only its presync stays per-frame. A user lib is
+ * a kind-agnostic container, so the same lib id can land in both tables.
+ * `null` = the tool uses no libraries.
  */
 export const TOOL_LIB_KIND: Record<Tool, "symbol" | "footprint" | null> = {
   pcbnew: "footprint",

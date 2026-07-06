@@ -130,4 +130,25 @@ describe("installLibsProvider — fat list (arg=bodies)", () => {
     const res = await request("list", libUri("Device"), "", "symbol");
     expect(JSON.parse(res as string)).toEqual({ symbols: ["R", "C"] });
   });
+
+  it('"index" passes the source-global footprint index through (bare mount URI)', async () => {
+    const INDEX = JSON.stringify({
+      schema: 1,
+      tag: "10.0.3",
+      libs: { Resistor_SMD: [["R_0402_1005Metric", 2]] },
+    });
+    const request = installAndGetRequest(
+      baseSource({ getFpIndex: async () => INDEX }),
+    );
+    // The C++ side passes the bare mount root (no lib id) — must not be
+    // rejected by the lib-id parse.
+    expect(await request("index", "/mnt/pcbjam/", "", "footprint")).toBe(INDEX);
+    // Only the footprint kind has an index.
+    expect(await request("index", "/mnt/pcbjam/", "", "symbol")).toBeNull();
+  });
+
+  it('"index" resolves null when the source has no index', async () => {
+    const request = installAndGetRequest(baseSource()); // no getFpIndex
+    expect(await request("index", "/mnt/pcbjam/", "", "footprint")).toBeNull();
+  });
 });

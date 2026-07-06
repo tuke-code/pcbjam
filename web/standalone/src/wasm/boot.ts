@@ -17,6 +17,7 @@ import {
   buildFpLibTable,
   buildSymLibTable,
   installLibsProvider,
+  type LibInfo,
   type LibsSource,
 } from "./libs/source";
 import { libUri, PCBJAM_LIB_MOUNT } from "./libs/uri";
@@ -65,7 +66,8 @@ export interface BootOptions {
    *  disagrees with the decoded stream under gzip/br) — then show bytes, not a %. */
   onProgress?: (loaded: number, total: number) => void;
   /** Library source backing `window.kicadLibs`. Null/omitted disables libs
-   *  (an empty sym-lib-table is seeded). Its libs become sym-lib-table rows. */
+   *  (empty lib-tables are seeded). Its libs become sym-lib-table and/or
+   *  fp-lib-table rows depending on the tool (see `libKinds` in doBoot). */
   libsSource?: LibsSource | null;
   /** 3D model source (lazy, per-board). Null/omitted ⇒ the viewer renders the
    *  bare board only, exactly as before models existed. */
@@ -238,9 +240,15 @@ async function doBoot(opts: BootOptions): Promise<void> {
   // which errors on a non-existent path. The bytes are virtual (served via
   // window.kicadLibs); this file only satisfies incidental fs checks.
   let libPlaceholderUris: string[] = [];
-  // Which lib table this tool consumes: symbol → sym-lib-table, footprint →
-  // fp-lib-table. The same lib source feeds whichever table the tool reads.
+  // Which lib tables to seed. The merged kicad_editor bundle serves all four
+  // editors AND cross-face features — the symbol chooser's footprint selector/
+  // preview reach FACE_PCB from a schematic session — so it gets BOTH tables
+  // regardless of frame. Library loading is lazy (enumerate is a no-op; bodies
+  // load on demand), so the extra table costs nothing until a feature reads it.
+  // Single-engine tools keep their one kind (TOOL_LIB_KIND).
   const libKind = TOOL_LIB_KIND[tool];
+  const libKinds: ReadonlyArray<"symbol" | "footprint"> =
+    bundle === "kicad_editor" ? ["symbol", "footprint"] : libKind ? [libKind] : [];
 
   // OCC service (STEP export + STEP/IGES model parsing): install whenever the
   // merged editor bundle boots — a PCB frame can open from ANY session (e.g.
@@ -250,7 +258,7 @@ async function doBoot(opts: BootOptions): Promise<void> {
     installOccService(log);
   }
 
-  if (libsSource && libKind) {
+  if (libsSource && libKinds.length) {
     installLibsProvider(libsSource, log);
     // 3D models ride the same provider (kind "model3d"): the C++ ensure fallback
     // and the board prescan both resolve through this source.
@@ -259,24 +267,37 @@ async function doBoot(opts: BootOptions): Promise<void> {
       log("[3d] model source installed");
     }
     try {
+      // One list per kind (origins are filtered to that kind; user libs are
+      // kind-agnostic containers and appear in every list).
+      const listsByKind = new Map<"symbol" | "footprint", LibInfo[]>();
+      for (const k of libKinds) listsByKind.set(k, await libsSource.listLibs(k));
       // Ensure the owner has at least one writable user lib to save items into.
-      // Pass the tool's kind so origins are filtered to the right domain.
-      let libsList = await libsSource.listLibs(libKind);
-      if (libsSource.createLib && !libsList.some((l) => l.type === "user")) {
+      // A user lib holds either kind, so the created lib joins every table.
+      const hasUserLib = [...listsByKind.values()].some((libs) =>
+        libs.some((l) => l.type === "user"),
+      );
+      if (libsSource.createLib && !hasUserLib) {
         const created = await libsSource.createLib(DEFAULT_USER_LIB_NAME);
         if (created) {
-          libsList = [...libsList, created];
+          for (const libs of listsByKind.values()) libs.push(created);
           log(`[libs] created default user lib "${created.name}"`);
         }
       }
-      if (libKind === "footprint") {
-        fpLibTable = buildFpLibTable(libsList);
-        log(`[libs] seeded ${libsList.length} lib(s) into fp-lib-table`);
-      } else {
-        symLibTable = buildSymLibTable(libsList);
-        log(`[libs] seeded ${libsList.length} lib(s) into sym-lib-table`);
+      const symList = listsByKind.get("symbol");
+      const fpList = listsByKind.get("footprint");
+      if (symList) {
+        symLibTable = buildSymLibTable(symList);
+        log(`[libs] seeded ${symList.length} lib(s) into sym-lib-table`);
       }
-      libPlaceholderUris = libsList.map((l) => libUri(l.id));
+      if (fpList) {
+        fpLibTable = buildFpLibTable(fpList);
+        log(`[libs] seeded ${fpList.length} lib(s) into fp-lib-table`);
+      }
+      libPlaceholderUris = [
+        ...new Set(
+          [...listsByKind.values()].flat().map((l) => libUri(l.id)),
+        ),
+      ];
     } catch (e) {
       log(`[libs] listLibs failed, seeding empty table: ${String(e)}`);
     }

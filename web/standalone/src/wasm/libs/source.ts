@@ -91,6 +91,16 @@ export interface LibsSource {
    * conflict). Used by boot to ensure the owner has a writable target.
    */
   createLib?(name: string): Promise<LibInfo | null>;
+  /**
+   * The publish-time footprint index as raw JSON text:
+   *   { schema, tag, libs: { "<libId>": [["<name>", <uniquePadCount>], …] } }
+   * One small artifact covering EVERY footprint lib, so the editor's symbol-
+   * chooser footprint selector can pin-count/wildcard-filter the full set
+   * without fat-loading a single body (kicad `filterFootprints`, pcbnew.cpp).
+   * Optional: sources without a published index omit it (or resolve null) and
+   * the C++ side falls back to the per-lib lazy load.
+   */
+  getFpIndex?(): Promise<string | null>;
 }
 
 /**
@@ -239,9 +249,11 @@ export function buildFpLibTable(libsList: LibInfo[]): string {
  * Install `window.kicadLibs` backed by a `LibsSource`. Both lib plugins call
  * `request(op, "/mnt/pcbjam/<id>", arg, kind)` (kind defaults to "symbol" so the
  * symbol plugin's 3-arg calls still work):
- *   "list" -> JSON {"symbols":[...]} | {"footprints":[...]}  (names of that kind)
- *   "get"  -> the item body s-expr     (arg = item name; null if absent)
- *   "save" -> "ok" / null              (arg = JSON {"name":..,"body":..})
+ *   "list"  -> JSON {"symbols":[...]} | {"footprints":[...]}  (names of that kind)
+ *   "get"   -> the item body s-expr     (arg = item name; null if absent)
+ *   "save"  -> "ok" / null              (arg = JSON {"name":..,"body":..})
+ *   "index" -> the publish-time footprint index JSON (source-global; lib arg
+ *              ignored) / null when the source has none — see getFpIndex.
  */
 export function installLibsProvider(
   source: LibsSource,
@@ -265,6 +277,14 @@ export function installLibsProvider(
     if (kind === "model3d") {
       log(`[libs] request op=${op} kind=model3d arg=${arg}`);
       return handleModel3dRequest(op, arg);
+    }
+    // The footprint index is source-global (not per-lib) — dispatch before the
+    // lib-id parse, which would reject the bare mount URI the C++ side passes.
+    if (op === "index") {
+      log(`[libs] request op=index kind=${kind}`);
+      return kind === "footprint" && source.getFpIndex
+        ? await source.getFpIndex()
+        : null;
     }
     const id = libIdFromUri(lib);
     log(`[libs] request op=${op} kind=${kind} lib=${lib} (id=${id}) arg=${arg}`);

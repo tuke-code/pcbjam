@@ -17,12 +17,19 @@
 //   manifest   SyncManifest { version, entries: { "<kind>/<name>": {hash,size,mtime} } }
 //   bundle     encodeBundle(manifest, bodies)  — cold-init payload (all bodies)
 // + top `<prefix>/<libTag>/manifest.json` { schema, tag, libs:[{id,name,kind,itemCount}] }
+// + `<prefix>/<libTag>/fp-index.json` { schema, tag, libs: { <libId>: [[name, pads], …] } }
+//   — the publish-time footprint index: unique electrical pad count per footprint,
+//   so the editor's symbol-chooser footprint selector can filter EVERY footprint
+//   lib without fat-loading a single body (kicad pcbnew.cpp `filterFootprints`).
 // All immutable (content is pinned by the tag).
+// A tag published before fp-index.json existed gets an INDEX-ONLY top-up run:
+// bundles/manifests are skipped (immutable + present), only the index is put.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { extractAllLibs } from "../../web/backend/src/extract/extract-libs.js";
+import { countUniquePads } from "../../web/backend/src/extract/kicad-pretty.js";
 import { encodeBundle, type SyncManifest } from "../../web/pcbjam-shared/src/sync-wire.js";
 import { IMMUTABLE, makeStore, putJSON, sha256hex } from "./lib/cdn-store.mjs";
 
@@ -99,14 +106,21 @@ async function main(): Promise<void> {
   const store = makeStore(a.driver, a);
   const enc = new TextEncoder();
   const topKey = `${a.prefix}/${a.libTag}/manifest.json`;
+  const indexKey = `${a.prefix}/${a.libTag}/fp-index.json`;
 
   // Skip-if-exists: the snapshot is immutable + content-pinned by the tag.
-  if (!a.force && store.getJSON(topKey)) {
+  // A tag published before fp-index.json existed drops into INDEX-ONLY mode:
+  // recompute + put just the footprint index (pure local work; no bundle puts).
+  const indexOnly = !a.force && !!store.getJSON(topKey);
+  if (indexOnly && store.getJSON(indexKey)) {
     console.log(`publish-libs: ${topKey} already published — skipping (use --force)`);
     return;
   }
 
-  console.log(`publish-libs: tag=${a.libTag} driver=${store.kind} → ${a.prefix}/${a.libTag}/`);
+  console.log(
+    `publish-libs: tag=${a.libTag} driver=${store.kind} → ${a.prefix}/${a.libTag}/` +
+      (indexOnly ? " (index-only top-up)" : ""),
+  );
 
   // Source the full set from upstream when asked (CI path); --symbols-src /
   // --footprints-src still win if also given (local checkouts).
@@ -120,13 +134,20 @@ async function main(): Promise<void> {
   }
 
   const libs = await extractAllLibs({
-    symbolsSrc: a.symbolsSrc ?? undefined,
+    // Index-only: the index covers footprints only, so skip symbol extraction.
+    symbolsSrc: indexOnly ? undefined : (a.symbolsSrc ?? undefined),
     footprintsSrc: a.footprintsSrc ?? undefined,
   });
 
   const topLibs: Array<{ id: string; name: string; kind: string; itemCount: number }> = [];
+  const fpIndexLibs: Record<string, Array<[string, number]>> = {};
   let totalItems = 0;
   for (const { lib, kind, items } of libs) {
+    if (kind === "footprint") {
+      fpIndexLibs[lib] = items.map((it) => [it.name, countUniquePads(it.body)]);
+    }
+    if (indexOnly) continue; // bundles/manifests already live under this tag
+
     const bodies = items.map(
       (it): [string, Uint8Array] => [`${it.kind}/${it.name}`, enc.encode(it.body)],
     );
@@ -146,11 +167,18 @@ async function main(): Promise<void> {
     totalItems += items.length;
   }
 
-  topLibs.sort((x, y) => x.id.localeCompare(y.id));
-  putJSON(store, topKey, { schema: 1, tag: a.libTag, libs: topLibs }, IMMUTABLE);
+  if (!indexOnly) {
+    topLibs.sort((x, y) => x.id.localeCompare(y.id));
+    putJSON(store, topKey, { schema: 1, tag: a.libTag, libs: topLibs }, IMMUTABLE);
+  }
+  putJSON(store, indexKey, { schema: 1, tag: a.libTag, libs: fpIndexLibs }, IMMUTABLE);
 
+  const fpIndexCount = Object.values(fpIndexLibs).reduce((n, v) => n + v.length, 0);
   console.log(
-    `publish-libs: done — ${topLibs.length} libs, ${totalItems} items → ${topKey}`,
+    indexOnly
+      ? `publish-libs: done — fp-index only (${fpIndexCount} footprints) → ${indexKey}`
+      : `publish-libs: done — ${topLibs.length} libs, ${totalItems} items ` +
+          `(+fp-index: ${fpIndexCount} footprints) → ${topKey}`,
   );
   if (store.kind === "local") console.log(`local layout under: ${a.out}`);
 }

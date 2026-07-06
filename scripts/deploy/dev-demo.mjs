@@ -74,6 +74,7 @@ function parseArgs(argv) {
     noGallery: false, // disable the example gallery (local-folder + IDB only)
     modelsTag: null, // 3D models snapshot tag (live CDN, or the local dir's tag)
     modelsLocal: null, // local publish-models --driver local output dir (serve same-origin)
+    libsLocal: null, // local publish-libs --driver local output dir (serve same-origin)
     port: null,
     repo: "https://github.com/emergence-engineering/pcbjam",
   };
@@ -91,6 +92,7 @@ function parseArgs(argv) {
       case "--repo": a.repo = next(); break;
       case "--models-tag": a.modelsTag = next(); break;
       case "--models-local": a.modelsLocal = next(); break;
+      case "--libs-local": a.libsLocal = next(); break;
       case "-h": case "--help": a.help = true; break;
       default: throw new Error(`unknown arg: ${argv[i]}`);
     }
@@ -115,6 +117,8 @@ const HELP = `dev-demo.mjs — run the standalone locally in demo mode (R2-only 
   --models-tag <tag>   enable lazy 3D models from the CDN snapshot at this tag
   --models-local <dir> serve a local publish-models layout (--driver local --compress none)
                        same-origin instead of the CDN (requires --models-tag)
+  --libs-local <dir>   serve a local publish-libs layout (--driver local) same-origin
+                       instead of the CDN (uses --lib-tag as the snapshot tag)
   --port <n>           dev server port
 
 By default the read-only example gallery (deploy/demo/gallery.json) is built
@@ -141,7 +145,20 @@ function main() {
   const env = { ...process.env };
 
   // --- Libraries: live R2 CDN (the lazy/fat lib-load path), or offline examples.
-  if (a.libTag) {
+  //     --libs-local <publish-libs --out dir> serves that layout same-origin at
+  //     /libs-cdn via a public/ symlink (mirrors --models-local) — for testing
+  //     an unpublished snapshot, e.g. one with a fresh fp-index.json.
+  if (a.libTag && a.libsLocal) {
+    const link = join(repoRoot, "web/standalone/public/libs-cdn");
+    try {
+      if (lstatSync(link)) rmSync(link, { recursive: true, force: true });
+    } catch {
+      /* no existing link */
+    }
+    symlinkSync(resolve(a.libsLocal, "libs/kicad"), link);
+    env.VITE_LIBS_SOURCE = "cdn";
+    env.VITE_LIBS_MANIFEST_URL = `/libs-cdn/${a.libTag}/manifest.json`;
+  } else if (a.libTag) {
     env.VITE_LIBS_SOURCE = "cdn";
     env.VITE_LIBS_MANIFEST_URL = `${a.cdn}/libs/kicad/${a.libTag}/manifest.json`;
   } else {

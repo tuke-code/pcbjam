@@ -136,4 +136,28 @@ describe("cdn libs source", () => {
     const src = await fakeCdn();
     expect(src.saveItemBody).toBeUndefined();
   });
+
+  it("getFpIndex fetches fp-index.json as raw text, null on 404", async () => {
+    const INDEX = { schema: 1, tag: "9.0.0", libs: { Resistor_SMD: [["R_0402_1005Metric", 2]] } };
+    let indexFetches = 0;
+    const fetchImpl = (async (url: string) => {
+      if (url === `${BASE}/fp-index.json`) {
+        indexFetches++;
+        return { ok: true, status: 200, text: async () => JSON.stringify(INDEX) };
+      }
+      return { ok: false, status: 404 };
+    }) as unknown as typeof fetch;
+
+    const src = cdnLibsSource(MANIFEST_URL, { fetchImpl, storeFactory: () => memStore() });
+    expect(JSON.parse((await src.getFpIndex!())!)).toEqual(INDEX);
+    await src.getFpIndex!(); // cached — no second fetch
+    expect(indexFetches).toBe(1);
+
+    // A tag published without an index resolves null (fallback path).
+    const noIndex = cdnLibsSource(MANIFEST_URL, {
+      fetchImpl: (async () => ({ ok: false, status: 404 })) as unknown as typeof fetch,
+      storeFactory: () => memStore(),
+    });
+    expect(await noIndex.getFpIndex!()).toBeNull();
+  });
 });
