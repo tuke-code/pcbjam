@@ -98,6 +98,8 @@ const BIG_MODULE_SPECS = [
   "**/dialog-select-on-open.spec.ts",
   // boots pcbnew.html and opens the Edit menu (H-7 menu-staleness repro).
   "**/menu-undo-stale.spec.ts",
+  // boots pcbnew.html and right-clicks the canvas (H-8 context-menu-staleness repro).
+  "**/contextmenu-fresh.spec.ts",
   // 3D viewer specs boot pcbnew.html (3D-enabled build) — same V8 routing.
   "**/3d-viewer.spec.ts",
   // Isolated (own file → own worker) so its heavy single load isn't degraded by the
