@@ -67,6 +67,12 @@ export function resetPresenceColorClaims(): void {
   g_claims.clear();
 }
 
+/** The session's claimed color for a user, if any — sibling rooms (skeletons,
+ *  the 0006 project presence room) reuse it so one user is one color everywhere. */
+export function claimedPresenceColor(userId: string): string | undefined {
+  return g_claims.get(userId);
+}
+
 /** Least-used palette color among the OTHER users in `states` — the lowest
  *  free slot while the room is smaller than the palette, fair reuse after. */
 function lowestFreeColor(

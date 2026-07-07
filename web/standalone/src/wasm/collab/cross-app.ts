@@ -1,0 +1,141 @@
+import * as Y from "yjs";
+import {
+  presenceRoomId,
+  presenceStateSchema,
+  type PresenceState,
+  type PresenceUser,
+} from "@pcbjam/shared";
+import { connectProvider, type ProviderConfig, type YjsProvider } from "./provider";
+import { claimedPresenceColor } from "./presence";
+import { clog } from "./debug";
+
+/**
+ * Project-wide presence room (collab-presence 0006): one awareness-only room
+ * per PROJECT, joined by every collab-capable editor alongside its per-file
+ * room(s). Per-file rooms keep owning same-document presence (cursors, roster,
+ * selection outlines); this room exists ONLY so cross-app features can see
+ * peers in the project's OTHER documents — an eeschema tab learning what a
+ * pcbnew tab has selected, and vice versa.
+ *
+ * The local client publishes a full `PresenceState` (cursor always null —
+ * world coordinates are meaningless across documents) and updates only its
+ * `selection`/`selectionPaths`, so traffic is selection-rate, not cursor-rate.
+ * The Y.Doc is a required transport sidecar that stays empty; backends skip
+ * persisting `~presence` rooms.
+ */
+
+export interface CrossAppPeer {
+  clientId: number;
+  state: PresenceState;
+}
+
+export interface CrossAppHandle {
+  /** Publish this tab's selection (uuids + pcbnew footprint paths). */
+  setSelection(uuids: string[], paths?: string[]): void;
+  /**
+   * Peers in a DIFFERENT tool, one entry per awareness client. Unlike the
+   * room roster this INCLUDES the own user's other tabs — one person with
+   * the schematic and the board open gets classic cross-probing.
+   */
+  peers(): CrossAppPeer[];
+  /** Fires on every awareness change in the project room. Returns unsubscribe. */
+  subscribe(cb: () => void): () => void;
+  destroy(): void;
+}
+
+export async function startCrossAppPresence(opts: {
+  projectId: string;
+  provider: ProviderConfig;
+  user: PresenceUser;
+  tool: string;
+}): Promise<CrossAppHandle | undefined> {
+  if (opts.provider.kind === "none") return undefined;
+
+  const room = presenceRoomId(opts.projectId);
+  const doc = new Y.Doc();
+  let provider: YjsProvider;
+  try {
+    provider = await connectProvider(doc, opts.provider, { room });
+  } catch (err) {
+    clog("cross-app: provider connect failed —", String(err));
+    doc.destroy();
+    return undefined;
+  }
+
+  const awareness = provider.awareness;
+  if (!awareness) {
+    provider.destroy();
+    doc.destroy();
+    return undefined;
+  }
+
+  let selection: string[] = [];
+  let selectionPaths: string[] | undefined;
+
+  const publish = () => {
+    const state: PresenceState = {
+      // Reuse the bound room's claimed color so one user is one color
+      // everywhere (same rule as the eeschema skeleton states).
+      user: { ...opts.user, color: claimedPresenceColor(opts.user.id) ?? opts.user.color },
+      tool: opts.tool,
+      cursor: null,
+      selection,
+      ...(selectionPaths?.length ? { selectionPaths } : {}),
+      updatedAt: Date.now(),
+    };
+    awareness.setLocalState(state);
+  };
+
+  publish();
+  clog("cross-app: joined project presence room", room, "as", opts.tool);
+
+  const subscribers = new Set<() => void>();
+  const onChange = () => {
+    for (const cb of subscribers) cb();
+  };
+  awareness.on("change", onChange);
+
+  // Fast removal on tab close (same rationale as presence.ts).
+  const onPageHide = () => awareness.setLocalState(null);
+  if (typeof window !== "undefined") {
+    window.addEventListener("pagehide", onPageHide);
+  }
+
+  let destroyed = false;
+  return {
+    setSelection(uuids, paths) {
+      selection = uuids;
+      selectionPaths = paths;
+      publish();
+    },
+    peers() {
+      const out: CrossAppPeer[] = [];
+      for (const [clientId, raw] of awareness.getStates()) {
+        if (clientId === awareness.clientID) continue;
+        const parsed = presenceStateSchema.safeParse(raw);
+        if (!parsed.success) continue;
+        // Same-tool peers are the per-file rooms' business (and may not even
+        // share a document with us) — cross-app only maps across editors.
+        if (parsed.data.tool === opts.tool) continue;
+        out.push({ clientId, state: parsed.data });
+      }
+      return out.sort((a, b) => a.clientId - b.clientId);
+    },
+    subscribe(cb) {
+      subscribers.add(cb);
+      return () => subscribers.delete(cb);
+    },
+    destroy() {
+      if (destroyed) return;
+      destroyed = true;
+      if (typeof window !== "undefined") {
+        window.removeEventListener("pagehide", onPageHide);
+      }
+      awareness.off("change", onChange);
+      subscribers.clear();
+      awareness.setLocalState(null);
+      provider.destroy();
+      doc.destroy();
+    },
+  };
+}

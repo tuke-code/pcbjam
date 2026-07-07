@@ -1106,6 +1106,10 @@ struct PEER
     bool              hasCursor = false;
     VECTOR2D          cursor;            // world coords (IU/nm)
     std::vector<KIID> selection;
+    // Cross-app selection (0006): SYMBOL uuids an eeschema peer has selected —
+    // rendered as ghost outlines on every footprint whose GetPath() ends in one
+    // (a reused sheet legitimately maps one symbol to N footprints).
+    std::vector<KIID> xsel;
 };
 
 // Comment pin dot (collab-presence 0005): the GAL half of the hybrid pin —
@@ -1171,8 +1175,36 @@ json selectionUuids( PCB_EDIT_FRAME* aFrame )
     return uuids;
 }
 
+// The full selection emit payload (0006): the uuids plus, for every selected
+// FOOTPRINT, its schematic link — the GetPath() KIID_PATH string ending in the
+// symbol uuid. eeschema peers highlight the corresponding symbols from it.
+json selectionPayload( PCB_EDIT_FRAME* aFrame )
+{
+    json payload;
+    payload["uuids"]   = selectionUuids( aFrame );
+    payload["fpPaths"] = json::array();
+
+    PCB_SELECTION_TOOL* selTool = aFrame->GetToolManager()->GetTool<PCB_SELECTION_TOOL>();
+
+    if( !selTool )
+        return payload;
+
+    for( EDA_ITEM* item : selTool->GetSelection() )
+    {
+        if( item->Type() != PCB_FOOTPRINT_T )
+            continue;
+
+        const KIID_PATH& path = static_cast<FOOTPRINT*>( item )->GetPath();
+
+        if( !path.empty() )
+            payload["fpPaths"].push_back( toUtf8( path.AsString() ) );
+    }
+
+    return payload;
+}
+
 // Post-settle selection emit: read the selection AFTER the triggering event finished
-// (CallAfter), dedupe against the last emitted set, hand the uuid list to JS.
+// (CallAfter), dedupe against the last emitted set, hand the payload to JS.
 void checkSelection()
 {
     g_selCheckScheduled = false;
@@ -1182,7 +1214,7 @@ void checkSelection()
     if( !fr )
         return;
 
-    std::string s = selectionUuids( fr ).dump();
+    std::string s = selectionPayload( fr ).dump();
 
     if( s == g_lastSelectionJson )
         return;
@@ -1234,6 +1266,47 @@ void redrawOverlay()
     // All shapes/sizes/placements come from g_style (collab_presence_style.h);
     // the drawing itself is shared with eeschema's TU so the editors never
     // diverge visually.
+    // Draw ONE item's selection box under the given style. Exact-geometry
+    // outline (style shape 5): footprints hug their bounding hull, everything
+    // else its transformed shape. Runs on the coroutine fiber (virtual
+    // dispatch), falls back to the bbox on anything that can't produce a
+    // polygon.
+    auto drawItem = [&]( BOARD_ITEM* item, const std::string& name,
+                         const KIGFX::COLOR4D& color, const pcbjam_presence::STYLE& style )
+    {
+        SHAPE_POLY_SET outline;
+
+        if( style.selShape == 5 )
+        {
+            try
+            {
+                int pad = KiROUND( style.selPaddingPx * px );
+                int err = KiROUND( px ) + 1;
+
+                if( item->Type() == PCB_FOOTPRINT_T )
+                {
+                    outline = static_cast<FOOTPRINT*>( item )->GetBoundingHull();
+
+                    if( pad > 0 )
+                        outline.Inflate( pad, CORNER_STRATEGY::ROUND_ALL_CORNERS, err );
+                }
+                else
+                {
+                    item->TransformShapeToPolygon( outline, (PCB_LAYER_ID) itemLayer( item ),
+                                                   pad, err, ERROR_OUTSIDE );
+                }
+            }
+            catch( ... )
+            {
+                outline.RemoveAllContours();
+            }
+        }
+
+        pcbjam_presence::drawSelectionBox( g_overlay.get(), g_textOverlay.get(),
+                                           item->ViewBBox(), name, color, px,
+                                           style, &outline );
+    };
+
     for( const PEER& peer : g_peers )
     {
         KIGFX::COLOR4D color = pcbjam_presence::peerColor( g_style, peer.name, peer.color );
@@ -1245,41 +1318,27 @@ void redrawOverlay()
             if( !item )
                 continue;   // not on this board (yet) — skip silently
 
-            // Exact-geometry outline (style shape 5): footprints hug their
-            // bounding hull, everything else its transformed shape. Runs on
-            // the coroutine fiber (virtual dispatch), falls back to the bbox
-            // on anything that can't produce a polygon.
-            SHAPE_POLY_SET outline;
+            drawItem( item, peer.name, color, g_style );
+        }
 
-            if( g_style.selShape == 5 )
+        // Cross-app ghosts (0006): the peer's eeschema symbol uuids, matched
+        // against every footprint's GetPath() tail. The per-redraw linear scan
+        // reflects the live board with no index to invalidate; boards are small
+        // relative to the redraw's own draw cost.
+        if( !peer.xsel.empty() )
+        {
+            pcbjam_presence::STYLE ghost = pcbjam_presence::ghostStyle( g_style );
+
+            for( const KIID& symId : peer.xsel )
             {
-                try
+                for( FOOTPRINT* fp : board->Footprints() )
                 {
-                    int pad = KiROUND( g_style.selPaddingPx * px );
-                    int err = KiROUND( px ) + 1;
+                    const KIID_PATH& path = fp->GetPath();
 
-                    if( item->Type() == PCB_FOOTPRINT_T )
-                    {
-                        outline = static_cast<FOOTPRINT*>( item )->GetBoundingHull();
-
-                        if( pad > 0 )
-                            outline.Inflate( pad, CORNER_STRATEGY::ROUND_ALL_CORNERS, err );
-                    }
-                    else
-                    {
-                        item->TransformShapeToPolygon( outline, (PCB_LAYER_ID) itemLayer( item ),
-                                                       pad, err, ERROR_OUTSIDE );
-                    }
-                }
-                catch( ... )
-                {
-                    outline.RemoveAllContours();
+                    if( !path.empty() && path.back() == symId )
+                        drawItem( fp, peer.name, color, ghost );
                 }
             }
-
-            pcbjam_presence::drawSelectionBox( g_overlay.get(), g_textOverlay.get(),
-                                               item->ViewBBox(), peer.name, color, px,
-                                               g_style, &outline );
         }
 
         if( peer.hasCursor )
@@ -1700,6 +1759,14 @@ void pcbCollabSetRemote( std::string aJson )
                 peer.selection.emplace_back( wxString::FromUTF8( u.get<std::string>().c_str() ) );
         }
 
+        // Cross-app selection (0006): symbol uuids from an eeschema peer,
+        // ghost-rendered on the matching footprints.
+        for( const json& u : p.value( "xsel", json::array() ) )
+        {
+            if( u.is_string() )
+                peer.xsel.emplace_back( wxString::FromUTF8( u.get<std::string>().c_str() ) );
+        }
+
         peers.push_back( std::move( peer ) );
     }
 
@@ -1886,6 +1953,49 @@ std::string pcbCollabGetSelection()
     return presence::selectionUuids( fr ).dump();
 }
 
+// JS pull of the current selection WITH the footprints' schematic paths (0006):
+// `{uuids:[…], fpPaths:[…]}` — the same payload checkSelection emits. Seeds the
+// cross-app presence at attach; GetSelection above keeps its bare-array shape
+// for the pre-0006 callers and the e2e no-leak probe.
+std::string pcbCollabGetSelectionFull()
+{
+    PCB_EDIT_FRAME* fr = pcbFrame();
+
+    if( !fr )
+        return "{\"uuids\":[],\"fpPaths\":[]}";
+
+    return presence::selectionPayload( fr ).dump();
+}
+
+// Test probe (0006): the board-item uuids the current peers' cross-app
+// selections (xsel symbol uuids) resolve to on THIS board — a deterministic
+// assertion target next to the pixel diff.
+std::string pcbCollabTestGetCrossMapped()
+{
+    json arr = json::array();
+
+    PCB_EDIT_FRAME* fr = pcbFrame();
+
+    if( !fr )
+        return arr.dump();
+
+    for( const presence::PEER& peer : presence::g_peers )
+    {
+        for( const KIID& symId : peer.xsel )
+        {
+            for( FOOTPRINT* fp : fr->GetBoard()->Footprints() )
+            {
+                const KIID_PATH& path = fp->GetPath();
+
+                if( !path.empty() && path.back() == symId )
+                    arr.push_back( toUtf8( fp->m_Uuid.AsString() ) );
+            }
+        }
+    }
+
+    return arr.dump();
+}
+
 // Test helper: REALLY select the first top-level item through the selection tool (the
 // same call the cross-probe flash uses), then run the presence check — a programmatic
 // select has no closing canvas event. Returns the selected uuid.
@@ -1903,6 +2013,39 @@ std::string pcbCollabTestSelectFirst()
                         if( !target )
                             target = item;
                     } );
+
+    if( !target )
+        return "";
+
+    fr->CallAfter( [fr, target]() {
+        if( PCB_SELECTION_TOOL* st = fr->GetToolManager()->GetTool<PCB_SELECTION_TOOL>() )
+        {
+            st->AddItemToSel( target );
+            schedulePresenceSelCheck();
+        }
+    } );
+
+    return toUtf8( target->m_Uuid.AsString() );
+}
+
+// Test helper (0006): REALLY select the first FOOTPRINT through the selection
+// tool — the deterministic cross-app subject (TestSelectFirst may pick a track,
+// which legitimately maps to nothing in eeschema). Returns the uuid, "" if the
+// board has no footprints.
+std::string pcbCollabTestSelectComponent()
+{
+    PCB_EDIT_FRAME* fr = pcbFrame();
+
+    if( !fr )
+        return "";
+
+    FOOTPRINT* target = nullptr;
+
+    for( FOOTPRINT* fp : fr->GetBoard()->Footprints() )
+    {
+        target = fp;
+        break;
+    }
 
     if( !target )
         return "";
@@ -2192,7 +2335,11 @@ EMSCRIPTEN_BINDINGS(pcbnew) {
     function("kicadCollabTestDemoSet", &pcbCollabTestDemoSet);
     function("kicadCollabGetViewport", &pcbCollabGetViewport);
     function("kicadCollabGetSelection", &pcbCollabGetSelection);
+    // Cross-app selection (0006).
+    function("kicadCollabGetSelectionFull", &pcbCollabGetSelectionFull);
+    function("kicadCollabTestGetCrossMapped", &pcbCollabTestGetCrossMapped);
     function("kicadCollabTestSelectFirst", &pcbCollabTestSelectFirst);
+    function("kicadCollabTestSelectComponent", &pcbCollabTestSelectComponent);
     function("kicadCollabTestClearSelection", &pcbCollabTestClearSelection);
 #endif // !KICAD_MERGED_EMBIND
 }

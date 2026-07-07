@@ -58,6 +58,7 @@ import {
   hasPresenceBridge,
   type PresenceKicadWindow,
 } from "@/wasm/collab/presence-kicad";
+import { startCrossAppPresence, type CrossAppHandle } from "@/wasm/collab/cross-app";
 import {
   createComments,
   hasCommentsBridge,
@@ -598,6 +599,9 @@ export function WasmTool({
   const driftRef = React.useRef<{ stop(): void } | null>(null);
   const presenceRef = React.useRef<PresenceHandle | null>(null);
   const presenceBridgeRef = React.useRef<{ destroy(): void } | null>(null);
+  // Project-wide presence room (0006): joined once per session, survives
+  // eeschema sheet rebinds — the bridge re-reads it on every startPresence.
+  const crossAppRef = React.useRef<CrossAppHandle | null>(null);
   const sheetManagerRef = React.useRef<SheetCollabManager | null>(null);
   // The single-room collab doc (pcbnew/pl_editor), for the layout save-sync
   // (miss 08B); eeschema routes per sheet through the manager instead.
@@ -811,6 +815,8 @@ export function WasmTool({
           mod: win.Module,
           win: win as unknown as PresenceKicadWindow,
           presence,
+          // Cross-app selection (0006): the project presence room, if joined.
+          crossApp: crossAppRef.current ?? undefined,
           // Live world↔screen transform for the DOM comment layer (0005).
           onViewport: setViewportState,
         });
@@ -964,6 +970,26 @@ export function WasmTool({
         // divergence. Gated on a real collab session; re-targeted per active sheet below.
         const { startDriftDetection } = await import("@/wasm/collab/drift-detect");
 
+        // Cross-app selection (0006): join the project-wide presence room BEFORE
+        // the per-file collab starts, so the first startPresence bind already
+        // routes xsel. Honors the same ?collab=0 opt-out as the room collab.
+        const collabOptOut =
+          new URLSearchParams(win.location.search).get("collab") === "0" ||
+          new URLSearchParams(win.location.search).get("collab") === "false";
+        if ((tool === "pcbnew" || tool === "eeschema") && !collabOptOut) {
+          crossAppRef.current =
+            (await startCrossAppPresence({
+              projectId,
+              provider: yjsProviderConfig(),
+              user: presenceUser(),
+              tool,
+            })) ?? null;
+          // Test/debug handle (mirrors __pcbjamComments): lets the e2e assert
+          // the project-room peer view without driving pixels.
+          (win as { __pcbjamCrossApp?: CrossAppHandle | null }).__pcbjamCrossApp =
+            crossAppRef.current;
+        }
+
         if (tool === "eeschema") {
           // Multi-room (subschema) collab: every .kicad_sch is its own warm room; the
           // active sheet is bound, navigation re-routes it (C++ onSheetChanged hook).
@@ -1042,6 +1068,8 @@ export function WasmTool({
       presenceBridgeRef.current = null;
       presenceRef.current?.destroy();
       presenceRef.current = null;
+      crossAppRef.current?.destroy();
+      crossAppRef.current = null;
       driftRef.current?.stop();
       driftRef.current = null;
       // Tears down every warm room's provider/doc (the only place providers are

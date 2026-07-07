@@ -701,6 +701,10 @@ struct PEER
     bool              hasCursor = false;
     VECTOR2D          cursor;            // world coords (IU)
     std::vector<KIID> selection;
+    // Cross-app selection (0006): SYMBOL uuids derived from a pcbnew peer's
+    // footprint paths (the TS side strips the KIID_PATH down to its tail).
+    // Ghost-rendered when the symbol resolves onto the CURRENT sheet.
+    std::vector<KIID> xsel;
 };
 
 // Comment pin dot (collab-presence 0005): the GAL half of the hybrid pin —
@@ -837,6 +841,29 @@ void redrawOverlay()
             pcbjam_presence::drawSelectionBox( g_overlay.get(), g_textOverlay.get(),
                                                item->ViewBBox(), peer.name, color, px,
                                                g_style );
+        }
+
+        // Cross-app ghosts (0006): a pcbnew peer's selection, as symbol uuids.
+        // Unlike same-room selections (per-sheet rooms scope those by
+        // construction) these arrive project-wide, so only draw items that
+        // resolve onto the sheet THIS canvas is showing — a bbox from another
+        // sheet's screen would land at meaningless coordinates here.
+        if( !peer.xsel.empty() )
+        {
+            pcbjam_presence::STYLE ghost = pcbjam_presence::ghostStyle( g_style );
+
+            for( const KIID& id : peer.xsel )
+            {
+                SCH_SHEET_PATH path;
+                SCH_ITEM*      item = fr->Schematic().ResolveItem( id, &path, /*allowNull*/ true );
+
+                if( !item || path.LastScreen() != fr->GetScreen() )
+                    continue;
+
+                pcbjam_presence::drawSelectionBox( g_overlay.get(), g_textOverlay.get(),
+                                                   item->ViewBBox(), peer.name, color, px,
+                                                   ghost );
+            }
         }
 
         if( peer.hasCursor )
@@ -1596,6 +1623,13 @@ void schCollabSetRemote( std::string aJson )
                 peer.selection.emplace_back( wxString::FromUTF8( u.get<std::string>().c_str() ) );
         }
 
+        // Cross-app selection (0006): symbol uuids from a pcbnew peer.
+        for( const json& u : p.value( "xsel", json::array() ) )
+        {
+            if( u.is_string() )
+                peer.xsel.emplace_back( wxString::FromUTF8( u.get<std::string>().c_str() ) );
+        }
+
         peers.push_back( std::move( peer ) );
     }
 
@@ -1776,6 +1810,48 @@ std::string schCollabGetSelection()
     return presence::selectionUuids( fr ).dump();
 }
 
+// JS pull of the current selection in the 0006 payload shape. eeschema has no
+// footprint paths — the uuids ARE the symbol uuids — but the export keeps the
+// merged image's kicadCollabGetSelectionFull contract uniform across editors.
+std::string schCollabGetSelectionFull()
+{
+    SCH_EDIT_FRAME* fr = schFrame();
+
+    if( !fr )
+        return "{\"uuids\":[],\"fpPaths\":[]}";
+
+    json payload;
+    payload["uuids"]   = presence::selectionUuids( fr );
+    payload["fpPaths"] = json::array();
+    return payload.dump();
+}
+
+// Test probe (0006): the schematic-item uuids the current peers' cross-app
+// selections resolve to ON THE CURRENT SHEET (mirrors the redraw's gate).
+std::string schCollabTestGetCrossMapped()
+{
+    json arr = json::array();
+
+    SCH_EDIT_FRAME* fr = schFrame();
+
+    if( !fr )
+        return arr.dump();
+
+    for( const presence::PEER& peer : presence::g_peers )
+    {
+        for( const KIID& id : peer.xsel )
+        {
+            SCH_SHEET_PATH path;
+            SCH_ITEM*      item = fr->Schematic().ResolveItem( id, &path, /*allowNull*/ true );
+
+            if( item && path.LastScreen() == fr->GetScreen() )
+                arr.push_back( toUtf8( item->m_Uuid.AsString() ) );
+        }
+    }
+
+    return arr.dump();
+}
+
 // Test helper: REALLY select the current sheet's first item through the selection
 // tool, then run the presence check (programmatic selects close no canvas event).
 std::string schCollabTestSelectFirst()
@@ -1794,6 +1870,48 @@ std::string schCollabTestSelectFirst()
 
     for( SCH_ITEM* item : screen->Items() )
     {
+        target = item;
+        break;
+    }
+
+    if( !target )
+        return "";
+
+    fr->CallAfter( [fr, target]() {
+        if( SCH_SELECTION_TOOL* st = fr->GetToolManager()->GetTool<SCH_SELECTION_TOOL>() )
+        {
+            st->AddItemToSel( target );
+            schedulePresenceSelCheck();
+        }
+    } );
+
+    return toUtf8( target->m_Uuid.AsString() );
+}
+
+// Test helper (0006): REALLY select the first SYMBOL on the current sheet —
+// the deterministic cross-app subject (TestSelectFirst may pick a wire, which
+// legitimately maps to nothing in pcbnew). Returns the uuid, "" without one.
+std::string schCollabTestSelectComponent()
+{
+    SCH_EDIT_FRAME* fr = schFrame();
+
+    if( !fr )
+        return "";
+
+    SCH_SCREEN* screen = currentScreen( fr );
+
+    if( !screen )
+        return "";
+
+    SCH_ITEM* target = nullptr;
+
+    for( SCH_ITEM* item : screen->Items().OfType( SCH_SYMBOL_T ) )
+    {
+        // Power symbols (PWR_FLAG, GND, …) legitimately have no footprint —
+        // they'd make the cross-app subject map to nothing by construction.
+        if( static_cast<SCH_SYMBOL*>( item )->IsPower() )
+            continue;
+
         target = item;
         break;
     }
@@ -1903,7 +2021,11 @@ EMSCRIPTEN_BINDINGS(eeschema) {
     function("kicadCollabTestDemoSet", &schCollabTestDemoSet);
     function("kicadCollabGetViewport", &schCollabGetViewport);
     function("kicadCollabGetSelection", &schCollabGetSelection);
+    // Cross-app selection (0006).
+    function("kicadCollabGetSelectionFull", &schCollabGetSelectionFull);
+    function("kicadCollabTestGetCrossMapped", &schCollabTestGetCrossMapped);
     function("kicadCollabTestSelectFirst", &schCollabTestSelectFirst);
+    function("kicadCollabTestSelectComponent", &schCollabTestSelectComponent);
     function("kicadCollabTestClearSelection", &schCollabTestClearSelection);
 #endif // !KICAD_MERGED_EMBIND
 }

@@ -55,6 +55,10 @@ std::string pcbCollabTestListItems( int aCount );
 std::string pcbCollabTestDemoSet();
 std::string pcbCollabGetViewport();
 std::string pcbCollabGetSelection();
+// Cross-app selection (collab-presence 0006).
+std::string pcbCollabGetSelectionFull();
+std::string pcbCollabTestGetCrossMapped();
+std::string pcbCollabTestSelectComponent();
 std::string pcbCollabTestSelectFirst();
 bool        pcbCollabTestClearSelection();
 
@@ -77,6 +81,10 @@ std::string schCollabTestListItems( int aCount );
 std::string schCollabTestDemoSet();
 std::string schCollabGetViewport();
 std::string schCollabGetSelection();
+// Cross-app selection (collab-presence 0006).
+std::string schCollabGetSelectionFull();
+std::string schCollabTestGetCrossMapped();
+std::string schCollabTestSelectComponent();
 std::string schCollabTestSelectFirst();
 bool        schCollabTestClearSelection();
 
@@ -204,6 +212,21 @@ static std::string collabGetSelection()
     return pcbEditorActive() ? pcbCollabGetSelection() : schCollabGetSelection();
 }
 
+static std::string collabGetSelectionFull()
+{
+    return pcbEditorActive() ? pcbCollabGetSelectionFull() : schCollabGetSelectionFull();
+}
+
+static std::string collabTestGetCrossMapped()
+{
+    return pcbEditorActive() ? pcbCollabTestGetCrossMapped() : schCollabTestGetCrossMapped();
+}
+
+static std::string collabTestSelectComponent()
+{
+    return pcbEditorActive() ? pcbCollabTestSelectComponent() : schCollabTestSelectComponent();
+}
+
 static std::string collabTestSelectFirst()
 {
     return pcbEditorActive() ? pcbCollabTestSelectFirst() : schCollabTestSelectFirst();
@@ -241,6 +264,10 @@ EMSCRIPTEN_BINDINGS(kicad_editor) {
     function("kicadCollabTestDemoSet", &collabTestDemoSet);
     function("kicadCollabGetViewport", &collabGetViewport);
     function("kicadCollabGetSelection", &collabGetSelection);
+    // Cross-app selection (collab-presence 0006).
+    function("kicadCollabGetSelectionFull", &collabGetSelectionFull);
+    function("kicadCollabTestGetCrossMapped", &collabTestGetCrossMapped);
+    function("kicadCollabTestSelectComponent", &collabTestSelectComponent);
     function("kicadCollabTestSelectFirst", &collabTestSelectFirst);
     function("kicadCollabTestClearSelection", &collabTestClearSelection);
 }

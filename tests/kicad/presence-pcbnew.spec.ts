@@ -21,6 +21,9 @@ import { test, expect } from "./fixtures";
 
 const SEG1 = "44444444-0000-0000-0000-000000000001";
 const FP1 = "66666666-0000-0000-0000-000000000001";
+// The footprint's schematic link (0006): its (path …) ends in the symbol uuid.
+const SYM1 = "aaaaaaaa-0000-0000-0000-000000000001";
+const FP1_PATH = `/${SYM1}`;
 const SAMPLE_PCB = `(kicad_pcb
 \t(version 20241229)
 \t(generator "pcbnew")
@@ -41,6 +44,7 @@ const SAMPLE_PCB = `(kicad_pcb
 \t\t(layer "F.Cu")
 \t\t(uuid "${FP1}")
 \t\t(at 100 100)
+\t\t(path "${FP1_PATH}")
 \t\t(attr smd)
 \t\t(property "Reference" "R1"
 \t\t\t(at 0 -4.2 0)
@@ -72,14 +76,18 @@ type Mod = {
   kicadCollabSetRemote(j: string): void;
   kicadCollabGetViewport(): string;
   kicadCollabGetSelection(): string;
+  kicadCollabGetSelectionFull(): string;
+  kicadCollabTestGetCrossMapped(): string;
   kicadCollabTestSelectFirst(): string;
   kicadCollabTestClearSelection(): boolean;
 };
+type SelPayload = { uuids: string[]; fpPaths: string[] };
 type PresenceWindow = {
   FS: FS;
   Module: Mod;
   kicadCollab?: Record<string, unknown>;
   __selEmits?: string[][];
+  __selPayloads?: SelPayload[];
   __cursorEmits?: Array<{ x: number; y: number; active: number }>;
 };
 
@@ -134,14 +142,24 @@ async function bootAndOpen(page: Page): Promise<void> {
     .poll(() => page.title(), { timeout: 60000, intervals: [500] })
     .toMatch(/presence/i);
 
-  // Install the capture hooks + start the presence input bindings.
+  // Install the capture hooks + start the presence input bindings. Since 0006
+  // pcbnew emits `{uuids, fpPaths}` — capture the uuid arrays (the pre-0006
+  // assertions) AND the full payloads (the cross-app ones).
   await page.evaluate(() => {
     const w = window as unknown as PresenceWindow;
     w.__selEmits = [];
+    w.__selPayloads = [];
     w.__cursorEmits = [];
     w.kicadCollab = {
       ...w.kicadCollab,
-      onSelection: (json: string) => w.__selEmits!.push(JSON.parse(json)),
+      onSelection: (json: string) => {
+        const parsed = JSON.parse(json) as SelPayload | string[];
+        const payload: SelPayload = Array.isArray(parsed)
+          ? { uuids: parsed, fpPaths: [] }
+          : parsed;
+        w.__selEmits!.push(payload.uuids);
+        w.__selPayloads!.push(payload);
+      },
       onCursor: (x: number, y: number, active: number) =>
         w.__cursorEmits!.push({ x, y, active }),
     };
@@ -184,6 +202,49 @@ test("selection emit: programmatic select/clear reaches onSelection with uuids",
       { timeout: 10000 },
     )
     .toEqual([]);
+
+  expect(hasAbort(testLogger)).toBe(false);
+});
+
+test("selection emit carries the footprint's schematic path (0006)", async ({
+  page,
+  testLogger,
+}) => {
+  await bootAndOpen(page);
+
+  // TestSelectFirst picks the first top-level item — the fixture's only
+  // footprint sorts first, but assert by payload rather than by luck: select,
+  // then find the emit whose uuids contain the footprint.
+  await page.evaluate(() =>
+    (window as unknown as PresenceWindow).Module.kicadCollabTestSelectFirst(),
+  );
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const w = window as unknown as PresenceWindow;
+          return w.__selPayloads!.at(-1) ?? null;
+        }),
+      { timeout: 10000 },
+    )
+    .not.toBeNull();
+
+  const payload = await page.evaluate(
+    () => (window as unknown as PresenceWindow).__selPayloads!.at(-1)!,
+  );
+  if (payload.uuids.includes(FP1)) {
+    expect(payload.fpPaths).toEqual([FP1_PATH]);
+  } else {
+    // A non-footprint got selected first — the paths list must then be empty.
+    expect(payload.fpPaths).toEqual([]);
+  }
+
+  // The pull export mirrors the emit payload (cross-app seed at attach).
+  const full = await page.evaluate(() =>
+    JSON.parse((window as unknown as PresenceWindow).Module.kicadCollabGetSelectionFull()),
+  );
+  expect(full.uuids).toEqual(payload.uuids);
+  expect(full.fpPaths).toEqual(payload.fpPaths);
 
   expect(hasAbort(testLogger)).toBe(false);
 });
@@ -345,6 +406,107 @@ test("remote render paints the overlay without touching local selection", async 
         const after = await canvas.screenshot();
         return after.equals(before);
       },
+      { timeout: 15000, intervals: [500] },
+    )
+    .toBe(true);
+
+  expect(hasAbort(testLogger)).toBe(false);
+});
+
+test("cross-app ghost render: an eeschema peer's symbol uuid maps to the footprint (0006)", async ({
+  page,
+  testLogger,
+}) => {
+  await bootAndOpen(page);
+
+  const canvas = page.locator("#canvas");
+  const before = await canvas.screenshot();
+
+  // An eeschema peer snapshot entry: no same-doc selection, xsel = symbol uuid.
+  await page.evaluate(
+    ({ sym }) => {
+      const w = window as unknown as PresenceWindow;
+      w.Module.kicadCollabSetRemote(
+        JSON.stringify({
+          peers: [
+            {
+              id: "bob#x7",
+              name: "bob · sch",
+              color: "#d946ef",
+              cursor: null,
+              selection: [],
+              xsel: [sym],
+            },
+          ],
+        }),
+      );
+    },
+    { sym: SYM1 },
+  );
+
+  // The suffix match resolves the symbol to the fixture footprint.
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() =>
+          JSON.parse(
+            (window as unknown as PresenceWindow).Module.kicadCollabTestGetCrossMapped(),
+          ),
+        ),
+      { timeout: 10000 },
+    )
+    .toEqual([FP1]);
+
+  // …and paints the ghost outline (pixels change), with no selection leak.
+  await expect
+    .poll(
+      async () => !(await canvas.screenshot()).equals(before),
+      { timeout: 15000, intervals: [500] },
+    )
+    .toBe(true);
+  const localSel = await page.evaluate(() =>
+    JSON.parse((window as unknown as PresenceWindow).Module.kicadCollabGetSelection()),
+  );
+  expect(localSel).toEqual([]);
+
+  // An unknown symbol uuid maps to nothing; clearing restores the pixels.
+  await page.evaluate(() => {
+    const w = window as unknown as PresenceWindow;
+    w.Module.kicadCollabSetRemote(
+      JSON.stringify({
+        peers: [
+          {
+            id: "bob#x7",
+            name: "bob · sch",
+            color: "#d946ef",
+            cursor: null,
+            selection: [],
+            xsel: ["99999999-0000-0000-0000-000000000099"],
+          },
+        ],
+      }),
+    );
+  });
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() =>
+          JSON.parse(
+            (window as unknown as PresenceWindow).Module.kicadCollabTestGetCrossMapped(),
+          ),
+        ),
+      { timeout: 10000 },
+    )
+    .toEqual([]);
+
+  await page.evaluate(() =>
+    (window as unknown as PresenceWindow).Module.kicadCollabSetRemote(
+      JSON.stringify({ peers: [] }),
+    ),
+  );
+  await expect
+    .poll(
+      async () => (await canvas.screenshot()).equals(before),
       { timeout: 15000, intervals: [500] },
     )
     .toBe(true);

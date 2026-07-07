@@ -34,6 +34,7 @@ type Mod = {
   kicadCollabSetRemote(j: string): void;
   kicadCollabGetViewport(): string;
   kicadCollabGetSelection(): string;
+  kicadCollabTestGetCrossMapped(): string;
   kicadCollabTestSelectFirst(): string;
   kicadCollabTestClearSelection(): boolean;
 };
@@ -47,6 +48,28 @@ type PresenceWindow = {
 
 function hasAbort(l: { consoleLogs: string[]; errors: string[] }): boolean {
   return [...l.consoleLogs, ...l.errors].some((s) => s.includes("Aborted("));
+}
+
+/**
+ * The visible GAL draw panel — the pixel-compare target for overlay tests.
+ * `#canvas` is the WHOLE wx window; its chrome is not pixel-stable across a
+ * test (the "older KiCad version" infobar auto-dismisses, widget carets
+ * blink), which made whole-window before/after equality flaky. The presence
+ * overlay renders only into the GL panel, so compare exactly that.
+ */
+async function galPanel(page: Page) {
+  const glId = await page.evaluate(() => {
+    const visible = Array.from(document.querySelectorAll('[id^="glcanvas-"]'))
+      .map((c) => c as HTMLCanvasElement)
+      .find(
+        (c) =>
+          window.getComputedStyle(c).display !== "none" &&
+          c.getBoundingClientRect().width > 0,
+      );
+    return visible?.id ?? null;
+  });
+  expect(glId, "no visible GAL panel found").toBeTruthy();
+  return page.locator(`#${glId}`);
 }
 
 async function bootAndOpen(page: Page): Promise<void> {
@@ -236,7 +259,7 @@ test("remote render paints the overlay without touching local selection", async 
 }) => {
   await bootAndOpen(page);
 
-  const canvas = page.locator("#canvas");
+  const canvas = await galPanel(page);
   const before = await canvas.screenshot();
 
   await page.evaluate(
@@ -288,6 +311,108 @@ test("remote render paints the overlay without touching local selection", async 
         const after = await canvas.screenshot();
         return after.equals(before);
       },
+      { timeout: 15000, intervals: [500] },
+    )
+    .toBe(true);
+
+  expect(hasAbort(testLogger)).toBe(false);
+});
+
+test("cross-app ghost render: a pcbnew peer's xsel uuid resolves on the current sheet (0006)", async ({
+  page,
+  testLogger,
+}) => {
+  await bootAndOpen(page);
+
+  const canvas = await galPanel(page);
+  const before = await canvas.screenshot();
+
+  // A pcbnew peer snapshot entry: xsel = the symbol uuid derived from the
+  // footprint's path by the TS side. The fixture has no symbols, but the C++
+  // resolve/draw path is uuid-kind-agnostic — a wire uuid exercises it fully.
+  await page.evaluate(
+    ({ id }) => {
+      const w = window as unknown as PresenceWindow;
+      w.Module.kicadCollabSetRemote(
+        JSON.stringify({
+          peers: [
+            {
+              id: "alice#x3",
+              name: "alice · pcb",
+              color: "#3b82f6",
+              cursor: null,
+              selection: [],
+              xsel: [id],
+            },
+          ],
+        }),
+      );
+    },
+    { id: WIRE1 },
+  );
+
+  // Resolves onto the current sheet → probe reports it, ghost outline paints.
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() =>
+          JSON.parse(
+            (window as unknown as PresenceWindow).Module.kicadCollabTestGetCrossMapped(),
+          ),
+        ),
+      { timeout: 10000 },
+    )
+    .toEqual([WIRE1]);
+  await expect
+    .poll(
+      async () => !(await canvas.screenshot()).equals(before),
+      { timeout: 15000, intervals: [500] },
+    )
+    .toBe(true);
+
+  // No selection leak, unknown uuids map to nothing, clear restores pixels.
+  const localSel = await page.evaluate(() =>
+    JSON.parse((window as unknown as PresenceWindow).Module.kicadCollabGetSelection()),
+  );
+  expect(localSel).toEqual([]);
+
+  await page.evaluate(() => {
+    const w = window as unknown as PresenceWindow;
+    w.Module.kicadCollabSetRemote(
+      JSON.stringify({
+        peers: [
+          {
+            id: "alice#x3",
+            name: "alice · pcb",
+            color: "#3b82f6",
+            cursor: null,
+            selection: [],
+            xsel: ["99999999-0000-0000-0000-000000000099"],
+          },
+        ],
+      }),
+    );
+  });
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() =>
+          JSON.parse(
+            (window as unknown as PresenceWindow).Module.kicadCollabTestGetCrossMapped(),
+          ),
+        ),
+      { timeout: 10000 },
+    )
+    .toEqual([]);
+
+  await page.evaluate(() =>
+    (window as unknown as PresenceWindow).Module.kicadCollabSetRemote(
+      JSON.stringify({ peers: [] }),
+    ),
+  );
+  await expect
+    .poll(
+      async () => (await canvas.screenshot()).equals(before),
       { timeout: 15000, intervals: [500] },
     )
     .toBe(true);

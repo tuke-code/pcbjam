@@ -1,5 +1,7 @@
+import { symbolUuidFromFootprintPath } from "@pcbjam/shared";
 import { clog } from "./debug";
 import type { PresenceHandle, PresencePeer } from "./presence";
+import type { CrossAppHandle } from "./cross-app";
 
 /**
  * Wire the C++ presence bridge (collab-presence 0002) to the awareness layer:
@@ -23,6 +25,9 @@ export interface PresenceKicadModule {
   kicadCollabSetRemote(json: string): void;
   kicadCollabGetViewport(): string;
   kicadCollabGetSelection(): string;
+  /** 0006 (pcbnew builds): `{uuids, fpPaths}` — uuids plus the selected
+   *  footprints' schematic paths. Absent on older wasm. */
+  kicadCollabGetSelectionFull?(): string;
 }
 
 export interface PresenceKicadWindow {
@@ -53,24 +58,78 @@ export function hasPresenceBridge(mod: unknown): mod is PresenceKicadModule {
 
 const PUSH_THROTTLE_MS = 30;
 
+/**
+ * Parse a C++ selection emit (0006): pcbnew emits `{uuids, fpPaths}` (paths =
+ * the selected footprints' `GetPath()` strings), eeschema and older builds a
+ * bare uuid array. Returns null on a malformed payload (callers then keep the
+ * last published selection, the pre-0006 behavior).
+ */
+export function parseSelectionEmit(
+  json: string,
+): { uuids: string[]; fpPaths?: string[] } | null {
+  try {
+    const v: unknown = JSON.parse(json);
+    if (Array.isArray(v)) {
+      return { uuids: v.filter((u): u is string => typeof u === "string") };
+    }
+    if (v && typeof v === "object") {
+      const o = v as { uuids?: unknown; fpPaths?: unknown };
+      return {
+        uuids: Array.isArray(o.uuids)
+          ? o.uuids.filter((u): u is string => typeof u === "string")
+          : [],
+        ...(Array.isArray(o.fpPaths)
+          ? { fpPaths: o.fpPaths.filter((p): p is string => typeof p === "string") }
+          : {}),
+      };
+    }
+  } catch {
+    /* malformed */
+  }
+  return null;
+}
+
+/**
+ * The cross-app highlight targets a peer's state maps to in THIS editor
+ * (0006): a pcbnew peer's footprint paths become symbol uuids (eeschema
+ * resolves them directly); an eeschema peer's selection uuids ARE the symbol
+ * uuids (pcbnew suffix-matches them against footprint paths). Tools without
+ * a counterpart map to nothing.
+ */
+export function xselFromPeerState(state: {
+  tool: string;
+  selection: string[];
+  selectionPaths?: string[];
+}): string[] {
+  if (state.tool === "pcbnew") {
+    return (state.selectionPaths ?? [])
+      .map(symbolUuidFromFootprintPath)
+      .filter((u): u is string => u !== null);
+  }
+  if (state.tool === "eeschema") return state.selection;
+  return [];
+}
+
+const TOOL_TAG: Record<string, string> = { pcbnew: "pcb", eeschema: "sch" };
+
 export function bindKicadPresence(opts: {
   mod: PresenceKicadModule;
   win: PresenceKicadWindow;
   presence: PresenceHandle;
+  /** 0006: the project presence room — cross-app selection in/out. */
+  crossApp?: CrossAppHandle;
   onViewport?: (vp: ViewportState) => void;
 }): { destroy(): void } {
-  const { mod, win, presence } = opts;
+  const { mod, win, presence, crossApp } = opts;
 
   // C++ → awareness ------------------------------------------------------------
   win.kicadCollab = {
     ...win.kicadCollab,
     onSelection: (uuidsJson) => {
-      try {
-        const uuids = JSON.parse(uuidsJson) as string[];
-        presence.setSelection(Array.isArray(uuids) ? uuids : []);
-      } catch {
-        /* malformed emit — keep the last published selection */
-      }
+      const parsed = parseSelectionEmit(uuidsJson);
+      if (!parsed) return; // malformed emit — keep the last published selection
+      presence.setSelection(parsed.uuids);
+      crossApp?.setSelection(parsed.uuids, parsed.fpPaths);
     },
     onCursor: (x, y, active) => {
       presence.setCursor(active ? { x, y } : null);
@@ -80,10 +139,16 @@ export function bindKicadPresence(opts: {
     },
   };
 
-  // Seed: the tab may attach with a selection already made (e.g. rebind).
+  // Seed: the tab may attach with a selection already made (e.g. rebind). The
+  // Full variant (pcbnew 0006) also carries footprint paths for cross-app.
   try {
-    const seed = JSON.parse(mod.kicadCollabGetSelection() || "[]") as string[];
-    if (Array.isArray(seed) && seed.length) presence.setSelection(seed);
+    const seed = parseSelectionEmit(
+      (mod.kicadCollabGetSelectionFull?.() ?? mod.kicadCollabGetSelection()) || "[]",
+    );
+    if (seed?.uuids.length) {
+      presence.setSelection(seed.uuids);
+      crossApp?.setSelection(seed.uuids, seed.fpPaths);
+    }
   } catch {
     /* bridge present but frame not up yet — the first emit will seed */
   }
@@ -91,7 +156,16 @@ export function bindKicadPresence(opts: {
   // awareness → C++ ------------------------------------------------------------
   const pushRemote = () => {
     const peers = presence.peers();
-    const snapshot = {
+    const snapshot: {
+      peers: Array<{
+        id: string;
+        name: string;
+        color: string;
+        cursor: { x: number; y: number } | null;
+        selection: string[];
+        xsel?: string[];
+      }>;
+    } = {
       peers: peers.map((p: PresencePeer) => ({
         id: p.user.id,
         name: p.user.name,
@@ -100,6 +174,21 @@ export function bindKicadPresence(opts: {
         selection: p.selection,
       })),
     };
+    // Cross-app peers (0006): rendered as ghost outlines on the mapped items.
+    // One entry per awareness CLIENT (own other tabs included — that's the
+    // single-user cross-probe), tagged with the source editor.
+    for (const p of crossApp?.peers() ?? []) {
+      const xsel = xselFromPeerState(p.state);
+      if (!xsel.length) continue;
+      snapshot.peers.push({
+        id: `${p.state.user.id}#x${p.clientId}`,
+        name: `${p.state.user.name} · ${TOOL_TAG[p.state.tool] ?? p.state.tool}`,
+        color: p.state.user.color,
+        cursor: null,
+        selection: [],
+        xsel,
+      });
+    }
     mod.kicadCollabSetRemote(JSON.stringify(snapshot));
   };
 
@@ -113,6 +202,7 @@ export function bindKicadPresence(opts: {
   };
 
   const unsubscribe = presence.subscribe(schedulePush);
+  const unsubscribeCross = crossApp?.subscribe(schedulePush);
 
   mod.kicadCollabPresenceStart();
   pushRemote();
@@ -121,6 +211,7 @@ export function bindKicadPresence(opts: {
   return {
     destroy() {
       unsubscribe();
+      unsubscribeCross?.();
       if (pushTimer) clearTimeout(pushTimer);
       pushTimer = undefined;
       if (win.kicadCollab) {

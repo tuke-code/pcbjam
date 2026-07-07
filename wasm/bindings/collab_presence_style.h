@@ -82,6 +82,13 @@ struct STYLE
     double pinFillAlpha    = 1.0;
     double pinResolvedAlpha = 0.3;
 
+    // ── cross-app "ghost" selection (0006) ────────────────────────────────
+    // A peer's selection in the OTHER editor (eeschema symbol ⇄ pcbnew
+    // footprint) renders with the normal selection shape but its stroke/fill
+    // alphas scaled down, so a cross-probe highlight reads distinctly softer
+    // than a direct same-document selection.
+    double xselAlphaScale = 0.55;
+
 };
 
 /**
@@ -157,6 +164,18 @@ inline void patchStyle( STYLE& aStyle, const json& j )
     aStyle.pinRingAlpha     = j.value( "pinRingAlpha", aStyle.pinRingAlpha );
     aStyle.pinFillAlpha     = j.value( "pinFillAlpha", aStyle.pinFillAlpha );
     aStyle.pinResolvedAlpha = j.value( "pinResolvedAlpha", aStyle.pinResolvedAlpha );
+
+    aStyle.xselAlphaScale = j.value( "xselAlphaScale", aStyle.xselAlphaScale );
+}
+
+/** The style a cross-app (0006) ghost selection draws with: the given style
+ *  with its selection stroke/fill alphas scaled by `xselAlphaScale`. */
+inline STYLE ghostStyle( const STYLE& aStyle )
+{
+    STYLE g = aStyle;
+    g.selStrokeAlpha *= aStyle.xselAlphaScale;
+    g.selFillAlpha   *= aStyle.xselAlphaScale;
+    return g;
 }
 
 /** The color a peer renders with under this style (fixed > palette-by-name-hash
