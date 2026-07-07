@@ -39,6 +39,7 @@ test.describe('wxTimer Tests', () => {
     // replaces waitForTimeout(1500)).
     await expect.poll(() => testLogger.consoleLogs.some(l => l.includes('Slow timer tick')),
       { message: 'slow timer should tick', timeout: 8000 }).toBe(true);
+    await stableShot(page, 'timer-03-ticked.png', { fullPage: true });
 
     // Click Stop for the slow timer.
     const stopButton = await findByLabel(page, 'Stop', { exact: true });
@@ -57,12 +58,14 @@ test.describe('wxTimer Tests', () => {
     await clickByLabel(page, 'Start Fast');
     await expect.poll(() => testLogger.consoleLogs.some(l => l.includes('Fast timer started')),
       { message: 'Should log fast timer started' }).toBe(true);
+    await stableShot(page, 'timer-05-fast-started.png', { fullPage: true });
 
-    // Let the fast timer tick (deterministic). No screenshot while it runs: the fast
-    // timer continuously animates the gauge, so no two frames are ever identical and
-    // stableShot can't stabilize — and the original mid-run shots asserted nothing.
+    // Let the fast timer tick (deterministic). The fast timer continuously animates the
+    // gauge, so this mid-run frame is timing-dependent; stableShot just captures a frame
+    // for the offline gate (non-asserting) rather than trying to stabilize it.
     await expect.poll(() => testLogger.consoleLogs.some(l => l.includes('Fast timer tick')),
       { message: 'fast timer should tick', timeout: 8000 }).toBe(true);
+    await stableShot(page, 'timer-06-fast-running.png', { fullPage: true });
 
     await clickByLabel(page, 'Stop Fast');
     await expect.poll(() => testLogger.consoleLogs.some(l => l.includes('Fast timer stopped')),

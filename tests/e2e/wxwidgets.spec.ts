@@ -67,6 +67,10 @@ test.describe('wxWidgets WASM - Diagnostics', () => {
 
     await page.goto('/minimal_test.html');
 
+    // Loading-state capture: raw + immediate (no settle) on purpose — this shot documents the
+    // app mid-load, before the canvas is up, so it must NOT wait for the render to finish.
+    await page.screenshot({ path: 'test-results/01-loading.png', fullPage: true });
+
     // Deterministic app readiness: canvas visible + wx registry populated.
     // Fails loudly (replaces the try/catch waitForSelector + 1s settle).
     await waitForWxApp(page);

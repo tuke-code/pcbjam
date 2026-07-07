@@ -192,6 +192,7 @@ test.describe('PCBnew WASM', () => {
         expect(appearancePane!.width).toBeLessThanOrEqual(240);
 
         await hideCursor(page);
+        await stableShot(page, 'pcbnew-loaded-css.png');
         await stableShot(page, 'pcbnew-loaded.png');
 
         const canvasCount = await page.locator('canvas').count();
@@ -221,6 +222,8 @@ test.describe('PCBnew WASM', () => {
         expect(isToolChecked(drawLinesTool)).toBe(false);
         const baselineErrorCount = testLogger.errors.length;
 
+        await stableShot(page, 'pcbnew-draw-lines-00-before-tool-click.png');
+
         expect(await clickByTooltip(page, 'Draw Lines', { elementType: 'tool' })).toBe(true);
         await expect.poll(async () => isToolChecked(await findByTooltip(page, 'Draw Lines', { elementType: 'tool' })), {
             message: 'Draw Lines tool should stay selected after the click',
@@ -248,7 +251,7 @@ test.describe('PCBnew WASM', () => {
         // Move the crosshair onto the canvas (a visible change → deterministic settle).
         await page.mouse.move(640, 360);
         await waitForCanvasStable(page, glSel);
-        const afterToolClick = await page.screenshot({ scale: 'css' });
+        const afterToolClick = await page.screenshot({ path: 'test-results/pcbnew-draw-lines-01-after-click.png', scale: 'css' });
 
         const startPoint = { x: Math.round(box.x + box.width * 0.28), y: Math.round(box.y + box.height * 0.36) };
         const endPoint = { x: Math.round(box.x + box.width * 0.48), y: Math.round(box.y + box.height * 0.47) };
@@ -272,7 +275,7 @@ test.describe('PCBnew WASM', () => {
         await page.mouse.up();
         await page.waitForTimeout(750); // eslint-disable-line -- see comment above
 
-        const afterDrawing = await page.screenshot({ scale: 'css' });
+        const afterDrawing = await page.screenshot({ path: 'test-results/pcbnew-draw-lines-02-after-drawing.png', scale: 'css' });
 
         const diffRegion: DiffRegion = {
             x: Math.max(0, Math.min(startPoint.x, endPoint.x) - 24),

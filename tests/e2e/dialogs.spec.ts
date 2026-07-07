@@ -134,10 +134,12 @@ test.describe('Dialogs Tab Tests', () => {
 
       await stableShot(page, 'dialogs-timer-initial.png', { fullPage: true });
 
-      // Click "Start Timer" button using element registry. No screenshot of the running
-      // timer: the label increments once a second, so a running frame never holds still
-      // for stableShot to stabilise and it asserted nothing (started/running dropped).
+      // Click "Start Timer" button using element registry.
       await clickByLabel(page, 'Start Timer');
+
+      await stableShot(page, 'dialogs-timer-started.png', { fullPage: true });
+
+      await stableShot(page, 'dialogs-timer-running.png', { fullPage: true });
 
       // Click "Stop Timer" (Start/Stop are separate always-present buttons; the queued
       // button events run in order, so no dwell is needed between them).

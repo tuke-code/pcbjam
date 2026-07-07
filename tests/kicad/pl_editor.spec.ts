@@ -32,7 +32,7 @@ test.describe('pl_editor WASM', () => {
 
     test('app loads, canvas visible, no WASM abort', async ({ page, testLogger }) => {
         await waitForEditorReady(page);
-        await stableShot(page, '01-loaded.png');
+        await stableShot(page, 'pl_editor-01-loaded.png');
 
         expect(hasAbort(testLogger), 'no WASM abort during load').toBe(false);
 
@@ -56,7 +56,7 @@ test.describe('pl_editor WASM', () => {
         expect(blockingDialogs, 'no setup wizard/dialog should be visible (seed skipped it)').toBe(0);
         expect(hasAbort(testLogger), 'no WASM abort during launch').toBe(false);
 
-        await stableShot(page, '02-no-wizard.png');
+        await stableShot(page, 'pl_editor-02-no-wizard.png');
     });
 
     test('File menu exposes Open... and Save As...', async ({ page, testLogger }) => {
@@ -78,7 +78,7 @@ test.describe('pl_editor WASM', () => {
             'File menu items rendered',
         );
 
-        await stableShot(page, '03-file-menu.png');
+        await stableShot(page, 'pl_editor-03-file-menu.png');
 
         const menuLabels = await page.evaluate(() => {
             const registry = window.wxElementRegistry!;
@@ -128,7 +128,7 @@ test.describe('pl_editor WASM', () => {
         // the inner file list isn't painted. stableShot's stabilization waits for the
         // list to finish painting — deterministically replacing the old waitForTimeout(600)
         // that used to catch the dialog as a black rectangle.
-        await stableShot(page, '04-save-as-dialog.png');
+        await stableShot(page, 'pl_editor-04-save-as-dialog.png');
 
         // The bug: pressing Enter on a folder name treated it as a file and surfaced
         // "Unable to load /dev file". After the OnOk fix, the dialog should navigate
@@ -136,7 +136,7 @@ test.describe('pl_editor WASM', () => {
         await page.keyboard.type('/dev');
         await page.keyboard.press('Enter');
 
-        await stableShot(page, '04b-after-enter.png');
+        await stableShot(page, 'pl_editor-04b-after-enter.png');
 
         // The wxFileDialog should still be visible — we navigated into /dev, didn't close it.
         const dialogStillOpen = await page.evaluate(() => {

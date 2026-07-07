@@ -170,6 +170,7 @@ test.describe('Eeschema WASM', () => {
         expect(viewport![3]).toBe(glCanvas.height);
 
         await hideCursor(page);
+        await stableShot(page, 'eeschema-loaded-css.png');
         await stableShot(page, 'eeschema-loaded.png');
 
         const canvasCount = await page.locator('canvas').count();
@@ -202,6 +203,8 @@ test.describe('Eeschema WASM', () => {
         expect(drawWiresTool!.enabled).toBe(true);
         expect(isToolChecked(drawWiresTool)).toBe(false);
         const baselineErrorCount = testLogger.errors.length;
+
+        await stableShot(page, 'eeschema-draw-wires-00-before-tool-click.png');
 
         // Select the tool and confirm it latches checked.
         expect(await clickByTooltip(page, 'Draw Wires', { elementType: 'tool' })).toBe(true);
@@ -242,7 +245,7 @@ test.describe('Eeschema WASM', () => {
         // crosshair IS a visible change, so this settle is deterministic.
         await page.mouse.move(640, 360);
         await waitForCanvasStable(page, glSel);
-        const afterToolClick = await page.screenshot({ scale: 'css' });
+        const afterToolClick = await page.screenshot({ path: 'test-results/eeschema-draw-wires-01-after-click.png', scale: 'css' });
 
         // Draw a wire: click a start vertex, then an end vertex. These two waits are the
         // ONE place in the converted suite that still uses a fixed delay: a wire vertex
@@ -258,7 +261,7 @@ test.describe('Eeschema WASM', () => {
         await page.mouse.click(endPoint.x, endPoint.y);
         await page.waitForTimeout(750); // eslint-disable-line -- see comment above
 
-        const afterDrawing = await page.screenshot({ scale: 'css' });
+        const afterDrawing = await page.screenshot({ path: 'test-results/eeschema-draw-wires-02-after-drawing.png', scale: 'css' });
 
         const diffRegion: DiffRegion = {
             x: Math.max(0, Math.min(startPoint.x, endPoint.x) - 24),

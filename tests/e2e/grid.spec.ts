@@ -144,6 +144,8 @@ test.describe('Grid Tab Tests', () => {
       // Click on a cell (would be at ~y=175 if grid existed)
       await page.mouse.click(box.x + 180, box.y + 175);
 
+      await stableShot(page, 'wxgrid-02-selection.png', { fullPage: true });
+
       // The click's effect is the cell-selection console event — poll for it
       // (replaces the 200ms sleep + hasGridEvent assertion).
       await expect.poll(() => testLogger.consoleLogs.some(l => l.includes('Grid cell')),
@@ -164,6 +166,8 @@ test.describe('Grid Tab Tests', () => {
 
       await page.keyboard.type('1.5');
       await page.keyboard.press('Enter');
+
+      await stableShot(page, 'wxgrid-03-editing.png', { fullPage: true });
 
       // The edit's effect is the cell-changed console event — poll for it
       // (replaces the 200ms sleep + hasEditEvent assertion).

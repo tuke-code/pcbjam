@@ -38,7 +38,10 @@ test.describe('PCBnew dark-mode browser', () => {
         await waitForEditorReady(page);
         await hideCursor(page);
 
-        const cssScreenshot = await page.screenshot({ scale: 'css' });
+        const cssScreenshot = await page.screenshot({
+            path: 'test-results/pcbnew-dark-mode-loaded.png',
+            scale: 'css'
+        });
 
         const reference = await compareToReference(page, cssScreenshot, PCBNEW_REFERENCE, PCBNEW_HEADER_REGION);
 
