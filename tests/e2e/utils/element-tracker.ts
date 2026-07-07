@@ -1813,10 +1813,15 @@ export async function waitForCanvasStable(
  */
 type StableShotOptions = {
   fullPage?: boolean;
-  /** Stabilization budget (ms). Animating states never settle: we proceed and capture anyway. */
+  /** Overall stabilization budget (ms). Animating states never settle: we proceed and capture anyway. */
   timeout?: number;
-  /** Consecutive identical animation frames required before the render is "settled". */
+  /** Consecutive identical frames for the fast (per-rAF) convergence pass. */
   stableFrames?: number;
+  /** Wider-spaced confirmations required AFTER fast convergence (each `interval` ms apart), to catch a
+   *  slow async repaint that a few ~16ms frames would miss. */
+  confirmFrames?: number;
+  /** ms between the wide confirmations. */
+  interval?: number;
   /** Canvas whose pixels signal render activity (the wx main surface). Default '#canvas'. */
   canvas?: string;
 };
@@ -1829,17 +1834,22 @@ const SHOT_OPTS = { scale: 'css', animations: 'disabled', caret: 'hide' } as con
  * toHaveScreenshot, decoupled so pixel COMPARISON stays in the offline tools/screenshots gate
  * (which diffs test-results/ against tests/baseline-screenshots/ on CI's deterministic Linux render).
  *
- * Stabilization runs entirely IN-PAGE (one page.evaluate): it hashes a 64px downscale of the wx
- * canvas once per animation frame and resolves after `stableFrames` consecutive identical frames,
- * or when `timeout` elapses. There are NO repeated CDP screenshots — an earlier screenshot-probe
- * version saturated CDP on the heavy kicad canvases and timed the whole suite out. Genuinely-
- * animating states (timers, mid-slide) never converge: we resolve at the deadline and capture the
- * current frame, exactly as the old raw screenshots did. With no canvas we just wait `stableFrames`
- * paint frames — the spec's deterministic waits have already reached the target state.
+ * Runs entirely IN-PAGE (one page.evaluate), hashing a 64px downscale of the wx canvas — NO repeated
+ * CDP screenshots (an earlier screenshot-probe version saturated CDP on the heavy kicad canvases and
+ * timed the whole suite out). Two-phase HYBRID:
+ *   1. Fast rAF convergence — hash every animation frame until `stableFrames` are identical (~48ms):
+ *      cheap, catches high-frequency motion (animations).
+ *   2. Wide confirmation — then re-hash `confirmFrames` times, each `interval` ms apart (~500ms), so a
+ *      SLOW async repaint (e.g. a file list arriving after an asyncify readdir) that a few 16ms frames
+ *      would sail past forces a reset back to phase 1.
+ * Resolves once both phases pass, or when `timeout` elapses — genuinely-animating states (timers,
+ * mid-slide) never converge and are captured at the deadline, exactly as the old raw screenshots did.
+ * With no canvas we just wait `stableFrames` paint frames (the spec's deterministic waits already
+ * reached the target state).
  */
 export async function waitForRenderStable(page: Page, options: StableShotOptions = {}): Promise<void> {
   await page.evaluate(
-    ({ sel, need, timeout }: { sel: string; need: number; timeout: number }) =>
+    ({ sel, need, confirmN, interval, timeout }: { sel: string; need: number; confirmN: number; interval: number; timeout: number }) =>
       new Promise<void>((resolve) => {
         const el = document.querySelector(sel) as HTMLCanvasElement | null;
         if (!el || typeof el.getContext !== 'function') {
@@ -1854,29 +1864,61 @@ export async function waitForRenderStable(page: Page, options: StableShotOptions
         off.height = size;
         const ctx = off.getContext('2d', { willReadFrequently: true });
         const start = performance.now();
-        let prev = NaN;
-        let stable = 0;
-        const tick = () => {
-          let sig = prev;
+        const hash = (): number => {
           try {
             ctx!.drawImage(el, 0, 0, size, size);
             const d = ctx!.getImageData(0, 0, size, size).data;
-            sig = 0;
+            let sig = 0;
             for (let i = 0; i < d.length; i += 4) sig = (sig * 31 + d[i] + d[i + 1] * 7 + d[i + 2] * 13) | 0;
+            return sig;
           } catch {
-            /* canvas not yet readable — treat as unchanged */
+            return NaN; // canvas not yet readable
           }
-          if (sig === prev) stable += 1;
-          else {
-            prev = sig;
-            stable = 1;
-          }
-          if (stable >= need || performance.now() - start > timeout) resolve();
-          else requestAnimationFrame(tick);
         };
-        requestAnimationFrame(tick);
+        const expired = () => performance.now() - start > timeout;
+        let prev = NaN;
+        let stable = 0;
+        let confirms = 0;
+        // Phase 2: wide-spaced confirmations. A differing/unreadable sample => a slow change is still
+        // in flight, so restart the fast pass.
+        const confirm = () => {
+          if (expired()) return resolve();
+          const cur = hash();
+          if (cur === prev && !Number.isNaN(cur)) {
+            if (++confirms >= confirmN) return resolve();
+            setTimeout(confirm, interval);
+          } else {
+            prev = cur;
+            stable = Number.isNaN(cur) ? 0 : 1;
+            confirms = 0;
+            requestAnimationFrame(fast);
+          }
+        };
+        // Phase 1: fast per-frame convergence.
+        const fast = () => {
+          if (expired()) return resolve();
+          const cur = hash();
+          if (cur === prev && !Number.isNaN(cur)) {
+            if (++stable >= need) {
+              confirms = 0;
+              setTimeout(confirm, interval);
+              return;
+            }
+          } else {
+            prev = cur;
+            stable = Number.isNaN(cur) ? 0 : 1;
+          }
+          requestAnimationFrame(fast);
+        };
+        requestAnimationFrame(fast);
       }),
-    { sel: options.canvas ?? '#canvas', need: options.stableFrames ?? 3, timeout: options.timeout ?? 3000 }
+    {
+      sel: options.canvas ?? '#canvas',
+      need: options.stableFrames ?? 3,
+      confirmN: options.confirmFrames ?? 2,
+      interval: options.interval ?? 250,
+      timeout: options.timeout ?? 3000,
+    }
   );
 }
 
