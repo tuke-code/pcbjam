@@ -26,8 +26,11 @@ async function bootAs(page: Page, user: string): Promise<void> {
       intervals: [1000],
     })
     .toMatch(TITLE);
-  // The comment controls mount once the collab session + bridge are up.
-  await expect(page.getByTestId('comment-mode-toggle')).toBeVisible({ timeout: 30000 });
+  // The comment controls mount once the collab session + bridge are up; the
+  // action buttons live inside the expandable bar — open it for the test.
+  await expect(page.getByTestId('comment-bar-toggle')).toBeVisible({ timeout: 30000 });
+  await page.getByTestId('comment-bar-toggle').click();
+  await expect(page.getByTestId('comment-mode-toggle')).toBeVisible();
 }
 
 /** Delete every leftover thread from previous runs — comments PERSIST in the

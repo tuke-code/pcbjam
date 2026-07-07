@@ -821,7 +821,15 @@ export function WasmTool({
       if (!doc || (tool !== "pcbnew" && tool !== "eeschema") || !hasCommentsBridge(win.Module)) {
         return;
       }
-      const ctl = createComments({ doc, mod: win.Module, user: presenceUser().id, tool });
+      const ctl = createComments({
+        doc,
+        mod: win.Module,
+        user: presenceUser().id,
+        tool,
+        // Author colors follow the live nth-in-room assignment when the
+        // author is present; offline authors fall back to the name hash.
+        colorFor: (id) => presenceRef.current?.colorOf(id),
+      });
       commentsRef.current = ctl;
       setCommentsCtl(ctl);
       // Test/debug handle (mirrors window.kicadCollab): lets the e2e reset

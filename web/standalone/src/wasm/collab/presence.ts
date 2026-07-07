@@ -1,5 +1,7 @@
 import type { Awareness } from "y-protocols/awareness";
 import {
+  colorForUser,
+  PRESENCE_COLORS,
   presenceStateSchema,
   type PresenceState,
   type PresenceUser,
@@ -35,9 +37,55 @@ export interface PresenceHandle {
   setCursor(pos: { x: number; y: number } | null): void;
   /** 0002: publish the local selection's KIID strings. */
   setSelection(uuids: string[]): void;
+  /** A user's current presence color: their published one if they're in the
+   *  room, our claimed one for ourselves, else the palette-hash fallback
+   *  (offline users, e.g. old comment authors). */
+  colorOf(userId: string): string;
   /** Clear the local state and detach. The awareness instance itself belongs
    *  to the provider and stays alive (rebind re-uses it). */
   destroy(): void;
+}
+
+// ── nth-in-room color assignment ─────────────────────────────────────────────
+//
+// Colors are claimed by ARRIVAL ORDER, not name hash: each client takes the
+// lowest palette index no other peer holds, so N ≤ palette-size editors always
+// get distinct colors (a hash would collide birthday-problem-fast) and the
+// best palette colors go first. Coordination-free: the claim is published in
+// the awareness state; when two simultaneous joiners collide, the one with the
+// HIGHER awareness clientID yields and re-claims (deterministic convergence).
+// The claim is per-tab and sticky across room rebinds (eeschema sheet pool),
+// so one user keeps one color everywhere in a session; a second tab of the
+// same user ADOPTS the existing color instead of claiming a new one.
+
+// Per-user claims in this JS context (one user per tab in production; the
+// map keeps multi-client unit tests deterministic).
+const g_claims = new Map<string, string>();
+
+/** Test hook: forget all color claims. */
+export function resetPresenceColorClaims(): void {
+  g_claims.clear();
+}
+
+/** Least-used palette color among the OTHER users in `states` — the lowest
+ *  free slot while the room is smaller than the palette, fair reuse after. */
+function lowestFreeColor(
+  states: Map<number, unknown>,
+  ownClientId: number,
+  ownUserId: string,
+): string {
+  const usage = new Array(PRESENCE_COLORS.length).fill(0);
+
+  for (const [clientId, state] of states) {
+    if (clientId === ownClientId) continue;
+    const parsed = presenceStateSchema.safeParse(state);
+    if (!parsed.success || parsed.data.user.id === ownUserId) continue;
+    const idx = (PRESENCE_COLORS as readonly string[]).indexOf(parsed.data.user.color);
+    if (idx >= 0) usage[idx]++;
+  }
+
+  const min = Math.min(...usage);
+  return PRESENCE_COLORS[usage.indexOf(min)]!;
 }
 
 /**
@@ -54,7 +102,9 @@ export function publishSkeleton(
   sheetPath: string,
 ): void {
   const state: PresenceState = {
-    user,
+    // Skeletons reuse the claimed color so one user is one color on every
+    // sheet's roster.
+    user: { ...user, color: g_claims.get(user.id) ?? user.color },
     tool,
     sheetPath,
     cursor: null,
@@ -70,7 +120,28 @@ export function createPresence(opts: {
   tool: string;
   sheetPath?: string;
 }): PresenceHandle {
-  const { awareness, user } = opts;
+  const { awareness } = opts;
+
+  // Nth-in-room color: adopt a same-user tab's color, else keep an earlier
+  // claim (sticky across sheet rebinds), else claim the lowest free palette
+  // slot given the peers already in the room.
+  let claimed = g_claims.get(opts.user.id) ?? null;
+  if (!claimed) {
+    for (const [clientId, raw] of awareness.getStates()) {
+      if (clientId === awareness.clientID) continue;
+      const parsed = presenceStateSchema.safeParse(raw);
+      if (parsed.success && parsed.data.user.id === opts.user.id) {
+        claimed = parsed.data.user.color;
+        break;
+      }
+    }
+  }
+  if (!claimed) {
+    claimed = lowestFreeColor(awareness.getStates(), awareness.clientID, opts.user.id);
+  }
+  g_claims.set(opts.user.id, claimed);
+
+  const user: PresenceUser = { ...opts.user, color: claimed };
 
   const patch = (fields: Partial<PresenceState>) => {
     const current = (awareness.getLocalState() ?? {}) as Partial<PresenceState>;
@@ -84,7 +155,38 @@ export function createPresence(opts: {
     cursor: null,
     selection: [],
   });
-  clog("presence: published local state for", user.id, "tool", opts.tool);
+  clog("presence: published local state for", user.id, "color", user.color);
+
+  // Simultaneous-join collision: if a DIFFERENT user with a LOWER clientID
+  // holds our color, we yield and re-claim the lowest free slot — exactly one
+  // side of any collision yields, so this converges without coordination.
+  // Same-user tabs converge the other way: adopt the lower clientID's color.
+  const resolveCollision = () => {
+    for (const [clientId, raw] of awareness.getStates()) {
+      if (clientId === awareness.clientID) continue;
+      const parsed = presenceStateSchema.safeParse(raw);
+      if (!parsed.success) continue;
+
+      if (parsed.data.user.id === user.id) {
+        if (parsed.data.user.color !== user.color && clientId < awareness.clientID) {
+          user.color = parsed.data.user.color;
+          g_claims.set(user.id, user.color);
+          patch({ user: { ...user } });
+          clog("presence: adopted same-user color", user.color);
+          return;
+        }
+        continue;
+      }
+
+      if (parsed.data.user.color === user.color && clientId < awareness.clientID) {
+        user.color = lowestFreeColor(awareness.getStates(), awareness.clientID, user.id);
+        g_claims.set(user.id, user.color);
+        patch({ user: { ...user } });
+        clog("presence: color collision — re-claimed", user.color);
+        return;
+      }
+    }
+  };
 
   function peers(): PresencePeer[] {
     const byUser = new Map<string, PresencePeer>();
@@ -105,6 +207,7 @@ export function createPresence(opts: {
 
   const subscribers = new Set<(peers: PresencePeer[]) => void>();
   const onChange = () => {
+    resolveCollision();
     if (!subscribers.size) return;
     const snapshot = peers();
     for (const cb of subscribers) cb(snapshot);
@@ -131,6 +234,17 @@ export function createPresence(opts: {
     },
     setSelection(uuids) {
       patch({ selection: uuids });
+    },
+    colorOf(userId) {
+      if (userId === user.id) return user.color;
+      for (const [clientId, raw] of awareness.getStates()) {
+        if (clientId === awareness.clientID) continue;
+        const parsed = presenceStateSchema.safeParse(raw);
+        if (parsed.success && parsed.data.user.id === userId) {
+          return parsed.data.user.color;
+        }
+      }
+      return colorForUser(userId);
     },
     destroy() {
       if (destroyed) return;

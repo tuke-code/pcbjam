@@ -12,6 +12,7 @@ import {
   observeComments,
   removeMessage,
   resolveAnchor,
+  setThreadAnchor,
   setThreadResolved,
   yToItemUnchecked,
   type CommentAnchor,
@@ -95,6 +96,14 @@ export interface CommentsController {
   remove(threadId: string, messageId: string): "removed" | "thread-deleted" | false;
   setResolved(threadId: string, resolved: boolean): void;
   deleteThread(threadId: string): void;
+  /** Re-pin a thread (drag): LWW anchor replace, live-syncs to peers. */
+  moveThread(threadId: string, anchor: CommentAnchor): void;
+  /** Globally show/hide the pins (GAL dots follow; DOM targets are the
+   *  layer's own state). */
+  setPinsVisible(visible: boolean): void;
+  pinsVisible(): boolean;
+  /** Presence-aware author color (nth-in-room when online, hash fallback). */
+  colorFor(userId: string): string;
   /** Pan the editor to a thread's pin (comment panel "jump to"). */
   jumpTo(threadId: string): void;
   destroy(): void;
@@ -108,11 +117,15 @@ export function createComments(opts: {
   /** Author slug for new messages (presence identity). */
   user: string;
   tool: string;
+  /** Presence color resolver (nth-in-room); undefined falls back to the hash. */
+  colorFor?: (userId: string) => string | undefined;
 }): CommentsController {
   const { doc, mod, user } = opts;
   const iuPerMm = IU_PER_MM[opts.tool] ?? 1e6;
+  const colorFor = (userId: string) => opts.colorFor?.(userId) ?? colorForUser(userId);
 
   let cache: ResolvedThread[] = [];
+  let visible = true;
   const subscribers = new Set<(threads: ResolvedThread[]) => void>();
 
   const recompute = (): ResolvedThread[] => {
@@ -128,18 +141,21 @@ export function createComments(opts: {
       JSON.stringify({
         // Resolved threads drop their dot (figma-style) — they stay reachable
         // through the panel's "resolved" filter. Matches the DOM hit targets.
-        pins: cache
-          .filter((t) => !t.resolved)
-          .map((t) => ({
-            id: t.id,
-            // Author name rides along so the tuner's palette override can
-            // recolor pins consistently with that user's cursor/boxes.
-            name: t.createdBy,
-            x: t.world.x,
-            y: t.world.y,
-            color: colorForUser(t.createdBy),
-            resolved: t.resolved,
-          })),
+        // A global hide (toolbar eye) empties the set entirely.
+        pins: !visible
+          ? []
+          : cache
+              .filter((t) => !t.resolved)
+              .map((t) => ({
+                id: t.id,
+                // Author name rides along so the tuner's palette override can
+                // recolor pins consistently with that user's cursor/boxes.
+                name: t.createdBy,
+                x: t.world.x,
+                y: t.world.y,
+                color: colorFor(t.createdBy),
+                resolved: t.resolved,
+              })),
       }),
     );
   };
@@ -218,6 +234,15 @@ export function createComments(opts: {
     deleteThread(threadId) {
       deleteThread(doc, threadId);
     },
+    moveThread(threadId, anchor) {
+      setThreadAnchor(doc, threadId, anchor);
+    },
+    setPinsVisible(v) {
+      visible = v;
+      pushPins();
+    },
+    pinsVisible: () => visible,
+    colorFor,
     jumpTo(threadId) {
       const t = cache.find((x) => x.id === threadId);
       if (t) mod.kicadCollabSetViewport(t.world.x, t.world.y);

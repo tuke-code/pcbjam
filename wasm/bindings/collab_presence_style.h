@@ -165,6 +165,15 @@ inline double textWidth( const std::string& aText, double aGlyphH )
     return aText.size() * aGlyphH * 0.75;
 }
 
+// Legible text color for a chip background: near-black on light colors,
+// white on dark ones (BitmapText draws with the GAL stroke color).
+inline KIGFX::COLOR4D chipTextColor( const KIGFX::COLOR4D& aBg )
+{
+    double lum = 0.299 * aBg.r + 0.587 * aBg.g + 0.114 * aBg.b;
+    return lum > 0.6 ? KIGFX::COLOR4D( 0.08, 0.08, 0.08, 1.0 )
+                     : KIGFX::COLOR4D( 1.0, 1.0, 1.0, 1.0 );
+}
+
 /** Name tag next to (or inside) a box, per the label placement knobs. `px` is
  *  world-units-per-screen-pixel. GAL BitmapText CENTERS on its position (the
  *  default justify is CENTER/CENTER — GAL::ResetTextAttributes), so the block
@@ -203,7 +212,7 @@ inline void drawLabel( KIGFX::VIEW_OVERLAY* aOv, const BOX2I& aBox, const std::s
                         VECTOR2D( x + w + padX, y + h + padY ) );
         aOv->SetIsStroke( true );
         aOv->SetIsFill( false );
-        aOv->SetStrokeColor( KIGFX::COLOR4D( 1, 1, 1, 1 ) );
+        aOv->SetStrokeColor( chipTextColor( aColor ) );
     }
     else
     {
@@ -376,7 +385,7 @@ inline void drawCursor( KIGFX::VIEW_OVERLAY* aOv, const VECTOR2D& aPos, const st
                             at + VECTOR2D( w + padX, h + padY ) );
             aOv->SetIsStroke( true );
             aOv->SetIsFill( false );
-            aOv->SetStrokeColor( KIGFX::COLOR4D( 1, 1, 1, 1 ) );
+            aOv->SetStrokeColor( chipTextColor( aColor ) );
         }
         else
         {

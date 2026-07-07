@@ -1,9 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
 import * as Y from "yjs";
 import { Awareness } from "y-protocols/awareness";
-import { colorForUser, type PresenceUser } from "@pcbjam/shared";
+import { colorForUser, PRESENCE_COLORS, type PresenceUser } from "@pcbjam/shared";
 import { connectAwarenessBroadcast } from "./awareness-bc";
-import { createPresence, publishSkeleton, type PresenceHandle } from "./presence";
+import {
+  createPresence,
+  publishSkeleton,
+  resetPresenceColorClaims,
+  type PresenceHandle,
+} from "./presence";
 
 /**
  * Presence unit tests (collab-presence 0001): two Awareness instances relayed
@@ -46,6 +51,7 @@ function client(channel: string): Client {
 afterEach(() => {
   for (const c of clients) c.destroy();
   clients = [];
+  resetPresenceColorClaims();
 });
 
 describe("presence over the BroadcastChannel awareness relay", () => {
@@ -209,7 +215,65 @@ describe("presence over the BroadcastChannel awareness relay", () => {
     // setCursor must not have clobbered the selection set just before it.
     expect(bob.selection).toEqual(["uuid-1"]);
     expect(bob.cursor).toEqual({ x: 5, y: 7 });
-    expect(bob.user.color).toBe(colorForUser("bob"));
+    expect(PRESENCE_COLORS).toContain(bob.user.color);
     unsub();
+  });
+
+  it("assigns colors by arrival order (nth-in-room), not name hash", async () => {
+    // Sequential joins: each client's relay settles (peer states arrived —
+    // production attaches presence after the provider synced) before claiming.
+    const channel = `presence-test-${channelSeq++}`;
+    const a = client(channel);
+    await settle();
+    a.presence = createPresence({ awareness: a.awareness, user: user("alice"), tool: "pcbnew" });
+    await settle();
+
+    const b = client(channel);
+    await settle();
+    b.presence = createPresence({ awareness: b.awareness, user: user("bob"), tool: "pcbnew" });
+    await settle();
+
+    const c = client(channel);
+    await settle();
+    c.presence = createPresence({ awareness: c.awareness, user: user("carol"), tool: "pcbnew" });
+    await settle();
+
+    // First three arrivals take the first three palette slots, in order —
+    // no birthday-problem collisions while the room fits the palette.
+    const seen = c.presence.peers().map((p) => [p.user.id, p.user.color]);
+    expect(seen).toContainEqual(["alice", PRESENCE_COLORS[0]]);
+    expect(seen).toContainEqual(["bob", PRESENCE_COLORS[1]]);
+    const carol = a.presence.peers().find((p) => p.user.id === "carol")!;
+    expect(carol.user.color).toBe(PRESENCE_COLORS[2]);
+
+    // colorOf resolves present users to their claimed color, absent users to
+    // the hash fallback (offline comment authors).
+    expect(a.presence.colorOf("bob")).toBe(PRESENCE_COLORS[1]);
+    expect(a.presence.colorOf("alice")).toBe(PRESENCE_COLORS[0]);
+    expect(a.presence.colorOf("nobody")).toBe(colorForUser("nobody"));
+  });
+
+  it("a second tab of the same user adopts the existing color", async () => {
+    const channel = `presence-test-${channelSeq++}`;
+    const a1 = client(channel);
+    await settle();
+    a1.presence = createPresence({ awareness: a1.awareness, user: user("alice"), tool: "pcbnew" });
+    await settle();
+    const b = client(channel);
+    await settle();
+    b.presence = createPresence({ awareness: b.awareness, user: user("bob"), tool: "pcbnew" });
+    await settle();
+    // The second alice tab simulates a separate browser: no local claim
+    // memory, adopts the published color from the room.
+    resetPresenceColorClaims();
+    const a2 = client(channel);
+    await settle();
+    a2.presence = createPresence({ awareness: a2.awareness, user: user("alice"), tool: "pcbnew" });
+    await settle();
+
+    // bob sees ONE alice with ONE consistent color; bob keeps his own slot.
+    const fromBob = b.presence.peers();
+    expect(fromBob.map((p) => p.user.id)).toEqual(["alice"]);
+    expect(fromBob[0]!.user.color).toBe(PRESENCE_COLORS[0]);
   });
 });

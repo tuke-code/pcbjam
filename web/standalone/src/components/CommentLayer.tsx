@@ -1,6 +1,6 @@
 import * as React from "react";
-import { colorForUser, type CommentAnchor } from "@pcbjam/shared";
-import { MessageSquarePlus, MessageSquareText, X } from "lucide-react";
+import type { CommentAnchor } from "@pcbjam/shared";
+import { Eye, EyeOff, List, MessageSquarePlus, MessageSquareText, X } from "lucide-react";
 import {
   screenToWorld,
   worldToScreen,
@@ -12,12 +12,13 @@ import {
 /**
  * DOM half of the hybrid comment pins (collab-presence 0005): the GAL overlay
  * draws the dots (zero pan/zoom lag); this layer adds what DOM does better —
- * invisible click targets over each dot, the thread popover (read/reply/edit/
- * resolve/delete), the comment-mode click catcher + composer, and a small
- * list panel with jump-to. Positions map world→canvas-px via the exported
- * viewport transform, then canvas-px→CSS via the GAL panel's bounding rect
- * (`#glcanvas-*` — `#canvas` is the whole wx window). A ≤1-frame skew against
- * the GAL dot during pan is accepted; it only affects the hit target.
+ * click/drag targets over each dot, the thread popover (read/reply/edit/
+ * resolve/delete), the comment-mode click catcher + composer, and the list
+ * panel. One comment icon (top-right) expands into a small horizontal bar:
+ * new comment · list · show/hide all. Pins are draggable — the anchor is
+ * re-written live while dragging (LWW), and re-snapped to the nearest item on
+ * drop. Positions map world→canvas-px via the exported viewport transform,
+ * then canvas-px→CSS via the GAL panel's bounding rect (`#glcanvas-*`).
  */
 
 interface CssRect {
@@ -46,6 +47,9 @@ function timeAgo(ms: number): string {
   return `${Math.floor(s / 86400)}d`;
 }
 
+const DRAG_THRESHOLD_PX = 4;
+const DRAG_SYNC_MS = 60;
+
 export function CommentLayer({
   controller,
   viewport,
@@ -56,13 +60,25 @@ export function CommentLayer({
   currentUser: string;
 }) {
   const [threads, setThreads] = React.useState<ResolvedThread[]>(controller.threads());
+  const [barOpen, setBarOpen] = React.useState(false);
   const [mode, setMode] = React.useState(false);
   const [openId, setOpenId] = React.useState<string | null>(null);
   const [panel, setPanel] = React.useState(false);
   const [showResolved, setShowResolved] = React.useState(false);
+  const [hidden, setHidden] = React.useState(!controller.pinsVisible());
   const [draft, setDraft] = React.useState<{ anchor: CommentAnchor; css: { x: number; y: number } } | null>(null);
   // The GAL panel's CSS rect — re-measured on viewport pushes + window resize.
   const [glRect, setGlRect] = React.useState<CssRect | null>(null);
+  // Live drag state: the dragged thread follows the pointer in CSS space (the
+  // GAL dot follows through the throttled anchor writes).
+  const [drag, setDrag] = React.useState<{ id: string; css: { x: number; y: number } } | null>(null);
+  const dragRef = React.useRef<{
+    id: string;
+    startX: number;
+    startY: number;
+    moved: boolean;
+    lastSync: number;
+  } | null>(null);
 
   // Re-seed on controller rebind (eeschema sheet switch swaps the controller;
   // the useState initializer only covers the first mount).
@@ -70,6 +86,7 @@ export function CommentLayer({
     setThreads(controller.threads());
     setOpenId(null);
     setDraft(null);
+    setHidden(!controller.pinsVisible());
     return controller.subscribe(setThreads);
   }, [controller]);
 
@@ -104,17 +121,74 @@ export function CommentLayer({
     return { x, y };
   };
 
+  const cssToWorld = (css: { x: number; y: number }) => {
+    if (!viewport || !glRect) return null;
+    return screenToWorld(viewport, {
+      x: (css.x - glRect.x) / cssRatio,
+      y: (css.y - glRect.y) / cssRatio,
+    });
+  };
+
+  const snapRadiusIu = () =>
+    viewport ? 14 / (viewport.scale * cssRatio) : 0;
+
   const onModeClick = (e: React.MouseEvent) => {
-    if (!viewport || !glRect) return;
-    const px = {
-      x: (e.clientX - glRect.x) / cssRatio,
-      y: (e.clientY - glRect.y) / cssRatio,
-    };
-    const world = screenToWorld(viewport, px);
-    // Snap to an item within ~14 CSS px so the pin tracks the obvious target.
-    const maxDistIu = 14 / (viewport.scale * cssRatio);
-    setDraft({ anchor: controller.anchorAt(world, maxDistIu), css: { x: e.clientX, y: e.clientY } });
+    const world = cssToWorld({ x: e.clientX, y: e.clientY });
+    if (!world) return;
+    setDraft({
+      anchor: controller.anchorAt(world, snapRadiusIu()),
+      css: { x: e.clientX, y: e.clientY },
+    });
     setMode(false);
+  };
+
+  // ── pin dragging ────────────────────────────────────────────────────────
+  const onPinPointerDown = (t: ResolvedThread) => (e: React.PointerEvent) => {
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    dragRef.current = { id: t.id, startX: e.clientX, startY: e.clientY, moved: false, lastSync: 0 };
+  };
+
+  const onPinPointerMove = (e: React.PointerEvent) => {
+    const d = dragRef.current;
+    if (!d) return;
+    if (!d.moved) {
+      if (Math.hypot(e.clientX - d.startX, e.clientY - d.startY) < DRAG_THRESHOLD_PX) return;
+      d.moved = true;
+      setOpenId(null);
+    }
+    setDrag({ id: d.id, css: { x: e.clientX, y: e.clientY } });
+    // Throttled live re-anchor (pos-only while dragging — snap happens on
+    // drop) so the GAL dot and every peer follow the drag.
+    const now = Date.now();
+    if (now - d.lastSync >= DRAG_SYNC_MS) {
+      d.lastSync = now;
+      const world = cssToWorld({ x: e.clientX, y: e.clientY });
+      if (world) controller.moveThread(d.id, { pos: world });
+    }
+  };
+
+  const onPinPointerUp = (t: ResolvedThread) => (e: React.PointerEvent) => {
+    const d = dragRef.current;
+    dragRef.current = null;
+    setDrag(null);
+    if (!d) return;
+    if (d.moved) {
+      const world = cssToWorld({ x: e.clientX, y: e.clientY });
+      if (world) controller.moveThread(t.id, controller.anchorAt(world, snapRadiusIu()));
+    } else {
+      setOpenId((cur) => (cur === t.id ? null : t.id));
+    }
+  };
+
+  const toggleHidden = () => {
+    const next = !hidden;
+    setHidden(next);
+    controller.setPinsVisible(!next);
+    if (next) {
+      setOpenId(null);
+      setMode(false);
+      setDraft(null);
+    }
   };
 
   const open = openId ? threads.find((t) => t.id === openId) : undefined;
@@ -124,33 +198,59 @@ export function CommentLayer({
     ? (toCss(open.world) ?? { x: window.innerWidth / 2 - 150, y: 120 })
     : null;
   const visibleThreads = threads.filter((t) => showResolved || !t.resolved);
+  const pinThreads = hidden ? [] : visibleThreads;
 
   return (
     <>
-      {/* Mode + panel toggles, below the top-right chips. */}
-      <div className="absolute right-3 top-12 z-30 flex flex-col items-end gap-2">
+      {/* Comment toolbar: one icon expanding into a small horizontal bar. */}
+      <div className="absolute right-3 top-12 z-30 flex flex-row-reverse items-center gap-2">
         <button
-          data-testid="comment-mode-toggle"
-          title={mode ? "Cancel comment (Esc)" : "Add a comment"}
-          onClick={() => {
-            setMode((m) => !m);
-            setDraft(null);
-          }}
-          className={`flex h-8 w-8 items-center justify-center rounded-full shadow-sm ring-1 ring-inset ring-white/20 ${
-            mode ? "bg-amber-500 text-black" : "bg-black/70 text-white hover:bg-black/85"
+          data-testid="comment-bar-toggle"
+          title="Comments"
+          onClick={() => setBarOpen((o) => !o)}
+          className={`flex h-8 min-w-8 items-center justify-center gap-1 rounded-full px-2 text-xs shadow-sm ring-1 ring-inset ring-white/20 ${
+            barOpen ? "bg-sky-600 text-white" : "bg-black/70 text-white hover:bg-black/85"
           }`}
         >
-          <MessageSquarePlus size={16} />
-        </button>
-        <button
-          data-testid="comment-panel-toggle"
-          title="Comments"
-          onClick={() => setPanel((p) => !p)}
-          className="flex h-8 min-w-8 items-center justify-center gap-1 rounded-full bg-black/70 px-2 text-xs text-white shadow-sm ring-1 ring-inset ring-white/20 hover:bg-black/85"
-        >
-          <MessageSquareText size={14} />
+          <MessageSquareText size={15} />
           {threads.length > 0 && <span>{threads.length}</span>}
         </button>
+        {barOpen && (
+          <div className="flex items-center gap-1 rounded-full bg-black/70 p-1 shadow-sm ring-1 ring-inset ring-white/20">
+            <button
+              data-testid="comment-mode-toggle"
+              title={mode ? "Cancel comment (Esc)" : "New comment"}
+              onClick={() => {
+                if (hidden) toggleHidden();
+                setMode((m) => !m);
+                setDraft(null);
+              }}
+              className={`flex h-6 w-6 items-center justify-center rounded-full ${
+                mode ? "bg-amber-500 text-black" : "text-white hover:bg-white/15"
+              }`}
+            >
+              <MessageSquarePlus size={14} />
+            </button>
+            <button
+              data-testid="comment-panel-toggle"
+              title="Comment list"
+              onClick={() => setPanel((p) => !p)}
+              className={`flex h-6 w-6 items-center justify-center rounded-full ${
+                panel ? "bg-white/25 text-white" : "text-white hover:bg-white/15"
+              }`}
+            >
+              <List size={14} />
+            </button>
+            <button
+              data-testid="comment-visibility-toggle"
+              title={hidden ? "Show comments" : "Hide comments"}
+              onClick={toggleHidden}
+              className="flex h-6 w-6 items-center justify-center rounded-full text-white hover:bg-white/15"
+            >
+              {hidden ? <EyeOff size={14} /> : <Eye size={14} />}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Comment-mode click catcher over the drawing area only. */}
@@ -163,19 +263,23 @@ export function CommentLayer({
         />
       )}
 
-      {/* Pin hit targets (the visual dot is GAL — these are the clickable DOM halves). */}
-      {visibleThreads.map((t) => {
-        const css = toCss(t.world);
+      {/* Pin hit/drag targets (the visual dot is GAL — these are the DOM halves). */}
+      {pinThreads.map((t) => {
+        const css = drag?.id === t.id ? drag.css : toCss(t.world);
         if (!css) return null;
         return (
           <button
             key={t.id}
             data-testid="comment-pin"
             data-thread-id={t.id}
-            title={`${t.createdBy}: ${t.messages[0]?.body ?? ""}${t.detached ? " (detached)" : ""}`}
-            onClick={() => setOpenId((cur) => (cur === t.id ? null : t.id))}
-            className="absolute z-30 -translate-x-1/2 -translate-y-1/2 rounded-full hover:ring-2 hover:ring-white/70"
-            style={{ left: css.x, top: css.y, width: 22, height: 22, background: "transparent" }}
+            title={`${t.createdBy}: ${t.messages[0]?.body ?? ""}${t.detached ? " (detached)" : ""} — drag to move`}
+            onPointerDown={onPinPointerDown(t)}
+            onPointerMove={onPinPointerMove}
+            onPointerUp={onPinPointerUp(t)}
+            className={`absolute z-30 -translate-x-1/2 -translate-y-1/2 rounded-full ${
+              drag?.id === t.id ? "cursor-grabbing ring-2 ring-white" : "cursor-grab hover:ring-2 hover:ring-white/70"
+            }`}
+            style={{ left: css.x, top: css.y, width: 22, height: 22, background: "transparent", touchAction: "none" }}
           />
         );
       })}
@@ -194,7 +298,7 @@ export function CommentLayer({
       )}
 
       {/* Thread popover next to its pin. */}
-      {open && openCss && (
+      {open && openCss && !hidden && (
         <ThreadPopover
           thread={open}
           css={openCss}
@@ -228,12 +332,13 @@ export function CommentLayer({
                 key={t.id}
                 data-testid="comment-panel-item"
                 onClick={() => {
+                  if (hidden) toggleHidden();
                   controller.jumpTo(t.id);
                   setOpenId(t.id);
                 }}
                 className="block w-full border-t border-white/10 px-3 py-2 text-left text-xs hover:bg-white/10"
               >
-                <span className="font-semibold" style={{ color: colorForUser(t.createdBy) }}>
+                <span className="font-semibold" style={{ color: controller.colorFor(t.createdBy) }}>
                   {t.createdBy}
                 </span>{" "}
                 <span className="text-white/50">
@@ -368,7 +473,7 @@ function ThreadPopover({
         {thread.messages.map((m) => (
           <div key={m.id} data-testid="comment-message" className="group px-3 py-2 text-xs">
             <div className="flex items-baseline gap-2">
-              <span className="font-semibold" style={{ color: colorForUser(m.author) }}>
+              <span className="font-semibold" style={{ color: controller.colorFor(m.author) }}>
                 {m.author}
               </span>
               <span className="text-[10px] text-white/40">
