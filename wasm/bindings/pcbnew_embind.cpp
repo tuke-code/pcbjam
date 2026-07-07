@@ -1126,6 +1126,9 @@ std::vector<PIN>                     g_pins;
 // — see collab_presence_style.h; live-patched by kicadCollabSetStyle (tuner).
 pcbjam_presence::STYLE               g_style;
 std::shared_ptr<KIGFX::VIEW_OVERLAY> g_overlay;
+// Labels render from their own overlay at the nearest depth (chip rects
+// would otherwise erase same-depth text) — see PRESENCE_TEXT_OVERLAY.
+std::shared_ptr<KIGFX::VIEW_OVERLAY> g_textOverlay;
 bool        g_started         = false;
 bool        g_redrawScheduled = false;
 bool        g_selCheckScheduled = false;
@@ -1207,9 +1210,18 @@ void redrawOverlay()
     KIGFX::VIEW* view = fr->GetCanvas()->GetView();
 
     if( !g_overlay )
-        g_overlay = pcbjam_presence::makePresenceOverlay( view );
+    {
+        g_overlay = view->MakeOverlay();
+        // Shapes sit one depth unit BELOW the text overlay (fork
+        // SetDepthOffset) so labels always render on top of chips/boxes.
+        g_overlay->SetDepthOffset( pcbjam_presence::PRESENCE_SHAPES_DEPTH_OFFSET );
+    }
+
+    if( !g_textOverlay )
+        g_textOverlay = pcbjam_presence::makePresenceTextOverlay( view );
 
     g_overlay->Clear();
+    g_textOverlay->Clear();
 
     BOARD* board = fr->GetBoard();
     // Screen-constant sizing: px → world units, so cursors/outline widths don't
@@ -1265,13 +1277,14 @@ void redrawOverlay()
                 }
             }
 
-            pcbjam_presence::drawSelectionBox( g_overlay.get(), item->ViewBBox(), peer.name,
-                                               color, px, g_style, &outline );
+            pcbjam_presence::drawSelectionBox( g_overlay.get(), g_textOverlay.get(),
+                                               item->ViewBBox(), peer.name, color, px,
+                                               g_style, &outline );
         }
 
         if( peer.hasCursor )
-            pcbjam_presence::drawCursor( g_overlay.get(), peer.cursor, peer.name, color, px,
-                                         g_style );
+            pcbjam_presence::drawCursor( g_overlay.get(), g_textOverlay.get(), peer.cursor,
+                                         peer.name, color, px, g_style );
     }
 
     // Comment pin dots (0005), drawn last so they sit above selection outlines.
@@ -1282,6 +1295,7 @@ void redrawOverlay()
     }
 
     view->Update( g_overlay.get() );
+    view->Update( g_textOverlay.get() );
     // The canvas repaints on its own only with focus/input — force it, exactly as
     // the cross-probe flash does.
     fr->GetCanvas()->ForceRefresh();
