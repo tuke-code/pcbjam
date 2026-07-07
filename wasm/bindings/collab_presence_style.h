@@ -33,36 +33,40 @@ namespace pcbjam_presence {
 
 using json = nlohmann::json;
 
+// Defaults = the SHIPPED look, picked with the PresenceTuner 2026-07-07.
 struct STYLE
 {
     // ── selection box ──────────────────────────────────────────────────────
     // 0 rect · 1 corner brackets · 2 underline · 3 rounded rect · 4 filled only
     // 5 exact item outline (pcbnew; eeschema falls back to rect)
-    int    selShape       = 0;
-    double selStrokeWidth = 2.5;   // px
-    double selStrokeAlpha = 0.9;
-    double selFillAlpha   = 0.0;   // 0 = no fill
+    int    selShape       = 5;
+    double selStrokeWidth = 6.0;   // px
+    double selStrokeAlpha = 0.7;
+    double selFillAlpha   = 0.46;  // 0 = no fill
     double selPaddingPx   = 4.0;   // bbox inflate
     double selCornerPx    = 8.0;   // bracket arm length / rounding radius
 
     // ── selection name tag ────────────────────────────────────────────────
     bool   labelShow     = true;
-    double labelSizePx   = 9.0;
-    bool   labelChip     = false;  // filled background chip + white text
-    int    labelVPos     = 0;      // 0 top · 1 bottom
-    int    labelHPos     = 0;      // 0 start · 1 end · 2 center
+    double labelSizePx   = 7.5;
+    bool   labelChip     = true;   // filled background chip + contrast text
+    int    labelVPos     = 1;      // 0 top · 1 bottom
+    int    labelHPos     = 1;      // 0 start · 1 end · 2 center
     bool   labelInside   = false;  // inside vs outside the box
-    double labelOffsetPx = 8.0;
+    double labelOffsetPx = 0.0;
+    // Chip background opacity (label AND cursor chips) — matches the border
+    // alpha so badges sit consistently with the selection strokes.
+    double chipBgAlpha   = 0.7;
 
     // ── remote cursor ─────────────────────────────────────────────────────
     // 0 cross · 1 pointer triangle · 2 circle + dot
     int    cursorShape        = 0;
-    double cursorSizePx       = 7.0;
-    double cursorWidthPx      = 2.0;
-    double cursorAlpha        = 0.9;
+    double cursorSizePx       = 8.0;
+    double cursorWidthPx      = 3.0;
+    double cursorAlpha        = 1.0;
     bool   cursorLabel        = true;
     double cursorLabelSizePx  = 10.0;
-    bool   cursorLabelChip    = false;
+    bool   cursorLabelChip    = true;
 
     // ── colors ────────────────────────────────────────────────────────────
     // fixedColor: every peer in ONE color ("" = off). palette: recolor peers
@@ -72,13 +76,28 @@ struct STYLE
     std::vector<std::string> palette;
 
     // ── comment pin dots ──────────────────────────────────────────────────
-    double pinRadiusPx     = 7.0;
-    double pinRingPx       = 1.5;
-    double pinRingAlpha    = 0.9;
+    double pinRadiusPx     = 9.0;
+    double pinRingPx       = 3.0;
+    double pinRingAlpha    = 1.0;
     double pinFillAlpha    = 1.0;
     double pinResolvedAlpha = 0.3;
 
 };
+
+/**
+ * Shipped eeschema defaults (picked with the PresenceTuner 2026-07-07): the
+ * schematic canvas is light and sparse, so the exact-outline highlight wears
+ * a hairline stroke, a subtler fill and a softer cursor than pcbnew's.
+ * Everything else matches the struct (= pcbnew) defaults.
+ */
+inline STYLE eeschemaDefaultStyle()
+{
+    STYLE s;
+    s.selStrokeWidth = 1.0;
+    s.selFillAlpha   = 0.14;
+    s.cursorAlpha    = 0.5;
+    return s;
+}
 
 inline KIGFX::COLOR4D parseHexColor( const std::string& aHex, const KIGFX::COLOR4D& aFallback )
 {
@@ -110,6 +129,7 @@ inline void patchStyle( STYLE& aStyle, const json& j )
     aStyle.labelHPos     = j.value( "labelHPos", aStyle.labelHPos );
     aStyle.labelInside   = j.value( "labelInside", aStyle.labelInside );
     aStyle.labelOffsetPx = j.value( "labelOffsetPx", aStyle.labelOffsetPx );
+    aStyle.chipBgAlpha   = j.value( "chipBgAlpha", aStyle.chipBgAlpha );
 
     aStyle.cursorShape       = j.value( "cursorShape", aStyle.cursorShape );
     aStyle.cursorSizePx      = j.value( "cursorSizePx", aStyle.cursorSizePx );
@@ -251,7 +271,7 @@ inline void drawLabel( KIGFX::VIEW_OVERLAY* aOv, KIGFX::VIEW_OVERLAY* aTextOv, c
         double padX = 3 * aPx, padY = 2 * aPx;
         aOv->SetIsStroke( false );
         aOv->SetIsFill( true );
-        aOv->SetFillColor( aColor.WithAlpha( 0.92 ) );
+        aOv->SetFillColor( aColor.WithAlpha( aS.chipBgAlpha ) );
         aOv->Rectangle( VECTOR2D( x - padX, y - padY ),
                         VECTOR2D( x + w + padX, y + h + padY ) );
         aOv->SetIsStroke( true );
@@ -423,7 +443,7 @@ inline void drawCursor( KIGFX::VIEW_OVERLAY* aOv, KIGFX::VIEW_OVERLAY* aTextOv,
             double padX = 3 * aPx, padY = 2 * aPx;
             aOv->SetIsStroke( false );
             aOv->SetIsFill( true );
-            aOv->SetFillColor( aColor.WithAlpha( 0.92 ) );
+            aOv->SetFillColor( aColor.WithAlpha( aS.chipBgAlpha ) );
             aOv->Rectangle( at + VECTOR2D( -padX, -padY ),
                             at + VECTOR2D( w + padX, h + padY ) );
             aOv->SetIsStroke( true );

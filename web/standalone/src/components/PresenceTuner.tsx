@@ -31,47 +31,61 @@ export function hasTunerBridge(mod: unknown): mod is TunerModule {
   );
 }
 
-/** Mirror of collab_presence_style.h STYLE — defaults MUST match the C++. */
+/** Mirror of collab_presence_style.h STYLE — defaults MUST match the C++
+ *  (= the shipped look picked with this tuner, 2026-07-07). */
 const DEFAULT_STYLE = {
-  selShape: 0,
-  selStrokeWidth: 2.5,
-  selStrokeAlpha: 0.9,
-  selFillAlpha: 0,
+  selShape: 5,
+  selStrokeWidth: 6,
+  selStrokeAlpha: 0.7,
+  selFillAlpha: 0.46,
   selPaddingPx: 4,
   selCornerPx: 8,
   labelShow: true,
-  labelSizePx: 9,
-  labelChip: false,
-  labelVPos: 0,
-  labelHPos: 0,
+  labelSizePx: 7.5,
+  labelChip: true,
+  labelVPos: 1,
+  labelHPos: 1,
   labelInside: false,
-  labelOffsetPx: 8,
+  labelOffsetPx: 0,
+  chipBgAlpha: 0.7,
   cursorShape: 0,
-  cursorSizePx: 7,
-  cursorWidthPx: 2,
-  cursorAlpha: 0.9,
+  cursorSizePx: 8,
+  cursorWidthPx: 3,
+  cursorAlpha: 1,
   cursorLabel: true,
   cursorLabelSizePx: 10,
-  cursorLabelChip: false,
+  cursorLabelChip: true,
   fixedColor: "",
   palette: [] as string[],
-  pinRadiusPx: 7,
-  pinRingPx: 1.5,
-  pinRingAlpha: 0.9,
+  pinRadiusPx: 9,
+  pinRingPx: 3,
+  pinRingAlpha: 1,
   pinFillAlpha: 1,
   pinResolvedAlpha: 0.3,
 };
 
 type Style = typeof DEFAULT_STYLE;
 
-const STORE_KEY = "pcbjam:presence-style";
+/** eeschema ships softer defaults (hairline outline, subtler fill/cursor) —
+ *  MUST match collab_presence_style.h eeschemaDefaultStyle(). */
+const EESCHEMA_OVERRIDES: Partial<Style> = {
+  selStrokeWidth: 1,
+  selFillAlpha: 0.14,
+  cursorAlpha: 0.5,
+};
 
-function loadStored(): Style {
+function defaultsFor(tool: string): Style {
+  return tool === "eeschema" ? { ...DEFAULT_STYLE, ...EESCHEMA_OVERRIDES } : { ...DEFAULT_STYLE };
+}
+
+const storeKey = (tool: string) => `pcbjam:presence-style:${tool}`;
+
+function loadStored(tool: string): Style {
   try {
-    const raw = localStorage.getItem(STORE_KEY);
-    return raw ? { ...DEFAULT_STYLE, ...JSON.parse(raw) } : { ...DEFAULT_STYLE };
+    const raw = localStorage.getItem(storeKey(tool));
+    return raw ? { ...defaultsFor(tool), ...JSON.parse(raw) } : defaultsFor(tool);
   } catch {
-    return { ...DEFAULT_STYLE };
+    return defaultsFor(tool);
   }
 }
 
@@ -95,9 +109,9 @@ const PALETTE_PRESETS: Record<string, readonly string[]> = {
   "okabe-ito": ["#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7"],
 };
 
-export function PresenceTuner({ mod }: { mod: TunerModule }) {
+export function PresenceTuner({ mod, tool }: { mod: TunerModule; tool: string }) {
   const [open, setOpen] = React.useState(true);
-  const [style, setStyle] = React.useState<Style>(loadStored);
+  const [style, setStyle] = React.useState<Style>(() => loadStored(tool));
   const [demo, setDemo] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
 
@@ -105,11 +119,11 @@ export function PresenceTuner({ mod }: { mod: TunerModule }) {
   React.useEffect(() => {
     mod.kicadCollabSetStyle(JSON.stringify(style));
     try {
-      localStorage.setItem(STORE_KEY, JSON.stringify(style));
+      localStorage.setItem(storeKey(tool), JSON.stringify(style));
     } catch {
       /* private mode */
     }
-  }, [mod, style]);
+  }, [mod, tool, style]);
 
   const set = <K extends keyof Style>(k: K, v: Style[K]) =>
     setStyle((s) => ({ ...s, [k]: v }));
@@ -241,8 +255,8 @@ export function PresenceTuner({ mod }: { mod: TunerModule }) {
         </button>
         <button
           onClick={() => {
-            setStyle({ ...DEFAULT_STYLE });
-            localStorage.removeItem(STORE_KEY);
+            setStyle(defaultsFor(tool));
+            localStorage.removeItem(storeKey(tool));
           }}
           className="rounded px-2 py-1 text-[11px] ring-1 ring-inset ring-white/25 hover:bg-white/10"
         >
@@ -264,6 +278,7 @@ export function PresenceTuner({ mod }: { mod: TunerModule }) {
           <Check label="show" v={style.labelShow} onChange={(v) => set("labelShow", v)} />
           <Range label="size px" v={style.labelSizePx} min={5} max={20} step={0.5} onChange={(v) => set("labelSizePx", v)} />
           <Check label="chip background" v={style.labelChip} onChange={(v) => set("labelChip", v)} />
+          <Range label="chip α" v={style.chipBgAlpha} min={0.2} max={1} step={0.05} onChange={(v) => set("chipBgAlpha", v)} />
           <Select label="v-pos" value={style.labelVPos} options={VPOS} onChange={(v) => set("labelVPos", v)} />
           <Select label="h-pos" value={style.labelHPos} options={HPOS} onChange={(v) => set("labelHPos", v)} />
           <Check label="inside box" v={style.labelInside} onChange={(v) => set("labelInside", v)} />

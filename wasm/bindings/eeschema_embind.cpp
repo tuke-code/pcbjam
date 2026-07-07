@@ -718,7 +718,8 @@ std::vector<PEER>                    g_peers;
 std::vector<PIN>                     g_pins;
 // Every visual knob (shapes, widths, alphas, label placement, color overrides)
 // — see collab_presence_style.h; live-patched by kicadCollabSetStyle (tuner).
-pcbjam_presence::STYLE               g_style;
+// eeschema ships its own defaults (hairline outline, subtler fill/cursor).
+pcbjam_presence::STYLE               g_style = pcbjam_presence::eeschemaDefaultStyle();
 std::shared_ptr<KIGFX::VIEW_OVERLAY> g_overlay;
 // Labels render from their own overlay at the nearest depth (chip rects
 // would otherwise erase same-depth text) — see PRESENCE_TEXT_OVERLAY.

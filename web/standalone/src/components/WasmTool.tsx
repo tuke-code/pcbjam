@@ -1184,7 +1184,7 @@ export function WasmTool({
       )}
 
       {/* DEV: presence style tuner (VITE_PRESENCE_TUNER=1). */}
-      {ready && tunerMod && <PresenceTuner mod={tunerMod} />}
+      {ready && tunerMod && <PresenceTuner mod={tunerMod} tool={tool} />}
 
       {/* Lib pre-sync still warming IDB after the editor opened (big set) — small
           unobtrusive indicator so the user knows browsing is still filling in. */}
