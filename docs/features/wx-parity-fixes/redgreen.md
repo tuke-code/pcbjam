@@ -373,3 +373,47 @@ Method: RED = the current binary (H-7 was never implemented) → implement the f
 → `BINARYEN_OPT_LEVEL=-O1 docker/build.sh pcbnew` → GREEN. The JS side
 (`wx-dom.js`) is a separate script (not compiled into the wasm), so its
 iterations were validated without rebuilding.
+
+## KiCad e2e (product proof) — `tests/kicad/contextmenu-fresh.spec.ts` (H-8)
+
+H-8 is the right-click sibling of H-7. `wxWindowWasm::DoPopupMenu`
+(`src/wasm/window.cpp`) serialized the popup once via `WasmItemsToJson()` and
+never fired `wxEVT_MENU_OPEN` or ran a `menu->UpdateUI()` pass. Fix: fire both
+before serializing — mirrors `wxMenuBar::WasmOnMenuOpen`.
+
+**Why the pcbnew *selection* menu can't repro it (the surface trap):** KiCad
+pre-refreshes most context menus in C++ before the popup —
+`TOOL_MENU::ShowContextMenu(SELECTION&)` (`tool_menu.cpp:57`) runs `Evaluate()`
+\+ `UpdateAll()` + `ClearDirty()`, so the selection menu is fully fresh even in
+RED. The gap survives only in the **no-arg** `TOOL_MENU::ShowContextMenu()`
+overload (`tool_menu.cpp:66`), which just `SetDirty()`s and shows — relying
+entirely on `wxEVT_MENU_OPEN` → `updateMenu` (gated on `m_dirty`, true here) to
+`Evaluate` the `CONDITIONAL_MENU`. The **pcbnew Measure tool** uses it
+(`pcb_viewer_tools.cpp:441`). Because a `CONDITIONAL_MENU`'s items don't
+materialize until `Evaluate()` runs, the RED trap isn't a stale bit but an
+**empty menu**: the cloned popup (`tool_manager.cpp:971`) serializes 0 items.
+The clone keeps `m_dirty=true` (constructor default; `copyFrom` doesn't copy
+it), so the fix's `wxEVT_MENU_OPEN` does trigger `updateMenu` on it.
+
+**The e2e:** boot pcbnew.html; right-click the canvas after a left-click
+(selection menu — the CONTROL) → must be populated in both builds; then activate
+Measure (Ctrl+Shift+M) and right-click → the SIGNAL.
+
+| # | KiCad surface | RED (unpatched) | GREEN (patched) |
+|---|---|---|---|
+| **H-8** | Measure-tool canvas right-click menu | **0 items — empty popup** (CONDITIONAL_MENU never Evaluated) — *measured* | **4 items `["Cancel","Copy","Zoom","Grid"]`** (Evaluated on open) — *measured* |
+
+- **RED — measured**: `[H8] selection-tool menu (5): [...,"Zoom","Grid"]` (control
+  OK) but `[H8] measure-tool menu (0): []` →
+  `expect(measLabels.length).toBeGreaterThan(0)` fails.
+- **GREEN — measured**: `[H8] measure-tool menu (4): ["Cancel","Copy","Zoom","Grid"]`;
+  test passes (15.2s). The measure menu's items differ from the selection menu's
+  (`Cancel`/`Copy` vs `Get and Move Footprint`/`Paste`), confirming the Measure
+  tool activated and its *own* no-arg menu is the one that was empty in RED.
+
+The selection-menu control proves the failure is specific to the
+`wxEVT_MENU_OPEN` / no-arg path, not a general popup break. Same root as H-7;
+`window.cpp` change → full pcbnew rebuild. Build gotcha on a memory-tight Mac:
+the host-side binaryen `-O1` asyncify-shrink pass wants ~10-15 GB — run the build
+**detached** (`nohup … & disown`, not a reap-prone tracked background task) with
+`BINARYEN_CORES=2` to keep peak RAM under the ceiling.
