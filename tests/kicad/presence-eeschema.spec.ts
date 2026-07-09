@@ -425,6 +425,52 @@ test("cross-app ghost render: a pcbnew peer's xsel uuid resolves on the current 
   expect(hasAbort(testLogger)).toBe(false);
 });
 
+// Follow-user (0008): FitViewport applies a world rect with contain semantics —
+// verified through the GetViewport round trip (center lands, the contained
+// axis' half-extent matches the request within the fit's own tolerance).
+test("fitViewport applies a world rect (contain) — GetViewport round trip", async ({
+  page,
+  testLogger,
+}) => {
+  await bootAndOpen(page);
+
+  const target = { cx: 120e6, cy: 90e6, halfW: 40e6, halfH: 30e6 };
+  await page.evaluate((t) => {
+    const m = (window as unknown as PresenceWindow).Module as unknown as {
+      kicadCollabFitViewport(cx: number, cy: number, hw: number, hh: number): void;
+    };
+    m.kicadCollabFitViewport(t.cx, t.cy, t.halfW, t.halfH);
+  }, target);
+
+  // The fit is CallAfter+fiber scheduled — poll the transform until it lands.
+  await expect
+    .poll(
+      async () => {
+        const vp = await page.evaluate(() =>
+          JSON.parse((window as unknown as PresenceWindow).Module.kicadCollabGetViewport()),
+        );
+        return Math.abs(vp.cx - target.cx) < 1e6 && Math.abs(vp.cy - target.cy) < 1e6;
+      },
+      { timeout: 20000, intervals: [250] },
+    )
+    .toBe(true);
+
+  const vp = await page.evaluate(() =>
+    JSON.parse((window as unknown as PresenceWindow).Module.kicadCollabGetViewport()),
+  );
+  // Contain: at least one axis' visible half-extent matches the request (the
+  // other overshoots by the canvas aspect), and neither is SMALLER (cropping).
+  const halfW = vp.w / 2 / vp.scale;
+  const halfH = vp.h / 2 / vp.scale;
+  expect(halfW).toBeGreaterThan(target.halfW * 0.95);
+  expect(halfH).toBeGreaterThan(target.halfH * 0.95);
+  const relW = Math.abs(halfW - target.halfW) / target.halfW;
+  const relH = Math.abs(halfH - target.halfH) / target.halfH;
+  expect(Math.min(relW, relH)).toBeLessThan(0.05);
+
+  expect(hasAbort(testLogger)).toBe(false);
+});
+
 test("viewport export returns a sane world↔screen transform", async ({ page, testLogger }) => {
   await bootAndOpen(page);
 

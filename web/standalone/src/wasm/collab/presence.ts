@@ -5,6 +5,7 @@ import {
   presenceStateSchema,
   type PresenceState,
   type PresenceUser,
+  type PresenceViewport,
 } from "@pcbjam/shared";
 import { clog } from "./debug";
 
@@ -45,6 +46,9 @@ export interface PresenceHandle {
   setCursor(pos: { x: number; y: number } | null): void;
   /** 0002: publish the local selection's KIID strings. */
   setSelection(uuids: string[]): void;
+  /** 0008: publish the visible world rect (center + half-extents, IU) for
+   *  followers; null while unknown. */
+  setViewport(rect: PresenceViewport | null): void;
   /** A user's current presence color: their published one if they're in the
    *  room, our claimed one for ourselves, else the palette-hash fallback
    *  (offline users, e.g. old comment authors). */
@@ -276,6 +280,9 @@ export function createPresence(opts: {
     },
     setSelection(uuids) {
       patch({ selection: uuids });
+    },
+    setViewport(rect) {
+      patch({ viewport: rect });
     },
     colorOf(userId) {
       if (userId === user.id) return user.color;

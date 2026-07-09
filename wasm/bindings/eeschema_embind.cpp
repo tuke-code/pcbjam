@@ -733,7 +733,8 @@ pcbjam_presence::CORE& presenceCore()
                 if( !item )
                     continue;   // not in this schematic (yet) — skip silently
 
-                pcbjam_presence::drawSelectionBox( aCore.overlay.get(), aCore.textOverlay.get(),
+                pcbjam_presence::drawSelectionBox( aCore.overlay.get(), aCore.chipOverlay.get(),
+                                                   aCore.textOverlay.get(),
                                                    item->ViewBBox(), peer.name, color, px,
                                                    aCore.style );
             }
@@ -745,7 +746,8 @@ pcbjam_presence::CORE& presenceCore()
 
                 for( SCH_ITEM* item : resolveXsel( fr, peer ) )
                 {
-                    pcbjam_presence::drawSelectionBox( aCore.overlay.get(), aCore.textOverlay.get(),
+                    pcbjam_presence::drawSelectionBox( aCore.overlay.get(), aCore.chipOverlay.get(),
+                                                   aCore.textOverlay.get(),
                                                        item->ViewBBox(), peer.name, color, px,
                                                        ghost );
                 }
@@ -1467,6 +1469,12 @@ void schCollabSetViewport( double aCx, double aCy )
     presenceCore().panTo( aCx, aCy );
 }
 
+// JS → C++ (0008 follow-user): fit a leader's world rect into this canvas.
+void schCollabFitViewport( double aCx, double aCy, double aHalfW, double aHalfH )
+{
+    presenceCore().fitViewport( aCx, aCy, aHalfW, aHalfH );
+}
+
 // JS pull of the current viewport transform: `{cx,cy,scale,w,h}` with scale = px per
 // IU via the GAL matrix (GetScale() is the zoom, not px/IU — pcbnew 0002 lesson).
 std::string schCollabGetViewport()
@@ -1691,6 +1699,8 @@ EMSCRIPTEN_BINDINGS(eeschema) {
     function("kicadCollabSetRemote", &schCollabSetRemote);
     function("kicadCollabSetPins", &schCollabSetPins);
     function("kicadCollabSetViewport", &schCollabSetViewport);
+    // Follow-user (collab-presence 0008).
+    function("kicadCollabFitViewport", &schCollabFitViewport);
     function("kicadCollabSetStyle", &schCollabSetStyle);
     function("kicadCollabTestListItems", &schCollabTestListItems);
     function("kicadCollabTestDemoSet", &schCollabTestDemoSet);

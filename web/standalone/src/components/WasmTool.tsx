@@ -56,8 +56,14 @@ import {
 import {
   bindKicadPresence,
   hasPresenceBridge,
+  type PresenceKicadModule,
   type PresenceKicadWindow,
 } from "@/wasm/collab/presence-kicad";
+import {
+  createFollow,
+  type FollowHandle,
+  type FollowTarget,
+} from "@/wasm/collab/follow-user";
 import { startCrossAppPresence, type CrossAppHandle } from "@/wasm/collab/cross-app";
 import {
   createComments,
@@ -720,6 +726,8 @@ export function WasmTool({
   const driftRef = React.useRef<{ stop(): void } | null>(null);
   const presenceRef = React.useRef<PresenceHandle | null>(null);
   const presenceBridgeRef = React.useRef<{ destroy(): void } | null>(null);
+  // Follow-user (0008): mirror a peer's viewport until local input breaks it.
+  const followRef = React.useRef<FollowHandle | null>(null);
   // Project-wide presence room (0006): joined once per session, survives
   // eeschema sheet rebinds — the bridge re-reads it on every startPresence.
   const crossAppRef = React.useRef<CrossAppHandle | null>(null);
@@ -773,6 +781,8 @@ export function WasmTool({
   // eeschema: the sheet THIS client is bound to — the roster dims peers whose
   // skeleton state says they're on a different sheet (collab-presence 0003).
   const [activeSheetPath, setActiveSheetPath] = React.useState<string | undefined>();
+  // Follow-user (0008): the followed roster client, for the ring + banner.
+  const [followingTarget, setFollowingTarget] = React.useState<FollowTarget | null>(null);
   // Comments (0005): the bound doc's controller + the live viewport transform
   // the DOM layer maps world→CSS with. Both rebind with the collab session
   // (per sheet in eeschema).
@@ -922,6 +932,9 @@ export function WasmTool({
     // pcbnew/pl_editor bind once; eeschema rebinds per active sheet, so the
     // roster shows who is on the SAME sheet (room = sheet).
     const startPresence = (provider: YjsProvider | undefined, sheetPath?: string) => {
+      followRef.current?.destroy();
+      followRef.current = null;
+      setFollowingTarget(null);
       presenceBridgeRef.current?.destroy();
       presenceBridgeRef.current = null;
       presenceRef.current?.destroy();
@@ -945,14 +958,29 @@ export function WasmTool({
       // and the remote VIEW_OVERLAY render. The bridge gate skips tools without
       // the exports and wasm builds predating them.
       if ((tool === "pcbnew" || tool === "eeschema") && hasPresenceBridge(win.Module)) {
+        // Follow-user (0008): available when the wasm exports FitViewport.
+        const fitFn = (win.Module as PresenceKicadModule).kicadCollabFitViewport;
+        if (fitFn) {
+          const follow = createFollow({
+            presence,
+            fit: (cx, cy, halfW, halfH) => fitFn.call(win.Module, cx, cy, halfW, halfH),
+            ownSheetPath: () => sheetPath,
+          });
+          follow.subscribe(setFollowingTarget);
+          followRef.current = follow;
+        }
         presenceBridgeRef.current = bindKicadPresence({
           mod: win.Module,
           win: win as unknown as PresenceKicadWindow,
           presence,
           // Cross-app selection (0006): the project presence room, if joined.
           crossApp: crossAppRef.current ?? undefined,
-          // Live world↔screen transform for the DOM comment layer (0005).
-          onViewport: setViewportState,
+          // Live world↔screen transform for the DOM comment layer (0005) +
+          // the follow controller's echo/break detection (0008).
+          onViewport: (vp) => {
+            setViewportState(vp);
+            followRef.current?.noteLocalViewport(vp);
+          },
         });
       }
     };
@@ -1212,6 +1240,8 @@ export function WasmTool({
       win.removeEventListener("keydown", chromeHotkey, true);
       commentsRef.current?.destroy();
       commentsRef.current = null;
+      followRef.current?.destroy();
+      followRef.current = null;
       presenceBridgeRef.current?.destroy();
       presenceBridgeRef.current = null;
       presenceRef.current?.destroy();
@@ -1392,6 +1422,27 @@ export function WasmTool({
         </div>
       )}
 
+      {/* Follow-user (0008): who we're following + how to stop. Esc also works
+          because any canvas key input breaks the follow via noteLocalViewport
+          only when the viewport moves — this banner is the explicit out. */}
+      {ready && followingTarget && (
+        <div
+          data-testid="follow-banner"
+          className="absolute left-1/2 top-3 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/70 px-3 py-1 text-xs text-white shadow-sm ring-1 ring-inset ring-white/20"
+        >
+          <span>
+            Following <span className="font-semibold">{followingTarget.name}</span> — move to stop
+          </span>
+          <button
+            type="button"
+            className="rounded-full bg-white/15 px-2 py-0.5 font-medium hover:bg-white/25"
+            onClick={() => followRef.current?.unfollow()}
+          >
+            Stop
+          </button>
+        </div>
+      )}
+
       {/* Top-right overlay row: who else is in this file (awareness roster),
           where this project lives / whether Save persists (chip hidden while
           the UI is hidden), and the Figma-like hide/show-UI toggle — the one
@@ -1402,7 +1453,15 @@ export function WasmTool({
           (sourceDescriptor && !chromeHidden)) && (
           <div className="absolute right-3 top-3 z-20 flex items-center gap-2">
             {peers.length > 0 && (
-              <PresenceRoster peers={peers} activeSheetPath={activeSheetPath} />
+              <PresenceRoster
+                peers={peers}
+                activeSheetPath={activeSheetPath}
+                following={followingTarget}
+                onFollow={(t) => {
+                  if (t) followRef.current?.follow(t);
+                  else followRef.current?.unfollow();
+                }}
+              />
             )}
             {sourceDescriptor && !chromeHidden && (
               <SourceChip descriptor={sourceDescriptor} />

@@ -41,6 +41,7 @@ function stubPresence(peers: PresencePeer[] = []) {
     },
     setCursor: vi.fn(),
     setSelection: vi.fn(),
+    setViewport: vi.fn(),
     colorOf: vi.fn((id: string) => colorForUser(id)),
     destroy: vi.fn(),
     firePeers(p) {

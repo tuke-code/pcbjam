@@ -128,8 +128,11 @@ struct CORE
     STYLE                       style;
 
     std::shared_ptr<KIGFX::VIEW_OVERLAY> overlay;
-    // Labels render from their own overlay at the nearest depth (chip rects
-    // would otherwise erase same-depth text) — see PRESENCE_TEXT_OVERLAY.
+    // Name chips + pin dots render one depth unit ABOVE the selection shapes
+    // (else an earlier-painted low-alpha fill rejects the chip's fragments and
+    // the tag washes out to the fill's alpha), and the text one unit above the
+    // chips — see the depth-layering note in collab_presence_style.h.
+    std::shared_ptr<KIGFX::VIEW_OVERLAY> chipOverlay;
     std::shared_ptr<KIGFX::VIEW_OVERLAY> textOverlay;
 
     bool        started           = false;
@@ -235,6 +238,38 @@ struct CORE
                      { "w", sz.x }, { "h", sz.y } }.dump();
     }
 
+    /** kicadCollabFitViewport (0008 follow-user): fit the given world RECT
+     *  (center + half-extents, IU) into this canvas — contain, never crop:
+     *  the follower's zoom is derived from ITS OWN canvas size, so leaders
+     *  and followers on different monitors see the same world region.
+     *  Fiber like every other view mutation from JS. */
+    void fitViewport( double aCx, double aCy, double aHalfW, double aHalfH )
+    {
+        EDA_DRAW_FRAME* fr = frame();
+
+        if( !fr || aHalfW <= 0 || aHalfH <= 0 )
+            return;
+
+        pcbjam_collab::runOnFiber( fr, [this, fr, aCx, aCy, aHalfW, aHalfH]() {
+            KIGFX::VIEW*    view = fr->GetCanvas()->GetView();
+            const VECTOR2I& sz   = view->GetScreenPixelSize();
+
+            // Pixels-per-IU that CONTAINS the rect in both axes. GetScale() is
+            // the zoom, not px/IU (0002 lesson) — convert via the GAL matrix:
+            // zoom scales linearly with px/IU, so target zoom = current zoom ×
+            // (target px/IU ÷ current px/IU).
+            double pxPerIuNow = view->ToScreen( 1.0 );
+            double pxPerIuFit = std::min( sz.x / ( 2.0 * aHalfW ), sz.y / ( 2.0 * aHalfH ) );
+
+            if( pxPerIuNow > 0 && pxPerIuFit > 0 )
+                view->SetScale( view->GetScale() * ( pxPerIuFit / pxPerIuNow ) );
+
+            view->SetCenter( VECTOR2D( aCx, aCy ) );
+            fr->GetCanvas()->ForceRefresh();
+            emitViewportIfChanged();
+        } );
+    }
+
     /** kicadCollabSetViewport (0005): pan to a world position (comment panel
      *  "jump to pin"). Fiber like every other view mutation from JS. */
     void panTo( double aCx, double aCy )
@@ -300,16 +335,23 @@ struct CORE
 
         if( !overlay )
         {
+            // Depth layering near→deep: text (0) < chips (1) < shapes (2) —
+            // fork SetDepthOffset; see collab_presence_style.h.
             overlay = view->MakeOverlay();
-            // Shapes sit one depth unit BELOW the text overlay (fork
-            // SetDepthOffset) so labels always render on top of chips/boxes.
             overlay->SetDepthOffset( PRESENCE_SHAPES_DEPTH_OFFSET );
+        }
+
+        if( !chipOverlay )
+        {
+            chipOverlay = view->MakeOverlay();
+            chipOverlay->SetDepthOffset( PRESENCE_CHIPS_DEPTH_OFFSET );
         }
 
         if( !textOverlay )
             textOverlay = makePresenceTextOverlay( view );
 
         overlay->Clear();
+        chipOverlay->Clear();
         textOverlay->Clear();
 
         // Screen-constant sizing: px → world units, so cursors/outline widths
@@ -326,18 +368,20 @@ struct CORE
             drawPeerShapes( *this, fr, peer, color, px );
 
             if( peer.hasCursor )
-                drawCursor( overlay.get(), textOverlay.get(), peer.cursor, peer.name, color,
-                            px, style );
+                drawCursor( overlay.get(), chipOverlay.get(), textOverlay.get(), peer.cursor,
+                            peer.name, color, px, style );
         }
 
-        // Comment pin dots (0005), drawn last so they sit above selection outlines.
+        // Comment pin dots (0005) — on the CHIPS layer so selection fills
+        // can't reject their fragments (see drawPin).
         for( const PIN& pin : pins )
         {
             KIGFX::COLOR4D color = peerColor( style, pin.name, pin.color );
-            drawPin( overlay.get(), pin.pos, color, pin.resolved, px, style );
+            drawPin( chipOverlay.get(), pin.pos, color, pin.resolved, px, style );
         }
 
         view->Update( overlay.get() );
+        view->Update( chipOverlay.get() );
         view->Update( textOverlay.get() );
         // The canvas repaints on its own only with focus/input — force it,
         // exactly as the cross-probe flash does.

@@ -1203,7 +1203,8 @@ pcbjam_presence::CORE& presenceCore()
                     }
                 }
 
-                pcbjam_presence::drawSelectionBox( aCore.overlay.get(), aCore.textOverlay.get(),
+                pcbjam_presence::drawSelectionBox( aCore.overlay.get(), aCore.chipOverlay.get(),
+                                                   aCore.textOverlay.get(),
                                                    item->ViewBBox(), name, itemColor, px,
                                                    style, &outline );
             };
@@ -1594,6 +1595,12 @@ void pcbCollabSetViewport( double aCx, double aCy )
     presenceCore().panTo( aCx, aCy );
 }
 
+// JS → C++ (0008 follow-user): fit a leader's world rect into this canvas.
+void pcbCollabFitViewport( double aCx, double aCy, double aHalfW, double aHalfH )
+{
+    presenceCore().fitViewport( aCx, aCy, aHalfW, aHalfH );
+}
+
 // JS pull of the current viewport transform (world↔screen mapping for the DOM layer):
 // `{cx,cy,scale,w,h}` — world center, pixels-per-IU scale, canvas size in px.
 std::string pcbCollabGetViewport()
@@ -1981,6 +1988,8 @@ EMSCRIPTEN_BINDINGS(pcbnew) {
     function("kicadCollabSetRemote", &pcbCollabSetRemote);
     function("kicadCollabSetPins", &pcbCollabSetPins);
     function("kicadCollabSetViewport", &pcbCollabSetViewport);
+    // Follow-user (collab-presence 0008).
+    function("kicadCollabFitViewport", &pcbCollabFitViewport);
     function("kicadCollabSetStyle", &pcbCollabSetStyle);
     function("kicadCollabTestListItems", &pcbCollabTestListItems);
     function("kicadCollabTestDemoSet", &pcbCollabTestDemoSet);

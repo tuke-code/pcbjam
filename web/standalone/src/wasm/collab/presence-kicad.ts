@@ -32,6 +32,9 @@ export interface PresenceKicadModule {
   /** 0007: tiebreak release — the local client lost an overlapping hold;
    *  the wasm side cancels an in-flight move and unselects exactly these. */
   kicadCollabReleaseSelection?(uuidsJson: string, holder: string): void;
+  /** 0008: fit a leader's world rect (center + half-extents, IU) into this
+   *  canvas — contain semantics. Absent on older wasm builds. */
+  kicadCollabFitViewport?(cx: number, cy: number, halfW: number, halfH: number): void;
 }
 
 export interface PresenceKicadWindow {
@@ -61,6 +64,20 @@ export function hasPresenceBridge(mod: unknown): mod is PresenceKicadModule {
 }
 
 const PUSH_THROTTLE_MS = 30;
+
+// Viewport publishes ride awareness at their own (slower) trailing cadence —
+// a smooth pan fires onViewport per frame and peers only need follow-rate.
+const VIEWPORT_PUBLISH_MS = 100;
+
+/** The follow-user world rect for a GAL transform: half-extents = half the
+ *  canvas in world units (scale = px per IU). Null while the frame is not up
+ *  (zero-sized canvas / no scale yet). */
+export function viewportRect(
+  vp: ViewportState,
+): { cx: number; cy: number; halfW: number; halfH: number } | null {
+  if (!(vp.scale > 0) || !(vp.w > 0) || !(vp.h > 0)) return null;
+  return { cx: vp.cx, cy: vp.cy, halfW: vp.w / 2 / vp.scale, halfH: vp.h / 2 / vp.scale };
+}
 
 /**
  * Parse a C++ selection emit (0006): pcbnew emits `{uuids, fpPaths}` (paths =
@@ -144,9 +161,36 @@ export function bindKicadPresence(opts: {
       presence.setCursor(active ? { x, y } : null);
     },
     onViewport: (cx, cy, scale, w, h) => {
-      opts.onViewport?.({ cx, cy, scale, w, h });
+      const vp = { cx, cy, scale, w, h };
+      opts.onViewport?.(vp);
+      scheduleViewportPublish(vp);
     },
   };
+
+  // Follow-user (0008): publish the visible world rect, trailing-throttled.
+  let vpTimer: ReturnType<typeof setTimeout> | undefined;
+  let vpLatest: ViewportState | undefined;
+  const scheduleViewportPublish = (vp: ViewportState) => {
+    vpLatest = vp;
+    if (vpTimer) return;
+    vpTimer = setTimeout(() => {
+      vpTimer = undefined;
+      // Guarded: pre-0008 handle implementations (and their test fakes) don't
+      // have setViewport yet.
+      if (vpLatest && typeof presence.setViewport === "function") {
+        presence.setViewport(viewportRect(vpLatest));
+      }
+    }, VIEWPORT_PUBLISH_MS);
+  };
+
+  // Seed the published viewport (pushes only happen on input events after
+  // this) — same pull the comment layer uses.
+  try {
+    const vp = JSON.parse(mod.kicadCollabGetViewport() || "null") as ViewportState | null;
+    if (vp && vp.w > 0) scheduleViewportPublish(vp);
+  } catch {
+    /* frame not up yet — the first input push seeds it */
+  }
 
   // Seed: the tab may attach with a selection already made (e.g. rebind). The
   // Full variant (pcbnew 0006) also carries footprint paths for cross-app.
@@ -241,6 +285,8 @@ export function bindKicadPresence(opts: {
       unsubscribeCross?.();
       if (pushTimer) clearTimeout(pushTimer);
       pushTimer = undefined;
+      if (vpTimer) clearTimeout(vpTimer);
+      vpTimer = undefined;
       if (win.kicadCollab) {
         delete win.kicadCollab.onSelection;
         delete win.kicadCollab.onCursor;

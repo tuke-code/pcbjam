@@ -245,8 +245,18 @@ public:
     }
 };
 
-/** Depth offset for the SHAPES overlay — one unit deeper than the text. */
-constexpr double PRESENCE_SHAPES_DEPTH_OFFSET = 1.0;
+/**
+ * Depth layering (0007 lesson, extended): each overlay draws its WHOLE
+ * command list at one depth, and same-depth fragments drawn later LOSE the
+ * depth test — so anything that must render on top of something else needs
+ * its own overlay one unit nearer. Three layers, near → deep:
+ *   text (0)  <  chips + pin dots (1)  <  selection shapes/fills (2)
+ * Chips above fills fixes the washed-out name tags inside low-alpha
+ * selection areas (the chip fragments were rejected against the
+ * earlier-drawn fill, leaving only the fill's alpha behind the glyphs).
+ */
+constexpr double PRESENCE_CHIPS_DEPTH_OFFSET  = 1.0;
+constexpr double PRESENCE_SHAPES_DEPTH_OFFSET = 2.0;
 
 /** VIEW::MakeOverlay's body, for the text overlay (make + Add to the view). */
 inline std::shared_ptr<PRESENCE_TEXT_OVERLAY> makePresenceTextOverlay( KIGFX::VIEW* aView )
@@ -257,12 +267,13 @@ inline std::shared_ptr<PRESENCE_TEXT_OVERLAY> makePresenceTextOverlay( KIGFX::VI
 }
 
 /** Name tag next to (or inside) a box, per the label placement knobs. `px` is
- *  world-units-per-screen-pixel. The chip rect goes to the SHAPES overlay,
- *  the text to the TEXT overlay (nearest depth + pinned TOP-LEFT justify —
- *  see PRESENCE_TEXT_OVERLAY), so the text always renders on top. */
-inline void drawLabel( KIGFX::VIEW_OVERLAY* aOv, KIGFX::VIEW_OVERLAY* aTextOv, const BOX2I& aBox,
-                       const std::string& aText, const KIGFX::COLOR4D& aColor, double aPx,
-                       const STYLE& aS )
+ *  world-units-per-screen-pixel. The chip rect goes to the CHIPS overlay
+ *  (above selection fills, below text), the text to the TEXT overlay (nearest
+ *  depth + pinned TOP-LEFT justify — see PRESENCE_TEXT_OVERLAY), so the tag
+ *  renders solid regardless of what selection geometry it overlaps. */
+inline void drawLabel( KIGFX::VIEW_OVERLAY* aChipOv, KIGFX::VIEW_OVERLAY* aTextOv,
+                       const BOX2I& aBox, const std::string& aText,
+                       const KIGFX::COLOR4D& aColor, double aPx, const STYLE& aS )
 {
     if( !aS.labelShow || aText.empty() )
         return;
@@ -288,13 +299,13 @@ inline void drawLabel( KIGFX::VIEW_OVERLAY* aOv, KIGFX::VIEW_OVERLAY* aTextOv, c
     if( aS.labelChip )
     {
         double padX = 3 * aPx, padY = 2 * aPx;
-        aOv->SetIsStroke( false );
-        aOv->SetIsFill( true );
-        aOv->SetFillColor( aColor.WithAlpha( aS.chipBgAlpha ) );
-        aOv->Rectangle( VECTOR2D( x - padX, y - padY ),
-                        VECTOR2D( x + w + padX, y + h + padY ) );
-        aOv->SetIsStroke( true );
-        aOv->SetIsFill( false );
+        aChipOv->SetIsStroke( false );
+        aChipOv->SetIsFill( true );
+        aChipOv->SetFillColor( aColor.WithAlpha( aS.chipBgAlpha ) );
+        aChipOv->Rectangle( VECTOR2D( x - padX, y - padY ),
+                            VECTOR2D( x + w + padX, y + h + padY ) );
+        aChipOv->SetIsStroke( true );
+        aChipOv->SetIsFill( false );
     }
 
     aTextOv->SetIsStroke( true );
@@ -307,8 +318,11 @@ inline void drawLabel( KIGFX::VIEW_OVERLAY* aOv, KIGFX::VIEW_OVERLAY* aTextOv, c
 
 /** Selection highlight for one item, in the chosen shape. `aOutline` is the
  *  item's exact geometry for selShape 5 (pcbnew supplies it; eeschema passes
- *  nullptr and shape 5 falls back to the bbox rectangle). */
-inline void drawSelectionBox( KIGFX::VIEW_OVERLAY* aOv, KIGFX::VIEW_OVERLAY* aTextOv, BOX2I aBox,
+ *  nullptr and shape 5 falls back to the bbox rectangle). Shapes/fills paint
+ *  on `aOv` (deepest layer); the name chip goes to `aChipOv` one unit nearer
+ *  so it stays solid over any fill (see the depth-layering note above). */
+inline void drawSelectionBox( KIGFX::VIEW_OVERLAY* aOv, KIGFX::VIEW_OVERLAY* aChipOv,
+                              KIGFX::VIEW_OVERLAY* aTextOv, BOX2I aBox,
                               const std::string& aName, const KIGFX::COLOR4D& aColor, double aPx,
                               const STYLE& aS, const SHAPE_POLY_SET* aOutline = nullptr )
 {
@@ -323,7 +337,7 @@ inline void drawSelectionBox( KIGFX::VIEW_OVERLAY* aOv, KIGFX::VIEW_OVERLAY* aTe
 
         BOX2I labelBox = aOutline->BBox();
         labelBox.Inflate( KiROUND( aS.selPaddingPx * aPx ) );
-        drawLabel( aOv, aTextOv, labelBox, aName, aColor, aPx, aS );
+        drawLabel( aChipOv, aTextOv, labelBox, aName, aColor, aPx, aS );
         return;
     }
 
@@ -403,11 +417,13 @@ inline void drawSelectionBox( KIGFX::VIEW_OVERLAY* aOv, KIGFX::VIEW_OVERLAY* aTe
     }
     }
 
-    drawLabel( aOv, aTextOv, aBox, aName, aColor, aPx, aS );
+    drawLabel( aChipOv, aTextOv, aBox, aName, aColor, aPx, aS );
 }
 
-/** Remote cursor (+ name label) in the chosen shape. */
-inline void drawCursor( KIGFX::VIEW_OVERLAY* aOv, KIGFX::VIEW_OVERLAY* aTextOv,
+/** Remote cursor (+ name label) in the chosen shape. The cursor glyph paints
+ *  on `aOv`; its label chip on `aChipOv` (same layering as drawSelectionBox). */
+inline void drawCursor( KIGFX::VIEW_OVERLAY* aOv, KIGFX::VIEW_OVERLAY* aChipOv,
+                        KIGFX::VIEW_OVERLAY* aTextOv,
                         const VECTOR2D& aPos, const std::string& aName,
                         const KIGFX::COLOR4D& aColor, double aPx, const STYLE& aS )
 {
@@ -455,18 +471,18 @@ inline void drawCursor( KIGFX::VIEW_OVERLAY* aOv, KIGFX::VIEW_OVERLAY* aTextOv,
         VECTOR2D at = aPos + VECTOR2D( ( aS.cursorSizePx + 4 ) * aPx,
                                        ( aS.cursorSizePx + 4 ) * aPx );
 
-        // Chip rect on the shapes overlay, text on the TEXT overlay (nearest
-        // depth) — text always renders on top of its chip.
+        // Chip rect on the CHIPS overlay, text on the TEXT overlay (nearest
+        // depth) — text on top of its chip, chip on top of selection fills.
         if( aS.cursorLabelChip )
         {
             double padX = 3 * aPx, padY = 2 * aPx;
-            aOv->SetIsStroke( false );
-            aOv->SetIsFill( true );
-            aOv->SetFillColor( aColor.WithAlpha( aS.chipBgAlpha ) );
-            aOv->Rectangle( at + VECTOR2D( -padX, -padY ),
-                            at + VECTOR2D( w + padX, h + padY ) );
-            aOv->SetIsStroke( true );
-            aOv->SetIsFill( false );
+            aChipOv->SetIsStroke( false );
+            aChipOv->SetIsFill( true );
+            aChipOv->SetFillColor( aColor.WithAlpha( aS.chipBgAlpha ) );
+            aChipOv->Rectangle( at + VECTOR2D( -padX, -padY ),
+                                at + VECTOR2D( w + padX, h + padY ) );
+            aChipOv->SetIsStroke( true );
+            aChipOv->SetIsFill( false );
         }
 
         aTextOv->SetIsStroke( true );
@@ -478,7 +494,9 @@ inline void drawCursor( KIGFX::VIEW_OVERLAY* aOv, KIGFX::VIEW_OVERLAY* aTextOv,
     }
 }
 
-/** Comment pin dot. */
+/** Comment pin dot. Draw onto the CHIPS overlay: at the shapes depth an
+ *  earlier-painted selection fill would reject the dot's fragments (the 0005
+ *  "drawn last sits above" comment had it backwards — later fragments LOSE). */
 inline void drawPin( KIGFX::VIEW_OVERLAY* aOv, const VECTOR2D& aPos, const KIGFX::COLOR4D& aColor,
                      bool aResolved, double aPx, const STYLE& aS )
 {

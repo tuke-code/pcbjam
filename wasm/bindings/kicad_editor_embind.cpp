@@ -58,6 +58,8 @@ void        pcbCollabPresenceStart();
 void        pcbCollabSetRemote( std::string aJson );
 void        pcbCollabSetPins( std::string aJson );
 void        pcbCollabSetViewport( double aCx, double aCy );
+// Follow-user (collab-presence 0008).
+void        pcbCollabFitViewport( double aCx, double aCy, double aHalfW, double aHalfH );
 void        pcbCollabSetStyle( std::string aJson );
 std::string pcbCollabTestListItems( int aCount );
 std::string pcbCollabTestDemoSet();
@@ -90,6 +92,8 @@ void        schCollabPresenceStart();
 void        schCollabSetRemote( std::string aJson );
 void        schCollabSetPins( std::string aJson );
 void        schCollabSetViewport( double aCx, double aCy );
+// Follow-user (collab-presence 0008).
+void        schCollabFitViewport( double aCx, double aCy, double aHalfW, double aHalfH );
 void        schCollabSetStyle( std::string aJson );
 std::string schCollabTestListItems( int aCount );
 std::string schCollabTestDemoSet();
@@ -337,6 +341,13 @@ static void collabSetViewport( double aCx, double aCy )
     pcbEditorActive() ? pcbCollabSetViewport( aCx, aCy ) : schCollabSetViewport( aCx, aCy );
 }
 
+// Follow-user (collab-presence 0008).
+static void collabFitViewport( double aCx, double aCy, double aHalfW, double aHalfH )
+{
+    pcbEditorActive() ? pcbCollabFitViewport( aCx, aCy, aHalfW, aHalfH )
+                      : schCollabFitViewport( aCx, aCy, aHalfW, aHalfH );
+}
+
 static void collabSetStyle( std::string aJson )
 {
     pcbEditorActive() ? pcbCollabSetStyle( aJson ) : schCollabSetStyle( aJson );
@@ -426,6 +437,8 @@ EMSCRIPTEN_BINDINGS(kicad_editor) {
     function("kicadCollabSetRemote", &collabSetRemote);
     function("kicadCollabSetPins", &collabSetPins);
     function("kicadCollabSetViewport", &collabSetViewport);
+    // Follow-user (collab-presence 0008).
+    function("kicadCollabFitViewport", &collabFitViewport);
     function("kicadCollabSetStyle", &collabSetStyle);
     function("kicadCollabTestListItems", &collabTestListItems);
     function("kicadCollabTestDemoSet", &collabTestDemoSet);
