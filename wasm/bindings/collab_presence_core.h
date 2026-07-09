@@ -142,6 +142,7 @@ struct CORE
     long long   lastCursorEmitMs = 0;
     double      lastVpScale  = 0.0;
     VECTOR2D    lastVpCenter;
+    VECTOR2I    lastVpSize;
 
     // ── local state emit (selection / cursor / viewport) ──────────────────
 
@@ -203,17 +204,23 @@ struct CORE
         if( !fr )
             return;
 
-        KIGFX::VIEW* view  = fr->GetCanvas()->GetView();
-        double       scale = view->GetScale();   // zoom — cheap change detector only
-        VECTOR2D     c     = view->GetCenter();
+        KIGFX::VIEW*    view  = fr->GetCanvas()->GetView();
+        double          scale = view->GetScale();   // zoom — cheap change detector only
+        VECTOR2D        c     = view->GetCenter();
+        const VECTOR2I& sz    = view->GetScreenPixelSize();
 
-        if( scale == lastVpScale && c == lastVpCenter )
+        // Size participates in the dedupe: the JS worldToScreen maps through
+        // w/2,h/2, so a canvas resize (or the boot layout settling after the
+        // bind-time seed) with an unchanged scale/center must still re-push —
+        // else every DOM pin target is vertically offset until the next
+        // pan/zoom.
+        if( scale == lastVpScale && c == lastVpCenter && sz == lastVpSize )
             return;
 
         lastVpScale  = scale;
         lastVpCenter = c;
+        lastVpSize   = sz;
 
-        const VECTOR2I& sz = view->GetScreenPixelSize();
         // px per IU via the GAL matrix — GetScale() is the zoom, not px/IU.
         pcbjam_collab::emitViewport( c.x, c.y, view->ToScreen( 1.0 ), sz.x, sz.y );
 
@@ -453,6 +460,17 @@ struct CORE
         canvas->Bind( wxEVT_RIGHT_UP, [selAndViewport]( wxMouseEvent& e ) { selAndViewport( e ); } );
         canvas->Bind( wxEVT_KEY_UP, [selAndViewport]( wxKeyEvent& e ) { selAndViewport( e ); } );
         canvas->Bind( wxEVT_MOUSEWHEEL, [selAndViewport]( wxMouseEvent& e ) { selAndViewport( e ); } );
+
+        // Canvas resizes change the w/h half of the world↔screen transform
+        // without touching scale/center — re-push post-layout (CallAfter runs
+        // after the GAL's own onSize updated the screen size).
+        canvas->Bind( wxEVT_SIZE, [this]( wxSizeEvent& e )
+        {
+            e.Skip();
+
+            if( EDA_DRAW_FRAME* f = frame() )
+                f->CallAfter( [this]() { emitViewportIfChanged(); } );
+        } );
     }
 
     /** kicadCollabSetRemote: full remote-peers snapshot — `{peers:[{id,name,
