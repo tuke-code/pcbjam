@@ -121,7 +121,17 @@ async function openBoard(page: Page): Promise<void> {
 // registry, then close the menu again.
 async function readUndoEnabled(page: Page): Promise<boolean | null> {
   expect(await clickMenuBarItem(page, 'Edit'), 'Edit menu should open').toBe(true);
-  await page.waitForTimeout(700);
+  // The popup renders instantly from the cached snapshot, then re-renders with
+  // the just-in-time refresh (wxEVT_MENU_OPEN → updateMenu) and stamps
+  // data-wx-menu-fresh. Wait for that stamp (a real signal, not a fixed dwell)
+  // so the read always sees fresh enable state even if the refresh is slow on
+  // the merged module. The refresh IS the behaviour H-7 restores, so if it never
+  // lands this times out — which is the correct RED for a missing/broken fix.
+  await page.waitForFunction(
+    () => !!document.querySelector('.wx-menu-popup[data-wx-menu-fresh]'),
+    null,
+    { timeout: 15000 },
+  );
   const enabled = await page.evaluate(() => {
     const r = window.wxElementRegistry;
     const items = (r?.findAllRendered?.({}) ?? []).filter((e) => e.elementType === 'menuitem');
