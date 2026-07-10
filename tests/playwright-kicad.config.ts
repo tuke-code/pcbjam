@@ -116,6 +116,12 @@ const BIG_MODULE_SPECS = [
   // only boots the (small) occ_service module but shares the harness page.
   "**/occ-export.spec.ts",
   "**/occ-probe.spec.ts",
+  // occ-export-models boots pcbnew.html (merged module) + runs the model-shipping
+  // export — same V8 routing. Left off this list it ran on the CI firefox project
+  // (headed Xvfb, baseline-only WASM JIT): two serial heavyweight boots whose CPU
+  // storm starved the chromium-ci 3D-viewer opens past their 180s cap (runs
+  // 29076702564 / 29090433643 — 3d-viewer.spec:299 edge-resize red).
+  "**/occ-export-models.spec.ts",
   // ysync v2-wire repros/coverage: the two-tab file boots pcbnew + eeschema
   // (pl_editor cases ride along — only the browser changes), the repro files
   // boot pcbnew-collab.html / eeschema.html — same V8 routing.
