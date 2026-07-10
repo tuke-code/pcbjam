@@ -1,4 +1,5 @@
 import { downloadBytes } from "@/lib/download";
+import { collectBoardModelFiles, type BoardModelFile } from "./libs/models-bridge";
 // The worker-side wrapper as text (vite ?raw): one shared source of truth,
 // also injected by the e2e harness stub (tests/kicad/utils/occ-service.ts).
 import occWorkerSource from "./occ-worker.js?raw";
@@ -30,6 +31,9 @@ interface OccExportRequest {
   board: Uint8Array;
   jobJson: string;
   fileName: string;
+  /** Board lib model bodies, prefetched here (R2/IDB) and staged worker-side
+   *  under its MEMFS model root — the export worker has no delivery of its own. */
+  models?: BoardModelFile[];
 }
 
 interface OccLoadModelRequest {
@@ -121,7 +125,9 @@ export function installOccService(log: (msg: string) => void): void {
   const post = (worker: Worker, req: OccRequest): Promise<OccResponse> => {
     const id = nextId++;
     const transfer: Transferable[] =
-      req.kind === "export" ? [req.board.buffer] : [req.bytes.buffer];
+      req.kind === "export"
+        ? [req.board.buffer, ...(req.models ?? []).map((m) => m.bytes.buffer)]
+        : [req.bytes.buffer];
     return new Promise<OccResponse>((resolve) => {
       pending.set(id, resolve);
       worker.postMessage({ id, req }, transfer);
@@ -129,6 +135,23 @@ export function installOccService(log: (msg: string) => void): void {
   };
 
   const request = async (req: OccRequest): Promise<OccResponse> => {
+    if (req.kind === "export") {
+      // Ship the board's lib model bodies with the request: the worker's
+      // EXPORTER_STEP resolves them from its own MEMFS (delivery gap doc:
+      // docs/features/3d-models/0007). Best-effort — an export without
+      // models still succeeds, each miss reported by the exporter.
+      try {
+        req.models = await collectBoardModelFiles(
+          new TextDecoder().decode(req.board),
+        );
+        if (req.models.length)
+          log(`[occ] shipping ${req.models.length} board model(s) with the export`);
+      } catch (e) {
+        log(`[occ] model prefetch failed (exporting without models): ${e}`);
+        req.models = [];
+      }
+    }
+
     let worker: Worker;
     try {
       worker = await ensureWorker();

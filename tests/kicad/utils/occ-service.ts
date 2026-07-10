@@ -17,7 +17,15 @@ import type { Page } from '@playwright/test';
  *
  * Differences from the app provider, for assertability:
  *  - export results are captured into window.__occExports (name, size, magic
- *    prefix) instead of triggering a browser download;
+ *    prefix, the exporter's report text, and a PRODUCT-entity count for STEP
+ *    bodies — the per-component geometry signal) instead of triggering a
+ *    browser download;
+ *  - the app's export model prefetch (occ-service.ts → models-bridge
+ *    collectBoardModelFiles) is mirrored against the page's `kicadLibs`
+ *    provider: lib refs scanned from the board text are ensured (kind
+ *    "model3d"), read back from the editor MEMFS, and shipped as the
+ *    request's `models` array. Specs without a kicadLibs stub ship none —
+ *    the pre-delivery behavior.
  *  - installed as an init script (kicad fixtures do this for every page), so
  *    it exists from document start on every navigation — standalone parity,
  *    where boot.ts installs the provider whenever the editor bundle boots.
@@ -69,7 +77,36 @@ export async function installOccServiceStub(page: Page): Promise<void> {
             return workerP;
         };
 
+        // Mirror of the app's collectBoardModelFiles, against the page's
+        // kicadLibs provider (the specs' model stub): scan lib refs, ensure
+        // each into the editor MEMFS, read the staged bytes back.
+        const collectModels = async (boardText: string) => {
+            const hook = (globalThis as any).kicadLibs;
+            const FS = (window as any).FS;
+            if (!hook?.request || !FS) return [];
+            const ROOT = '/pcbjam/3dmodels';
+            const refs = new Set<string>();
+            const re = /\(\s*model\s+"((?:[^"\\]|\\.)*)"/g;
+            for (let m = re.exec(boardText); m; m = re.exec(boardText)) {
+                const raw = m[1].replace(/\\(.)/g, '$1');
+                const lib = raw.match(/^\$[{(](?:[^})]*3DMODEL_DIR|KISYS3DMOD)[})][/\\]+(.+)$/);
+                if (lib) refs.add(lib[1]);
+            }
+            const models: Array<{ path: string; bytes: Uint8Array }> = [];
+            const seen = new Set<string>();
+            for (const ref of refs) {
+                const abs = await hook.request('ensure', '', ref, 'model3d');
+                if (typeof abs !== 'string' || !abs.startsWith(`${ROOT}/`) || seen.has(abs)) continue;
+                seen.add(abs);
+                models.push({ path: abs.slice(ROOT.length + 1), bytes: FS.readFile(abs) });
+            }
+            console.log(`[TEST-OCC] shipping ${models.length} board model(s) with the export`);
+            return models;
+        };
+
         const request = async (req: any) => {
+            if (req.kind === 'export')
+                req.models = await collectModels(new TextDecoder().decode(req.board));
             let worker: Worker;
             try {
                 worker = await ensureWorker();
@@ -77,7 +114,9 @@ export async function installOccServiceStub(page: Page): Promise<void> {
                 return { ok: false, report: `occ_service unavailable: ${e}` };
             }
             const id = nextId++;
-            const transfer = req.kind === 'export' ? [req.board.buffer] : [req.bytes.buffer];
+            const transfer = req.kind === 'export'
+                ? [req.board.buffer, ...(req.models ?? []).map((m: any) => m.bytes.buffer)]
+                : [req.bytes.buffer];
             const res: any = await new Promise((resolve) => {
                 pending.set(id, resolve);
                 worker.postMessage({ id, req }, transfer);
@@ -85,12 +124,23 @@ export async function installOccServiceStub(page: Page): Promise<void> {
             if (req.kind === 'export') {
                 if (res.ok && res.bytes?.length) {
                     const magic = new TextDecoder().decode(res.bytes.slice(0, 16));
+                    // STEP is a text format: `#n=PRODUCT('name',…)` entities count the
+                    // distinct model bodies in the assembly (a bare board exports 1–2;
+                    // component models add one each). The anchored `=PRODUCT(` match
+                    // excludes PRODUCT_DEFINITION/PRODUCT_CONTEXT relatives.
+                    let productCount = -1;
+                    if (magic.startsWith('ISO-10303-21')) {
+                        const text = new TextDecoder().decode(res.bytes);
+                        productCount = (text.match(/=\s*PRODUCT\s*\(/g) ?? []).length;
+                    }
                     (window as any).__occExports.push({
                         name: req.fileName || res.fileName,
                         size: res.bytes.length,
                         magic,
+                        report: String(res.report ?? ''),
+                        productCount,
                     });
-                    console.log(`[TEST-OCC] export captured: ${req.fileName} ${res.bytes.length}B "${magic}"`);
+                    console.log(`[TEST-OCC] export captured: ${req.fileName} ${res.bytes.length}B "${magic}" products=${productCount}`);
                 }
                 return { ok: res.ok, report: res.report, fileName: res.fileName };
             }

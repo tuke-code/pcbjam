@@ -7,10 +7,15 @@
  * RPC; this module never suspends, so it builds -sASYNCIFY=0.
  *
  * Two embind entry points, both batch/synchronous:
- *   occExport(boardSexpr, paramsJson) -> { ok, report, fileName, bytes }
+ *   occExport(boardSexpr, paramsJson, models) -> { ok, report, fileName, bytes }
  *       Parse the board text (KICAD_SEXP), map the official JOB_EXPORT_PCB_3D
  *       JSON onto EXPORTER_STEP_PARAMS (the pcbnew_jobs_handler mapping) and
- *       run EXPORTER_STEP — STEP/STEPZ/BREP/XAO/GLB/PLY/STL out.
+ *       run EXPORTER_STEP — STEP/STEPZ/BREP/XAO/GLB/PLY/STL out. `models` is
+ *       an array of { path, bytes } lib model bodies the host prefetched for
+ *       this board (R2/IDB via the editor's models-bridge); they are staged
+ *       under the shared MEMFS model root so the exporter's staged-model
+ *       probe (pcbjam_model_fetch.h FindStagedModel) resolves them, and
+ *       removed again after the export.
  *   occLoadModel(bytes, ext) -> { ok, report, bytes }
  *       Feed a STEP/IGES model to the (statically linked) oce plugin loader
  *       and return the resulting SCENEGRAPH serialized with S3D::WriteCache —
@@ -48,6 +53,7 @@
 #include <pcb_io/pcb_io_mgr.h>
 #include <exporters/step/exporter_step.h>
 
+#include <3d_cache/pcbjam_model_fetch.h> // PCBJAM_3D::MODELS_MEMFS_ROOT
 #include <plugins/3dapi/ifsg_api.h>
 
 class SCENEGRAPH;
@@ -154,7 +160,70 @@ BOARD* loadBoardFromSexpr( const std::string& aSexpr, wxString* aErr )
 }
 
 
-emscripten::val occExport( std::string aBoardSexpr, std::string aParamsJson )
+// Stage the host-prefetched lib model bodies under the shared MEMFS model
+// root (PCBJAM_3D::MODELS_MEMFS_ROOT) where EXPORTER_STEP's staged-model
+// probe looks. Paths arrive as lib-relative refs ("<lib>.3dshapes/<n>.<ext>");
+// anything absolute or traversing is skipped defensively. Returns the staged
+// absolute paths so the caller can remove them after the export.
+std::vector<wxString> stageModelFiles( const emscripten::val& aModels )
+{
+    std::vector<wxString> staged;
+
+    if( aModels.isNull() || aModels.isUndefined() || !aModels["length"].as<bool>() )
+        return staged;
+
+    const size_t count = aModels["length"].as<size_t>();
+
+    for( size_t i = 0; i < count; ++i )
+    {
+        emscripten::val entry = aModels[i];
+
+        if( entry.isNull() || entry.isUndefined() )
+            continue;
+
+        const std::string rel = entry["path"].as<std::string>();
+        emscripten::val   bytes = entry["bytes"];
+
+        if( rel.empty() || rel.front() == '/' || rel.find( ".." ) != std::string::npos
+            || bytes.isNull() || bytes.isUndefined() )
+        {
+            std::fprintf( stderr, "[occ_service] models: skipping bad entry '%s'\n",
+                          rel.c_str() );
+            continue;
+        }
+
+        const size_t         len = bytes["byteLength"].as<size_t>();
+        std::vector<uint8_t> buf( len );
+
+        emscripten::val view =
+                emscripten::val( emscripten::typed_memory_view( len, buf.data() ) );
+        view.call<void>( "set", bytes );
+
+        const wxString path = wxString::FromUTF8(
+                std::string( PCBJAM_3D::MODELS_MEMFS_ROOT ) + "/" + rel );
+
+        if( !wxFileName( path ).Mkdir( wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL ) )
+        {
+            std::fprintf( stderr, "[occ_service] models: mkdir failed for '%s'\n",
+                          rel.c_str() );
+            continue;
+        }
+
+        if( writeFile( path, buf.data(), buf.size() ) )
+            staged.push_back( path );
+        else
+            std::fprintf( stderr, "[occ_service] models: write failed for '%s'\n",
+                          rel.c_str() );
+    }
+
+    std::fprintf( stderr, "[occ_service] models: staged %zu/%zu\n", staged.size(),
+                  count );
+    return staged;
+}
+
+
+emscripten::val occExport( std::string aBoardSexpr, std::string aParamsJson,
+                           emscripten::val aModels )
 {
     emscripten::val ret = emscripten::val::object();
     ret.set( "ok", false );
@@ -208,6 +277,10 @@ emscripten::val occExport( std::string aBoardSexpr, std::string aParamsJson )
         return ret;
     }
 
+    // Host-prefetched lib model bodies → the shared MEMFS model root, where
+    // the exporter's staged-model probe resolves resolver-miss refs.
+    const std::vector<wxString> stagedModels = stageModelFiles( aModels );
+
     std::fprintf( stderr, "[occ_service] export: board parsed, running EXPORTER_STEP (%s)\n",
                   params.GetFormatName().utf8_string().c_str() );
 
@@ -248,6 +321,12 @@ emscripten::val occExport( std::string aBoardSexpr, std::string aParamsJson )
 
     wxRemoveFile( exporter.m_outputFile );
     wxRemoveFile( wxString::FromUTF8( TMP_BOARD ) );
+
+    // Staged bodies are per-request (the host re-ships from its IDB/MEMFS
+    // cache); don't let them accumulate in the worker across exports.
+    for( const wxString& staged : stagedModels )
+        wxRemoveFile( staged );
+
     delete brd;
 
     std::fprintf( stderr, "[occ_service] export %s (%zu bytes)\n",

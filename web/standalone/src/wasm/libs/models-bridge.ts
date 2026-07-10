@@ -66,7 +66,10 @@ export function scanModelRefs(sexprText: string): string[] {
   return [...refs];
 }
 
-type ModelFS = Pick<EmscriptenFS, "mkdirTree" | "writeFile" | "analyzePath">;
+type ModelFS = Pick<
+  EmscriptenFS,
+  "mkdirTree" | "writeFile" | "analyzePath" | "readFile"
+>;
 
 function toolFS(): ModelFS | null {
   const fs = (window as ToolWindow).FS;
@@ -182,6 +185,59 @@ export async function handleModel3dRequest(
     installedLog(`[3d] ensure failed for ${arg}: ${String(e)}`);
     return null;
   }
+}
+
+/** One board model body ready to ship to the occ_service export worker. */
+export interface BoardModelFile {
+  /** Lib-relative staged path ("<lib>.3dshapes/<name>.<ext>", REAL extension). */
+  path: string;
+  bytes: Uint8Array;
+}
+
+/**
+ * Prefetch + read back every lib model a board references, for shipping with
+ * an occ_service export request — the worker is its own wasm module with its
+ * own MEMFS, so the editor-side files are invisible there. Reuses
+ * ensureModelInMemfs (IDB/R2-cached, coalesced, wrl→step format fallback);
+ * the returned paths carry the staged file's REAL extension, deduplicated
+ * (two refs can materialize to the same substituted body). Best-effort: a
+ * ref the source can't serve is skipped (the exporter reports it missing).
+ * Returns [] when 3D model delivery is not configured.
+ */
+export async function collectBoardModelFiles(
+  boardText: string,
+  concurrency = 6,
+): Promise<BoardModelFile[]> {
+  const fs = toolFS();
+  if (!installedSource || !fs) return [];
+  const refs = scanModelRefs(boardText);
+  if (!refs.length) return [];
+
+  const out: BoardModelFile[] = [];
+  const seen = new Set<string>();
+  let idx = 0;
+  const worker = async (): Promise<void> => {
+    while (idx < refs.length) {
+      const ref = refs[idx++]!;
+      try {
+        const abs = await ensureModelInMemfs(ref);
+        if (!abs || seen.has(abs)) continue;
+        seen.add(abs);
+        // FS.readFile copies out of the wasm heap — the buffer is safely
+        // transferable to the worker.
+        const bytes = fs.readFile(abs) as Uint8Array;
+        out.push({ path: abs.slice(MODELS_3D_ROOT.length + 1), bytes });
+      } catch {
+        // best-effort: a missing body surfaces as the exporter's own
+        // "Could not add 3D model" report warning, never a failed export
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, refs.length) }, () => worker()),
+  );
+  installedLog(`[3d] export prefetch: ${out.length}/${refs.length} board model(s)`);
+  return out;
 }
 
 /**

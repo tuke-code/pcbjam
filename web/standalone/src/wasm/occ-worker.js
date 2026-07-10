@@ -49,7 +49,9 @@ onmessage = async (e) => {
     const mod = await modP;
     if (req.kind === "export") {
       const board = new TextDecoder().decode(req.board);
-      res = mod.occExport(board, req.jobJson);
+      // models: host-prefetched [{ path, bytes }] lib model bodies, staged by
+      // the module under its MEMFS model root for the exporter's probe.
+      res = mod.occExport(board, req.jobJson, req.models ?? []);
     } else if (req.kind === "loadModel") {
       res = mod.occLoadModel(req.bytes, req.ext);
     } else {

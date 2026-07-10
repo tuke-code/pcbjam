@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  collectBoardModelFiles,
   ensureModelInMemfs,
   installModel3dHandler,
   normalizeModelRef,
@@ -92,6 +93,50 @@ describe("ensureModelInMemfs format fallback", () => {
   it("resolves null when no format of the model exists", async () => {
     installFakes(() => false);
     expect(await ensureModelInMemfs("FallbackLibC.3dshapes/M3.wrl")).toBeNull();
+  });
+});
+
+describe("collectBoardModelFiles", () => {
+  function installFakes(available: (ref: string) => boolean) {
+    const files = new Map<string, Uint8Array>();
+    const fs = {
+      mkdirTree: () => {},
+      writeFile: (p: string, b: Uint8Array) => void files.set(p, b),
+      analyzePath: (p: string) => ({ exists: files.has(p) }),
+      readFile: (p: string) => files.get(p),
+    };
+    (globalThis as unknown as { window: unknown }).window ??= globalThis;
+    (globalThis as unknown as { FS: unknown }).FS = fs;
+    const source: Model3dSource = {
+      getModelBody: async (ref) =>
+        available(ref) ? new TextEncoder().encode(`body:${ref}`) : null,
+      hasModel: async (ref) => available(ref),
+    };
+    installModel3dHandler(source, () => {});
+  }
+
+  it("collects staged bodies under their REAL extension, deduped, misses skipped", async () => {
+    installFakes((r) => r.startsWith("ExportLibA") && r.endsWith(".step"));
+    const board = `
+      (model "\${KICAD10_3DMODEL_DIR}/ExportLibA.3dshapes/M1.wrl")
+      (model "\${KICAD10_3DMODEL_DIR}/ExportLibA.3dshapes/M1.step")
+      (model "\${KICAD10_3DMODEL_DIR}/ExportLibB.3dshapes/GONE.wrl")
+      (model "\${KIPRJMOD}/libs/3d_shapes/prj.wrl")
+    `;
+    // M1.wrl is served by the .step sibling; the M1.step ref materializes to
+    // the SAME file → one entry. The unservable ref is skipped; the
+    // project-local ref never enters the scan.
+    const models = await collectBoardModelFiles(board);
+    expect(models).toHaveLength(1);
+    expect(models[0]!.path).toBe("ExportLibA.3dshapes/M1.step");
+    expect(new TextDecoder().decode(models[0]!.bytes)).toBe(
+      "body:ExportLibA.3dshapes/M1.step",
+    );
+  });
+
+  it("returns empty for a board without lib model refs", async () => {
+    installFakes(() => true);
+    expect(await collectBoardModelFiles("(kicad_pcb (version 1))")).toEqual([]);
   });
 });
 
