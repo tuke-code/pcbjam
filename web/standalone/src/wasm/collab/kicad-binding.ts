@@ -10,12 +10,14 @@ import {
   kicadLibSymbolsMap,
   parseItemsWireDelta,
   seedDocToY,
+  SEXPR_VERSION_SUPPORTED,
   upsertLibSymbolsToY,
   wireItemUuids,
   wireLibSymbols,
   Y_KDOC_META,
   Y_KDOC_SEED_NONCE,
   ydocHasState,
+  ydocSexprVersion,
   yToItemUnchecked,
   type ItemsWireDelta,
   type KicadDoc,
@@ -72,7 +74,28 @@ export interface KicadBinding {
   readonly items: KicadYItems;
 }
 
+/**
+ * The doc uses an s-expr encoding this build cannot write (ysync 0009 §5's
+ * client skew guard). Binding anyway would mix versions in one doc — a v1
+ * writer against a v2 doc corrupts the granularity contract — so the bind is
+ * REFUSED; the app surfaces this as "update required".
+ */
+export class SexprVersionError extends Error {
+  constructor(readonly version: number) {
+    super(
+      `update required: document uses s-expr encoding v${version}; ` +
+        `this build supports v${SEXPR_VERSION_SUPPORTED.join(", v")}`,
+    );
+    this.name = "SexprVersionError";
+  }
+}
+
 export function bindKicadCollab(doc: Y.Doc, bridge: KicadItemsBridge): KicadBinding {
+  // Version skew guard — callers bind AFTER the provider's initial sync, so the
+  // doc's version is authoritative here (an empty room reads as v1 and is
+  // stamped CURRENT by the first write).
+  const version = ydocSexprVersion(doc);
+  if (!SEXPR_VERSION_SUPPORTED.includes(version)) throw new SexprVersionError(version);
   const items = kicadItemsMap(doc);
   // Opaque per-instance origin tag so we can distinguish our own writes from peers'.
   const ORIGIN = { local: true };

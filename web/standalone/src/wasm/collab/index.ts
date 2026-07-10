@@ -11,6 +11,7 @@ import type { CollabBridge } from "./types";
 import {
   bindKicadCollab,
   moduleItemsBridge,
+  SexprVersionError,
   type KicadBinding,
   type KicadItemsModule,
   type KicadItemsWindow,
@@ -25,7 +26,7 @@ export {
   type ProviderKind,
   type YjsProvider,
 } from "./provider";
-export { bindKicadCollab, moduleItemsBridge };
+export { bindKicadCollab, moduleItemsBridge, SexprVersionError };
 export type { KicadBinding, KicadItemsModule, KicadItemsWindow };
 export type { KicadItemsBridge } from "./kicad-binding";
 

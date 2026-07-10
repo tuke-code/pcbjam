@@ -7,11 +7,13 @@ import {
   kicadLibSymbolsMap,
   parseItemsWireDelta,
   renderItem,
+  SEXPR_VERSION_CURRENT,
   sexprToItems,
+  ydocSexprVersion,
   yToDoc,
   type KicadItem,
 } from "@pcbjam/shared";
-import { bindKicadCollab, type KicadItemsBridge } from "./kicad-binding";
+import { bindKicadCollab, SexprVersionError, type KicadItemsBridge } from "./kicad-binding";
 
 /**
  * A fake editor implementing the v2 items bridge over an in-memory flattened
@@ -340,5 +342,23 @@ describe("lib_symbols flow through the binding (miss 08A)", () => {
     const wire = parseItemsWireDelta(edB.applied[0]!);
     const symWire = [...wire.added, ...wire.changed].find((w) => w.sexpr.includes("sym-1"));
     expect(symWire!.sexpr).toMatch(/^\(lib_symbols \(symbol "Device:R"/);
+  });
+});
+
+describe("sexprVersion skew guard (ysync 0009 §5)", () => {
+  it("binds a fresh (empty) room and a current-version doc", () => {
+    const { a, b } = pair();
+    const edA = new FakeEditor();
+    seedEditor(edA, FP);
+    bindKicadCollab(a, edA).seed(); // empty room: reads as v1, stamped CURRENT on write
+    expect(ydocSexprVersion(a)).toBe(SEXPR_VERSION_CURRENT);
+    expect(() => bindKicadCollab(b, new FakeEditor())).not.toThrow(); // peer joins the v2 doc
+  });
+
+  it("refuses to bind a doc written by a newer encoding (update required)", () => {
+    const doc = new Y.Doc();
+    doc.getMap("kdoc_meta").set("sexprVersion", SEXPR_VERSION_CURRENT + 1);
+    expect(() => bindKicadCollab(doc, new FakeEditor())).toThrow(SexprVersionError);
+    expect(() => bindKicadCollab(doc, new FakeEditor())).toThrow(/update required/);
   });
 });
