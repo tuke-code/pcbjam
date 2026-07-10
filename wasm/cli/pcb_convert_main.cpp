@@ -22,6 +22,16 @@
  *             <outdir> (default: the input's directory). Zone fills plot as
  *             saved (no re-check). Exit: 0 ok, 2 usage, 4 failure.
  *
+ *   drill:    pcb_convert --drill <file.kicad_pcb> [<outdir>]
+ *             Excellon drill files, kicad-cli defaults (mm, decimal, absolute
+ *             origin), no map files. Exit: 0 ok, 2 usage, 4 failure.
+ *
+ *   plot:     pcb_convert --plot-board [--pdf] [--layers <a,b,...>]
+ *                         <file.kicad_pcb> [<out>]
+ *             Single SVG (default) or PDF document via PCB_PLOTTER; layers
+ *             default to the board's enabled set, or a comma-separated list
+ *             of canonical/user layer names. Exit: 0 ok, 2 usage, 4 failure.
+ *
  * No GUI, no renderer, no embind bindings. Wired into pcbnew/CMakeLists.txt
  * behind the KICAD_PCB_CONVERTER_WASM option (see
  * scripts/kicad/build-pcb_convert.sh).
@@ -49,8 +59,12 @@
 #include <drc/drc_engine.h>
 #include <drc/drc_item.h>
 #include <drc/drc_report.h>
+#include <exporters/gendrill_excellon_writer.h>
 #include <exporters/gerber_jobfile_writer.h>
+#include <jobs/job_export_pcb_drill.h>
 #include <jobs/job_export_pcb_gerbers.h>
+#include <jobs/job_export_pcb_pdf.h>
+#include <jobs/job_export_pcb_svg.h>
 #include <ki_exception.h>
 #include <layer_ids.h>
 #include <lset.h>
@@ -442,6 +456,183 @@ int runGerbers( const char* aInPath, const char* aOutDir )
     return failed ? 4 : 0;
 }
 
+// ── headless board plot (SVG / PDF) ───────────────────────────────────────────
+// Mirrors PCBNEW_JOBS_HANDLER::JobExportSvg/Pdf single-document mode via
+// PCB_PLOTTER (already linked for --gerbers). Default layer set = the board's
+// enabled layers in stackup plot order; --layers takes comma-separated
+// canonical (F.Cu) or user layer names.
+
+LSEQ parseLayerList( BOARD* aBrd, const char* aArg, std::string& aError )
+{
+    LSEQ     seq;
+    wxString arg = wxString::FromUTF8( aArg );
+
+    for( const wxString& token : wxSplit( arg, ',' ) )
+    {
+        bool found = false;
+
+        for( PCB_LAYER_ID layer : LSET::AllLayersMask() )
+        {
+            if( token == LSET::Name( layer ) || token == aBrd->GetLayerName( layer ) )
+            {
+                seq.push_back( layer );
+                found = true;
+                break;
+            }
+        }
+
+        if( !found )
+        {
+            aError = "unknown layer '" + std::string( token.ToUTF8() ) + "'";
+            return LSEQ();
+        }
+    }
+
+    return seq;
+}
+
+
+int runPlotBoard( const char* aInPath, bool aPdf, const char* aLayersArg, const char* aOutPath )
+{
+    wxFileName fn( wxString::FromUTF8( aInPath ) );
+    fn.MakeAbsolute();
+
+    BOARD* brd = loadBoardHeadless( aInPath );
+
+    if( !brd )
+        return 4;
+
+    LSEQ layers;
+
+    if( aLayersArg )
+    {
+        std::string layerError;
+        layers = parseLayerList( brd, aLayersArg, layerError );
+
+        if( layers.empty() )
+        {
+            std::fprintf( stderr, "%s: error: %s\n", aInPath, layerError.c_str() );
+            return 2;
+        }
+    }
+    else
+    {
+        layers = brd->GetEnabledLayers().SeqStackupForPlotting();
+    }
+
+    wxString outPath;
+
+    if( aOutPath )
+    {
+        outPath = wxString::FromUTF8( aOutPath );
+    }
+    else
+    {
+        wxFileName out( fn );
+        out.SetExt( aPdf ? wxS( "pdf" ) : wxS( "svg" ) );
+        outPath = out.GetFullPath();
+    }
+
+    REPORTER& reporter = CLI_REPORTER::GetInstance();
+
+    // kicad-cli plot defaults (colors, drawing sheet, margins) per format.
+    PCB_PLOT_PARAMS plotOpts;
+
+    if( aPdf )
+    {
+        JOB_EXPORT_PCB_PDF pdfJob;
+        PCB_PLOTTER::PlotJobToPlotOpts( plotOpts, &pdfJob, reporter );
+    }
+    else
+    {
+        JOB_EXPORT_PCB_SVG svgJob;
+        PCB_PLOTTER::PlotJobToPlotOpts( plotOpts, &svgJob, reporter );
+    }
+
+    trace( "runPlotBoard: PCB_PLOTTER::Plot" );
+    PCB_PLOTTER plotter( brd, &reporter, plotOpts );
+
+    const bool ok = plotter.Plot( outPath, layers, LSEQ(), false /*aUseGerberX2*/,
+                                  true /*single document*/, std::nullopt, std::nullopt,
+                                  std::nullopt );
+
+    std::fprintf( stderr, "%s: %s (%d layers) -> %s\n", aInPath, ok ? "OK" : "FAIL",
+                  (int) layers.size(), (const char*) outPath.ToUTF8() );
+
+    return ok ? 0 : 4;
+}
+
+// ── headless drill export (excellon) ──────────────────────────────────────────
+// Mirrors PCBNEW_JOBS_HANDLER::JobExportDrill's excellon branch with the
+// default JOB_EXPORT_PCB_DRILL options (kicad-cli defaults); no map files
+// (the writer would drive a plotter for those — add on demand).
+
+int runDrill( const char* aInPath, const char* aOutDir )
+{
+    wxFileName fn( wxString::FromUTF8( aInPath ) );
+    fn.MakeAbsolute();
+
+    BOARD* brd = loadBoardHeadless( aInPath );
+
+    if( !brd )
+        return 4;
+
+    wxString outPath = aOutDir ? wxString::FromUTF8( aOutDir ) : fn.GetPath();
+
+    if( !outPath.EndsWith( wxS( "/" ) ) )
+        outPath += wxS( "/" );
+
+    JOB_EXPORT_PCB_DRILL drillJob; // kicad-cli defaults
+
+    VECTOR2I offset;
+
+    if( drillJob.m_drillOrigin == JOB_EXPORT_PCB_DRILL::DRILL_ORIGIN::ABS )
+        offset = VECTOR2I( 0, 0 );
+    else
+        offset = brd->GetDesignSettings().GetAuxOrigin();
+
+    EXCELLON_WRITER::ZEROS_FMT zeroFmt;
+
+    switch( drillJob.m_zeroFormat )
+    {
+    case JOB_EXPORT_PCB_DRILL::ZEROS_FORMAT::KEEP_ZEROS:
+        zeroFmt = EXCELLON_WRITER::KEEP_ZEROS;
+        break;
+    case JOB_EXPORT_PCB_DRILL::ZEROS_FORMAT::SUPPRESS_LEADING:
+        zeroFmt = EXCELLON_WRITER::SUPPRESS_LEADING;
+        break;
+    case JOB_EXPORT_PCB_DRILL::ZEROS_FORMAT::SUPPRESS_TRAILING:
+        zeroFmt = EXCELLON_WRITER::SUPPRESS_TRAILING;
+        break;
+    case JOB_EXPORT_PCB_DRILL::ZEROS_FORMAT::DECIMAL:
+    default:
+        zeroFmt = EXCELLON_WRITER::DECIMAL_FORMAT;
+        break;
+    }
+
+    // The upstream precision tables are statics in UI/handler TUs; the values
+    // are fixed (metric 3.3, inch 2.4).
+    const bool metric = drillJob.m_drillUnits == JOB_EXPORT_PCB_DRILL::DRILL_UNITS::MM;
+    DRILL_PRECISION precision = metric ? DRILL_PRECISION( 3, 3 ) : DRILL_PRECISION( 2, 4 );
+
+    trace( "runDrill: CreateDrillandMapFilesSet" );
+    EXCELLON_WRITER writer( brd );
+    writer.SetFormat( metric, zeroFmt, precision.m_Lhs, precision.m_Rhs );
+    writer.SetOptions( drillJob.m_excellonMirrorY, drillJob.m_excellonMinimalHeader, offset,
+                       drillJob.m_excellonCombinePTHNPTH );
+    writer.SetRouteModeForOvalHoles( drillJob.m_excellonOvalDrillRoute );
+    writer.SetMapFileFormat( PLOT_FORMAT::PDF ); // unused: maps off
+
+    REPORTER& reporter = CLI_REPORTER::GetInstance();
+    const bool ok = writer.CreateDrillandMapFilesSet( outPath, true /*drill*/, false /*map*/,
+                                                      &reporter );
+
+    std::fprintf( stderr, "%s: %s (excellon) -> %s\n", aInPath, ok ? "OK" : "FAIL",
+                  (const char*) outPath.ToUTF8() );
+
+    return ok ? 0 : 4;
+}
+
 } // namespace
 
 
@@ -588,8 +779,87 @@ int pcbConvertMain( int argc, char** argv )
         _exit( rc );
     }
 
+    if( argc >= 2 && std::strcmp( argv[1], "--drill" ) == 0 )
+    {
+        wxDisableAsserts();
+
+        if( argc < 3 )
+        {
+            std::fprintf( stderr, "usage: kicad_tools --drill <file.kicad_pcb> [<outdir>]\n" );
+            return 2;
+        }
+
+        int rc = 4;
+
+        try
+        {
+            rc = runDrill( argv[2], argc >= 4 ? argv[3] : nullptr );
+        }
+        catch( const std::exception& e )
+        {
+            std::fprintf( stderr, "%s: error: %s\n", argv[2], e.what() );
+        }
+
+        // Same static-dtor rationale as --drc above.
+        std::fflush( nullptr );
+        _exit( rc );
+    }
+
+    if( argc >= 2 && std::strcmp( argv[1], "--plot-board" ) == 0 )
+    {
+        wxDisableAsserts();
+
+        bool        pdf = false;
+        const char* layersArg = nullptr;
+        int         arg = 2;
+
+        while( arg < argc && std::strncmp( argv[arg], "--", 2 ) == 0 )
+        {
+            if( std::strcmp( argv[arg], "--pdf" ) == 0 )
+            {
+                pdf = true;
+            }
+            else if( std::strcmp( argv[arg], "--layers" ) == 0 && arg + 1 < argc )
+            {
+                layersArg = argv[++arg];
+            }
+            else
+            {
+                break;
+            }
+
+            arg++;
+        }
+
+        if( arg >= argc )
+        {
+            std::fprintf( stderr, "usage: kicad_tools --plot-board [--pdf] [--layers <a,b,...>] "
+                                  "<file.kicad_pcb> [<out>]\n" );
+            return 2;
+        }
+
+        const char* inPath = argv[arg++];
+        const char* outPath = arg < argc ? argv[arg] : nullptr;
+        int         rc = 4;
+
+        try
+        {
+            rc = runPlotBoard( inPath, pdf, layersArg, outPath );
+        }
+        catch( const std::exception& e )
+        {
+            std::fprintf( stderr, "%s: error: %s\n", inPath, e.what() );
+        }
+
+        // Same static-dtor rationale as --drc above.
+        std::fflush( nullptr );
+        _exit( rc );
+    }
+
     std::fprintf( stderr, "usage: kicad_tools --drc [--json] [--strict] <file.kicad_pcb> [<out>]\n"
-                          "       kicad_tools --gerbers <file.kicad_pcb> [<outdir>]\n" );
+                          "       kicad_tools --gerbers <file.kicad_pcb> [<outdir>]\n"
+                          "       kicad_tools --drill <file.kicad_pcb> [<outdir>]\n"
+                          "       kicad_tools --plot-board [--pdf] [--layers <a,b,...>] <file.kicad_pcb> [<out>]\n" );
     return 2;
 }
 

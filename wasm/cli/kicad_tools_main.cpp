@@ -8,6 +8,8 @@
  *   pcbnew side   (pcb_convert_main.cpp):
  *     kicad_tools --drc [--json] [--strict] <file.kicad_pcb> [<out>]
  *     kicad_tools --gerbers <file.kicad_pcb> [<outdir>]
+ *     kicad_tools --drill <file.kicad_pcb> [<outdir>]
+ *     kicad_tools --plot-board [--pdf] [--layers <a,b,...>] <file.kicad_pcb> [<out>]
  *
  *   eeschema side (sym_convert_main.cpp) — everything else:
  *     kicad_tools --convert-lib <input.lib> <output.kicad_sym>
@@ -37,7 +39,9 @@ int main( int argc, char** argv )
     int rc;
 
     if( argc >= 2
-        && ( std::strcmp( argv[1], "--drc" ) == 0 || std::strcmp( argv[1], "--gerbers" ) == 0 ) )
+        && ( std::strcmp( argv[1], "--drc" ) == 0 || std::strcmp( argv[1], "--gerbers" ) == 0
+             || std::strcmp( argv[1], "--drill" ) == 0
+             || std::strcmp( argv[1], "--plot-board" ) == 0 ) )
     {
         rc = pcbConvertMain( argc, argv );
     }
