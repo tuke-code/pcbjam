@@ -9,6 +9,7 @@ import {
   renderItem,
   SEXPR_VERSION_CURRENT,
   sexprToItems,
+  ydocHasState,
   ydocSexprVersion,
   yToDoc,
   type KicadItem,
@@ -344,7 +345,6 @@ describe("lib_symbols flow through the binding (miss 08A)", () => {
     expect(symWire!.sexpr).toMatch(/^\(lib_symbols \(symbol "Device:R"/);
   });
 });
-
 describe("sexprVersion skew guard (ysync 0009 §5)", () => {
   it("binds a fresh (empty) room and a current-version doc", () => {
     const { a, b } = pair();
@@ -360,5 +360,85 @@ describe("sexprVersion skew guard (ysync 0009 §5)", () => {
     doc.getMap("kdoc_meta").set("sexprVersion", SEXPR_VERSION_CURRENT + 1);
     expect(() => bindKicadCollab(doc, new FakeEditor())).toThrow(SexprVersionError);
     expect(() => bindKicadCollab(doc, new FakeEditor())).toThrow(/update required/);
+  });
+});
+
+describe("bindKicadCollab — read-only viewer (read-only-viewer)", () => {
+  const WKS = `(kicad_wks (version 20220228) (generator "pl_editor")
+  (setup (textsize 1.5 1.5) (linewidth 0.15))
+  (rect (uuid "r-1") (name "border") (start 0 0 ltcorner) (end 0 0 rbcorner))
+)
+`;
+
+  it("never seeds an empty room — neither from the file nor the snapshot", () => {
+    const { a } = pair();
+    const viewer = new FakeEditor();
+    const seedDoc = fileToDoc(WKS);
+    // The viewer opened the file via the API fallback (room empty).
+    Object.assign(viewer.store, seedDoc.items);
+
+    bindKicadCollab(a, viewer, { readOnly: true }).seed(seedDoc);
+
+    // A writable binding would have file-seeded here; the viewer must not.
+    expect(ydocHasState(a)).toBe(false);
+    // And without a seedDoc, the editor-snapshot seed is skipped too.
+    const { b } = pair();
+    const viewer2 = new FakeEditor();
+    seedEditor(viewer2, FP);
+    bindKicadCollab(b, viewer2, { readOnly: true }).seed();
+    expect(ydocHasState(b)).toBe(false);
+  });
+
+  it("local edits never reach the doc (inert DOWN hook)", () => {
+    const { a, b } = pair();
+    const writer = new FakeEditor();
+    const viewer = new FakeEditor();
+    seedEditor(writer, FP);
+    bindKicadCollab(a, writer).seed();
+
+    const bindViewer = bindKicadCollab(b, viewer, { readOnly: true });
+    bindViewer.seed(); // adopts the writer's state
+    expect(viewer.store["fp-1"]).toBeDefined();
+
+    const appliedOnWriter = writer.applied.length;
+    viewer.localUpsert(`(pad "1" smd (at 9 9) (uuid "pad-1"))`, "fp-1");
+    // Nothing crossed: the writer's editor received no apply, and the shared
+    // doc still holds the writer's pad geometry.
+    expect(writer.applied.length).toBe(appliedOnWriter);
+    expect(writer.store["pad-1"]!.body).toEqual(
+      sexprToItems(`(pad "1" smd (at 0 0) (uuid "pad-1"))`, "fp-1").items["pad-1"]!.body,
+    );
+  });
+
+  it("remote edits still stream into the viewer (UP observer live)", () => {
+    const { a, b } = pair();
+    const writer = new FakeEditor();
+    const viewer = new FakeEditor();
+    seedEditor(writer, FP);
+    bindKicadCollab(a, writer).seed();
+    bindKicadCollab(b, viewer, { readOnly: true }).seed();
+
+    writer.localUpsert(`(pad "1" smd (at 5 5) (uuid "pad-1"))`, "fp-1");
+    expect(viewer.store["pad-1"]!.body).toEqual(
+      sexprToItems(`(pad "1" smd (at 5 5) (uuid "pad-1"))`, "fp-1").items["pad-1"]!.body,
+    );
+  });
+
+  it("a viewer parked on an empty room streams a late writer's seed in", () => {
+    const { a, b } = pair();
+    const viewer = new FakeEditor();
+    const writer = new FakeEditor();
+    const seedDoc = fileToDoc(WKS);
+    Object.assign(viewer.store, seedDoc.items);
+    Object.assign(writer.store, seedDoc.items);
+
+    // Viewer first (empty room, no seed), writer arrives later and file-seeds.
+    bindKicadCollab(a, viewer, { readOnly: true }).seed(seedDoc);
+    bindKicadCollab(b, writer).seed(seedDoc);
+
+    // The writer's seed reached the viewer's doc; the room is authored by the
+    // writer alone and stays file-recoverable.
+    expect(ydocHasState(a)).toBe(true);
+    expect(docToFile(yToDoc(a))).toBe(docToFile(seedDoc));
   });
 });

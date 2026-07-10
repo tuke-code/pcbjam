@@ -7,6 +7,7 @@ import {
   useSourceDescriptor,
 } from "@/lib/api";
 import { docSourceConfig } from "@/lib/config";
+import { resolveReadOnly } from "@/lib/read-only-mode";
 import { WasmTool } from "@/components/WasmTool";
 import { PreflightGate } from "@/preflight/PreflightGate";
 
@@ -54,6 +55,12 @@ export function ToolPage() {
   // on reload when it holds newer state; the upload is the registration + fallback copy.
   const docSource = docSourceConfig();
 
+  // Read-only viewer (read-only-viewer): the server's `access` capability
+  // (or `?readonly=1`) turns this session into a pure viewer — no save
+  // upload (absent saveBytes ⇒ MEMFS-only saves), and WasmTool disables
+  // every other outbound writer + locks the wasm frame.
+  const readOnly = resolveReadOnly(data.access);
+
   // PreflightGate runs the device-capability check; on a fatal mismatch it blocks
   // here (before WasmTool mounts) so the expensive WASM asset fetch is skipped.
   // fetch/upload go through the active project source (api.ts): a backend
@@ -67,9 +74,14 @@ export function ToolPage() {
         files={data.files}
         targetPath={targetPath}
         fetchBytes={(relPath) => fetchFileBytes(slug, relPath)}
-        saveBytes={(relPath, bytes) => uploadFileBytes(slug, relPath, bytes)}
+        saveBytes={
+          readOnly
+            ? undefined
+            : (relPath, bytes) => uploadFileBytes(slug, relPath, bytes)
+        }
         docSource={docSource}
         sourceDescriptor={sourceDescriptor}
+        readOnly={readOnly}
       />
     </PreflightGate>
   );

@@ -64,6 +64,8 @@ export interface StartCollabOptions {
    * snapshot. Ignored by the legacy scalar `startCollab`.
    */
   seedDoc?: KicadDoc;
+  /** Read-only viewer (read-only-viewer): see `bindKicadCollab`. */
+  readOnly?: boolean;
 }
 
 export interface CollabHandle {
@@ -149,9 +151,17 @@ export function attachKicadCollab(
   mod: KicadItemsModule,
   win: KicadItemsWindow,
   session: KicadDocSession,
-  opts?: { seedDoc?: KicadDoc; editorMatchesDoc?: boolean },
+  opts?: { seedDoc?: KicadDoc; editorMatchesDoc?: boolean; readOnly?: boolean },
 ): KicadCollabHandle {
-  const binding = bindKicadCollab(session.doc, moduleItemsBridge(mod, win));
+  if (opts?.readOnly) {
+    // Invisible observer: drop the provider's initial empty awareness state so
+    // the viewer never appears in anyone's roster (the sync server drops these
+    // frames from read-only connections too — this keeps the client quiet).
+    session.provider.awareness?.setLocalState(null);
+  }
+  const binding = bindKicadCollab(session.doc, moduleItemsBridge(mod, win), {
+    readOnly: opts?.readOnly,
+  });
   binding.seed(opts?.seedDoc, { editorMatchesDoc: opts?.editorMatchesDoc });
   clog("attachKicadCollab: ready; doc items =", binding.items.size);
 
@@ -181,5 +191,8 @@ export async function startKicadCollab(
 ): Promise<KicadCollabHandle> {
   clog("startKicadCollab:", opts.provider.kind, "room =", opts.room);
   const session = await connectKicadDoc({ provider: opts.provider, room: opts.room });
-  return attachKicadCollab(mod, win, session, { seedDoc: opts.seedDoc });
+  return attachKicadCollab(mod, win, session, {
+    seedDoc: opts.seedDoc,
+    readOnly: opts.readOnly,
+  });
 }

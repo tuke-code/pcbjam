@@ -190,6 +190,8 @@ async function main(): Promise<void> {
         body: {
           project: await project(params.scope),
           files: await walk(PROJECT_DIR),
+          // No auth here: every caller may write (explicit contract conformance).
+          access: "write" as const,
         },
       };
     },

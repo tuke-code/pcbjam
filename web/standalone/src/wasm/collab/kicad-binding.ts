@@ -90,10 +90,26 @@ export class SexprVersionError extends Error {
   }
 }
 
-export function bindKicadCollab(doc: Y.Doc, bridge: KicadItemsBridge): KicadBinding {
+export function bindKicadCollab(
+  doc: Y.Doc,
+  bridge: KicadItemsBridge,
+  opts?: {
+    /**
+     * Read-only viewer (read-only-viewer): the binding never writes the Y.Doc —
+     * the DOWN hook is inert (zero local-edit pushes even if a wasm gate were
+     * bypassed) and seed() skips both seeding branches (a viewer must never
+     * author a room). The UP observer and the adopt branch stay live, so
+     * remote edits keep rendering. The sync server enforces the same thing
+     * server-side; this keeps the client honest and quiet.
+     */
+    readOnly?: boolean;
+  },
+): KicadBinding {
+  const readOnly = opts?.readOnly === true;
   // Version skew guard — callers bind AFTER the provider's initial sync, so the
   // doc's version is authoritative here (an empty room reads as v1 and is
-  // stamped CURRENT by the first write).
+  // stamped CURRENT by the first write). A read-only viewer never writes, but
+  // it must not adopt a doc it can't correctly render either, so still guard.
   const version = ydocSexprVersion(doc);
   if (!SEXPR_VERSION_SUPPORTED.includes(version)) throw new SexprVersionError(version);
   const items = kicadItemsMap(doc);
@@ -133,6 +149,7 @@ export function bindKicadCollab(doc: Y.Doc, bridge: KicadItemsBridge): KicadBind
 
   // DOWN: local editor change → Y.Doc
   bridge.onItems((json: string) => {
+    if (readOnly) return; // viewer: local state never reaches the doc
     if (destroyed) return; // stale hook (bug 07) — a destroyed binding is inert
     let wire: ItemsWireDelta;
     try {
@@ -193,6 +210,13 @@ export function bindKicadCollab(doc: Y.Doc, bridge: KicadItemsBridge): KicadBind
       return;
     }
     if (!ydocHasState(doc) && seedDoc) {
+      if (readOnly) {
+        // A viewer never authors a room. The editor keeps showing the file it
+        // opened; when a writer later seeds this room, the (now-open) UP
+        // observer streams their state in.
+        clog("seed: read-only viewer on an empty room — not seeding");
+        return;
+      }
       // First tab, file-seeded: write the FULL doc (meta + layout + items) so
       // the Y.Doc — not the editor snapshot — is the lossless source of truth
       // (the file is recoverable via docToFile). The editor already opened the
@@ -248,6 +272,10 @@ export function bindKicadCollab(doc: Y.Doc, bridge: KicadItemsBridge): KicadBind
     const hasState = ydocHasState(doc);
 
     if (!hasState) {
+      if (readOnly) {
+        clog("seed: read-only viewer on an empty room — not snapshot-seeding");
+        return;
+      }
       // First tab, no file source: seed the shared doc from the editor model.
       const local = itemsWireToDelta(wire, {});
       clog(`seed: doc empty → SEEDING from editor snapshot (${local.added.length} item(s))`);

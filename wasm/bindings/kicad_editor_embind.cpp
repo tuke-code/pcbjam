@@ -36,6 +36,8 @@
 #include <wx/aui/framemanager.h>
 #include <kiway.h>
 #include <kiway_player.h>
+#include <pcbjam_read_only.h>
+#include <project.h>
 
 #include "pcbjam_libs_reload.h"
 
@@ -255,6 +257,27 @@ static bool kicadSetChrome( bool aShow )
 }
 
 
+// Read-only viewer lock (read-only-viewer): flips the process-global
+// PCBJAM_READ_ONLY flag consumed by TOOL_MANAGER (view-only action allowlist)
+// and the selection tools (nothing selectable), and mirrors it onto the
+// project so the setup dialogs grey out. Zoom/pan stay live (mouse/touch
+// bypass the tool system; keyboard zoom/pan is allowlisted). Returns false
+// until the editor frame exists — main() builds it after runtime init — so
+// JS polls this; the shell fails CLOSED if it never applies.
+static bool kicadSetReadOnly( bool aReadOnly )
+{
+    KIWAY_PLAYER* frame =
+            wxTheApp ? dynamic_cast<KIWAY_PLAYER*>( wxTheApp->GetTopWindow() ) : nullptr;
+
+    if( !frame )
+        return false;
+
+    PCBJAM_READ_ONLY::Set( aReadOnly );
+    frame->Prj().SetReadOnly( aReadOnly );
+    return true;
+}
+
+
 // C++ → JS save notification. Called from BOTH fork save chokepoints
 // (PCB_EDIT_FRAME::SavePcbFile and SCH_EDIT_FRAME::saveSchematicFile) — one shared
 // definition serves the merged image. No-op without a JS listener.
@@ -426,6 +449,9 @@ EMSCRIPTEN_BINDINGS(kicad_editor) {
 
     // Canvas-only mobile mode (features/mobile).
     function("kicadSetChrome", &kicadSetChrome);
+
+    // Read-only viewer lock (read-only-viewer).
+    function("kicadSetReadOnly", &kicadSetReadOnly);
 
     // Yjs collaborative bridge entry points — same JS contract as the standalone
     // bundles, dispatched on the active editor frame.

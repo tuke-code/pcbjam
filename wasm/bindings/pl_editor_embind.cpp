@@ -19,6 +19,8 @@
 #include <nlohmann/json.hpp>
 #include <eda_draw_frame.h>
 #include <kiid.h>
+#include <pcbjam_read_only.h>
+#include <project.h>
 #include <font/text_attributes.h>
 #include <drawing_sheet/ds_data_model.h>
 #include <drawing_sheet/ds_data_item.h>
@@ -46,6 +48,24 @@ bool kicadOpenFile( std::string path )
 
     return frame->OpenProjectFiles(
             std::vector<wxString>( 1, wxString::FromUTF8( path.c_str() ) ) );
+}
+
+// Read-only viewer lock (read-only-viewer): flips the process-global
+// PCBJAM_READ_ONLY flag consumed by TOOL_MANAGER (view-only action allowlist)
+// and the selection tools (nothing selectable), and mirrors it onto the
+// project so the setup dialogs grey out. Returns false until the editor frame
+// exists so JS polls; the shell fails CLOSED if it never applies.
+bool kicadSetReadOnly( bool aReadOnly )
+{
+    KIWAY_PLAYER* frame =
+            wxTheApp ? dynamic_cast<KIWAY_PLAYER*>( wxTheApp->GetTopWindow() ) : nullptr;
+
+    if( !frame )
+        return false;
+
+    PCBJAM_READ_ONLY::Set( aReadOnly );
+    frame->Prj().SetReadOnly( aReadOnly );
+    return true;
 }
 
 // Programmatically save the in-memory drawing sheet to a .kicad_wks file, without
@@ -553,6 +573,8 @@ std::string kicadCollabTestAddText( std::string aText, double aX, double aY )
 EMSCRIPTEN_BINDINGS(pl_editor) {
     // Programmatic file open (preferred over UI automation from the web app).
     function("kicadOpenFile", &kicadOpenFile);
+    // Read-only viewer lock (read-only-viewer).
+    function("kicadSetReadOnly", &kicadSetReadOnly);
     function("kicadSaveDrawingSheet", &kicadSaveDrawingSheet);
     // Yjs collaborative bridge entry points.
     function("kicadCollabApply", &kicadCollabApply);
