@@ -22,6 +22,8 @@
 #include <nlohmann/json.hpp>
 #include <kiid.h>
 #include <layer_ids.h>
+#include <pcbjam_read_only.h>
+#include <project.h>
 #include <schematic.h>
 #include <sch_edit_frame.h>
 #include <sch_io/kicad_sexpr/sch_io_kicad_sexpr.h>
@@ -90,6 +92,24 @@ bool kicadOpenFile( std::string path )
 
     return frame->OpenProjectFiles(
             std::vector<wxString>( 1, wxString::FromUTF8( path.c_str() ) ) );
+}
+
+// Read-only viewer lock (read-only-viewer): flips the process-global
+// PCBJAM_READ_ONLY flag consumed by TOOL_MANAGER (view-only action allowlist)
+// and the selection tools (nothing selectable), and mirrors it onto the
+// project so the setup dialogs grey out. Returns false until the editor frame
+// exists so JS polls; the shell fails CLOSED if it never applies.
+bool kicadSetReadOnly( bool aReadOnly )
+{
+    KIWAY_PLAYER* frame =
+            wxTheApp ? dynamic_cast<KIWAY_PLAYER*>( wxTheApp->GetTopWindow() ) : nullptr;
+
+    if( !frame )
+        return false;
+
+    PCBJAM_READ_ONLY::Set( aReadOnly );
+    frame->Prj().SetReadOnly( aReadOnly );
+    return true;
 }
 #endif // !KICAD_MERGED_EMBIND
 
@@ -1714,6 +1734,8 @@ EMSCRIPTEN_BINDINGS(eeschema) {
     // registered once by kicad_editor_embind.cpp, dispatching on the active frame.
     // Programmatic file open (preferred over UI automation from the web app).
     function("kicadOpenFile", &kicadOpenFile);
+    // Read-only viewer lock (read-only-viewer).
+    function("kicadSetReadOnly", &kicadSetReadOnly);
     // Yjs collaborative bridge entry points (same contract as pl_editor).
     function("kicadCollabApply", &schCollabApply);
     function("kicadCollabSnapshot", &schCollabSnapshot);

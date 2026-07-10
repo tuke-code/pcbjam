@@ -95,6 +95,14 @@ export interface SheetManagerOptions {
    * the skeleton on rebind.
    */
   presenceUser?: PresenceUser;
+  /**
+   * Read-only viewer (read-only-viewer): every room's binding is created
+   * read-only (never seeds, never pushes local edits — see bindKicadCollab)
+   * and each connected room's initial awareness state is dropped so the
+   * viewer stays out of rosters. Pass `presenceUser: undefined` alongside —
+   * skeleton presence is a broadcast too.
+   */
+  readOnly?: boolean;
   log: (m: string) => void;
   /**
    * `docSource: "ydoc"` only: the entry sheet's room is already connected (and possibly
@@ -139,6 +147,7 @@ export function createSheetCollabManager(opts: SheetManagerOptions): SheetCollab
 
   if (opts.initial) {
     const { sheetPath, session, editorMatchesDoc } = opts.initial;
+    if (opts.readOnly) session.provider.awareness?.setLocalState(null);
     rooms.set(sheetPath, {
       session,
       doc: session.doc,
@@ -172,6 +181,9 @@ export function createSheetCollabManager(opts: SheetManagerOptions): SheetCollab
         provider,
         room: collabRoomId(projectId, sheetPath),
       });
+      // Invisible observer (read-only-viewer): drop the provider's initial
+      // empty awareness state before anyone can see it.
+      if (opts.readOnly) session.provider.awareness?.setLocalState(null);
       const room: Room = {
         session,
         doc: session.doc,
@@ -233,7 +245,7 @@ export function createSheetCollabManager(opts: SheetManagerOptions): SheetCollab
     room.detachWatch?.();
     room.detachWatch = undefined;
 
-    const binding = bindKicadCollab(room.doc, bridge);
+    const binding = bindKicadCollab(room.doc, bridge, { readOnly: opts.readOnly });
     room.binding = binding;
 
     if (!room.seeded) {

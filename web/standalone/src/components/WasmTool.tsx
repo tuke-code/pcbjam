@@ -454,6 +454,8 @@ async function maybeStartCollab(
     collabSession?: KicadDocSession;
     /** The opened file was materialized from collabSession's doc (ydoc source). */
     editorMatchesDoc?: boolean;
+    /** Read-only viewer (read-only-viewer): see `bindKicadCollab`. */
+    readOnly?: boolean;
     log: (m: string) => void;
     onStatus: (t: string) => void;
   },
@@ -500,6 +502,7 @@ async function maybeStartCollab(
     const handle = attachKicadCollab(mod, win as unknown as KicadItemsWindow, opts.collabSession, {
       seedDoc,
       editorMatchesDoc: opts.editorMatchesDoc,
+      readOnly: opts.readOnly,
     });
     opts.log(`[collab] attached to Y.Doc session`);
     opts.onStatus("Collab: connected");
@@ -517,6 +520,7 @@ async function maybeStartCollab(
     provider,
     room,
     seedDoc,
+    readOnly: opts.readOnly,
   });
   opts.log(`[collab] ${provider.kind} connected on ${room}`);
   opts.onStatus("Collab: connected");
@@ -549,6 +553,8 @@ async function startSheetCollab(
     onActiveChange: (active: ActiveSheet | null) => void;
     /** Upload sink (project-backed sessions) — used to register a just-created subsheet. */
     saveBytes?: SaveBytes;
+    /** Read-only viewer (read-only-viewer): see `createSheetCollabManager`. */
+    readOnly?: boolean;
     log: (m: string) => void;
     onStatus: (t: string) => void;
   },
@@ -577,8 +583,10 @@ async function startSheetCollab(
     seedDocForPath: (sheet) => seedDocFromMemfs(win, opts.slug, sheet),
     onActiveChange: opts.onActiveChange,
     // Parked rooms carry a skeleton presence ("this user is on sheet X") so
-    // any sheet's roster shows the whole schematic's crew (0003).
-    presenceUser: presenceUser(),
+    // any sheet's roster shows the whole schematic's crew (0003). Read-only
+    // viewers publish none (invisible observer) — skeletons are broadcasts.
+    presenceUser: opts.readOnly ? undefined : presenceUser(),
+    readOnly: opts.readOnly,
     log: opts.log,
     initial:
       opts.session && opts.targetPath
@@ -680,6 +688,7 @@ export function WasmTool({
   assetBaseUrl,
   libsSource,
   sourceDescriptor,
+  readOnly = false,
 }: {
   tool: Tool;
   slug: string;
@@ -715,6 +724,14 @@ export function WasmTool({
   /** Override the resolved WASM asset base (used verbatim, e.g. e2e fixtures).
    *  Default: resolveWasmBase(tool) — the CDN manifest folder, or flat /wasm. */
   assetBaseUrl?: string;
+  /**
+   * Read-only viewer session (read-only-viewer; see lib/read-only-mode): chrome
+   * force-hidden with the toggle disabled, no presence/comments/drift, the
+   * collab binding never seeds or pushes local edits, and the wasm frame is
+   * locked via kicadSetReadOnly (zoom/pan only) — failing CLOSED when the
+   * bundle lacks the export. Pair with an omitted `saveBytes`.
+   */
+  readOnly?: boolean;
 }) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const startedRef = React.useRef(false);
@@ -725,6 +742,9 @@ export function WasmTool({
   // button / Cmd+\ flips it live; shell overlays key off this, and the layout
   // effect below applies it to the wasm frame.
   const chromeHidden = useChromeHidden();
+  // Read-only sessions force-hide the chrome without touching the module-global
+  // toggle state (SPA-navigating away keeps normal behavior elsewhere).
+  const effectiveChromeHidden = readOnly || chromeHidden;
   const driftRef = React.useRef<{ stop(): void } | null>(null);
   const presenceRef = React.useRef<PresenceHandle | null>(null);
   const presenceBridgeRef = React.useRef<{ destroy(): void } | null>(null);
@@ -958,6 +978,9 @@ export function WasmTool({
     // pcbnew/pl_editor bind once; eeschema rebinds per active sheet, so the
     // roster shows who is on the SAME sheet (room = sheet).
     const startPresence = (provider: YjsProvider | undefined, sheetPath?: string) => {
+      // Invisible observer (read-only-viewer): never bind presence — no roster,
+      // no cursor/selection emit, no awareness state (peers stays empty).
+      if (readOnly) return;
       followRef.current?.destroy();
       followRef.current = null;
       setFollowingTarget(null);
@@ -1015,6 +1038,9 @@ export function WasmTool({
     // GAL pin dots + the DOM layer's thread data. Follows the same lifecycle as
     // presence — eeschema rebinds per active sheet.
     const startComments = (doc: import("yjs").Doc | undefined) => {
+      // Comments are hidden entirely for read-only viewers (read-only-viewer):
+      // no pins, no panel, no thread reads — commentsCtl stays null.
+      if (readOnly) return;
       commentsRef.current?.destroy();
       commentsRef.current = null;
       setCommentsCtl(null);
@@ -1061,6 +1087,7 @@ export function WasmTool({
     // NOT reach the wx layer, so also stop propagation — capture on window
     // fires before wx's bubble-phase window listeners (wasm/app.cpp).
     const chromeHotkey = (e: KeyboardEvent) => {
+      if (readOnly) return; // viewers can't reveal the chrome (read-only-viewer)
       if (!isChromeToggleHotkey(e)) return;
       if (!chromeSetter(win)) return; // bundle without the export
       e.preventDefault();
@@ -1118,31 +1145,39 @@ export function WasmTool({
         });
         // Register the save sink before the file opens: from here on, every
         // editor File→Save (MEMFS write) is routed onward through saveBytes.
+        // Read-only sessions register neither upload nor the save-driven room
+        // writers (onSaved onboarding, onSavedText layout sync) — saves, were
+        // any reachable past the wasm lock, stay MEMFS-only.
         registerSaveHook(win, {
           slug,
-          saveBytes,
+          saveBytes: readOnly ? undefined : saveBytes,
           log: append,
           onStatus: setStatus,
-          // A sheet created mid-session ("Add Sheet") saves to a new .kicad_sch path the
-          // page-load file list can't contain — warm its collab room so it stays in sync.
-          onSaved: (relPath) => {
-            if (relPath.endsWith(".kicad_sch")) void sheetManagerRef.current?.onboard(relPath);
-          },
-          // Non-item document state (title block, paper, setup…) only reaches the
-          // room at seed time; reconcile it from every save (miss 08B).
-          onSavedText: (relPath, text) => {
-            if (sheetManagerRef.current) {
-              sheetManagerRef.current.syncLayoutFromSave(relPath, text);
-              return;
-            }
-            if (collabDocRef.current && relPath === targetPath) {
-              try {
-                syncLayoutToY(fileToDoc(text), collabDocRef.current, "layout-save");
-              } catch (err) {
-                append(`[save] layout sync failed: ${String(err)}`);
-              }
-            }
-          },
+          ...(readOnly
+            ? {}
+            : {
+                // A sheet created mid-session ("Add Sheet") saves to a new .kicad_sch path the
+                // page-load file list can't contain — warm its collab room so it stays in sync.
+                onSaved: (relPath: string) => {
+                  if (relPath.endsWith(".kicad_sch"))
+                    void sheetManagerRef.current?.onboard(relPath);
+                },
+                // Non-item document state (title block, paper, setup…) only reaches the
+                // room at seed time; reconcile it from every save (miss 08B).
+                onSavedText: (relPath: string, text: string) => {
+                  if (sheetManagerRef.current) {
+                    sheetManagerRef.current.syncLayoutFromSave(relPath, text);
+                    return;
+                  }
+                  if (collabDocRef.current && relPath === targetPath) {
+                    try {
+                      syncLayoutToY(fileToDoc(text), collabDocRef.current, "layout-save");
+                    } catch (err) {
+                      append(`[save] layout sync failed: ${String(err)}`);
+                    }
+                  }
+                },
+              }),
         });
         const { session, targetBytes } = await maybeConnectDocSession(win, {
           docSource,
@@ -1166,6 +1201,31 @@ export function WasmTool({
           log: append,
           onStatus: setStatus,
         });
+        // Read-only viewer (read-only-viewer): lock the wasm frame BEFORE the
+        // boot overlay drops — the file is open, so the frame exists; poll the
+        // export like the chrome toggle does. Fails CLOSED (boot error overlay):
+        // a viewer must never get a writable-feeling frame. gerbview/calculator
+        // bundles have no lock export and nothing project-mutating to lock —
+        // they proceed (saves are already MEMFS-only above).
+        if (readOnly) {
+          const setRo = (
+            win.Module as { kicadSetReadOnly?: (v: boolean) => boolean } | undefined
+          )?.kicadSetReadOnly;
+          if (typeof setRo === "function") {
+            const t0 = Date.now();
+            while (setRo(true) !== true) {
+              if (Date.now() - t0 > 30_000) {
+                throw new Error("read-only lock did not apply");
+              }
+              await new Promise((r) => setTimeout(r, 150));
+            }
+            append("[readonly] wasm frame locked (kicadSetReadOnly)");
+          } else if (tool !== "gerbview" && tool !== "calculator") {
+            throw new Error(
+              "read-only mode is not supported by this build (kicadSetReadOnly missing)",
+            );
+          }
+        }
         // Drift detection: while a sheet is collaboratively edited, periodically (every N
         // edits + at session end) compare the WASM serialization to the Y.Doc and report
         // divergence. Gated on a real collab session; re-targeted per active sheet below.
@@ -1177,7 +1237,9 @@ export function WasmTool({
         const collabOptOut =
           new URLSearchParams(win.location.search).get("collab") === "0" ||
           new URLSearchParams(win.location.search).get("collab") === "false";
-        if ((tool === "pcbnew" || tool === "eeschema") && !collabOptOut) {
+        // Read-only viewers skip the project presence room entirely — the
+        // server rejects their connection anyway (presence requires write).
+        if ((tool === "pcbnew" || tool === "eeschema") && !collabOptOut && !readOnly) {
           crossAppRef.current =
             (await startCrossAppPresence({
               projectId,
@@ -1201,15 +1263,16 @@ export function WasmTool({
               targetPath,
               files,
               session,
-              saveBytes,
+              saveBytes: readOnly ? undefined : saveBytes,
               editorMatchesDoc: !!targetBytes,
+              readOnly,
               // Re-point drift detection + presence at whichever sheet is bound.
               onActiveChange: (activeRoom) => {
                 driftRef.current?.stop();
                 driftRef.current = null;
                 startPresence(activeRoom?.provider, activeRoom?.sheetPath);
                 startComments(activeRoom?.doc);
-                if (activeRoom) {
+                if (activeRoom && !readOnly) {
                   driftRef.current = startDriftDetection({
                     doc: activeRoom.doc,
                     mod: win.Module,
@@ -1232,13 +1295,14 @@ export function WasmTool({
             targetPath,
             collabSession: session,
             editorMatchesDoc: !!targetBytes,
+            readOnly,
             log: append,
             onStatus: setStatus,
           });
           collabDocRef.current = collabHandle?.doc ?? null;
           startPresence(collabHandle?.provider);
           startComments(collabHandle?.doc);
-          if (collabHandle && targetPath && COLLAB_TOOLS.has(tool)) {
+          if (collabHandle && targetPath && COLLAB_TOOLS.has(tool) && !readOnly) {
             driftRef.current = startDriftDetection({
               doc: collabHandle.doc,
               mod: win.Module,
@@ -1303,19 +1367,19 @@ export function WasmTool({
   const appliedRef = React.useRef<boolean | null>(null);
   React.useLayoutEffect(() => {
     if (!setChromeFn) return;
-    if (appliedRef.current === chromeHidden) return;
-    if (appliedRef.current === null && !chromeHidden) return;
+    if (appliedRef.current === effectiveChromeHidden) return;
+    if (appliedRef.current === null && !effectiveChromeHidden) return;
 
     const apply = () => {
       try {
-        return setChromeFn(!chromeHidden) === true;
+        return setChromeFn(!effectiveChromeHidden) === true;
       } catch (err) {
         append(`[chrome] kicadSetChrome failed: ${String(err)}`);
         return true; // don't retry a throwing binding
       }
     };
     if (apply()) {
-      appliedRef.current = chromeHidden;
+      appliedRef.current = effectiveChromeHidden;
       return;
     }
     // The editor frame can lag `ready` (waitForWxUi falls through after 25 s)
@@ -1323,14 +1387,14 @@ export function WasmTool({
     const t0 = Date.now();
     const tick = window.setInterval(() => {
       if (apply()) {
-        appliedRef.current = chromeHidden;
+        appliedRef.current = effectiveChromeHidden;
         window.clearInterval(tick);
       } else if (Date.now() - t0 > 30_000) {
         window.clearInterval(tick);
       }
     }, 300);
     return () => window.clearInterval(tick);
-  }, [setChromeFn, chromeHidden, append]);
+  }, [setChromeFn, effectiveChromeHidden, append]);
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-[#1a1a2e]">
@@ -1472,11 +1536,13 @@ export function WasmTool({
       {/* Top-right overlay row: who else is in this file (awareness roster),
           where this project lives / whether Save persists (chip hidden while
           the UI is hidden), and the Figma-like hide/show-UI toggle — the one
-          control that stays up in canvas-only mode. */}
+          control that stays up in canvas-only mode. Read-only sessions swap
+          the toggle for a "View only" pill (chrome stays force-hidden). */}
       {ready &&
-        (setChromeFn !== null ||
+        (readOnly ||
+          setChromeFn !== null ||
           peers.length > 0 ||
-          (sourceDescriptor && !chromeHidden)) && (
+          (sourceDescriptor && !effectiveChromeHidden)) && (
           <div className="absolute right-3 top-3 z-20 flex items-center gap-2">
             {peers.length > 0 && (
               <PresenceRoster
@@ -1489,10 +1555,18 @@ export function WasmTool({
                 }}
               />
             )}
-            {sourceDescriptor && !chromeHidden && (
+            {sourceDescriptor && !effectiveChromeHidden && (
               <SourceChip descriptor={sourceDescriptor} />
             )}
-            {setChromeFn !== null && (
+            {readOnly && (
+              <span
+                data-testid="view-only-pill"
+                className="flex h-8 items-center rounded-full bg-black/70 px-3 text-xs font-medium text-white shadow-sm ring-1 ring-inset ring-white/20"
+              >
+                View only
+              </span>
+            )}
+            {setChromeFn !== null && !readOnly && (
               <button
                 data-testid="chrome-toggle"
                 aria-pressed={chromeHidden}
@@ -1566,7 +1640,7 @@ export function WasmTool({
         </button>
       )}
 
-      {!chromeHidden && (
+      {!effectiveChromeHidden && (
         <div className="absolute bottom-0 left-0 right-0 z-20">
           <button
             className="flex items-center gap-1 bg-black/70 px-3 py-1 font-mono text-xs text-white"
