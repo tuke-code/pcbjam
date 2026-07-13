@@ -419,7 +419,7 @@ std::string wrapInBoardEnvelope( BOARD& aBoard, const std::string& aItemSexpr )
     std::string s = "(kicad_pcb (version " + std::to_string( SEXPR_BOARD_FILE_VERSION )
                     + ") (generator \"pcbnew\") (layers";
 
-    for( PCB_LAYER_ID id : aBoard.GetEnabledLayers().Seq() )
+    auto emit = [&]( PCB_LAYER_ID id )
     {
         const char* type = IsCopperLayer( id ) ? LAYER::ShowType( aBoard.GetLayerType( id ) )
                                                : "user";
@@ -430,7 +430,17 @@ std::string wrapInBoardEnvelope( BOARD& aBoard, const std::string& aItemSexpr )
         // parse threw "not in fixed layer hash" for any board with such layers.
         s += " (" + std::to_string( (int) id ) + " \""
              + std::string( LSET::Name( id ).utf8_str() ) + "\" " + type + ")";
-    }
+    };
+
+    // Copper first (front→back), then tech/user — the formatBoardLayers order.
+    // parseLayers stops counting copper at the first non-copper entry and then
+    // rejects the count (<2), so raw Seq() order (which interleaves copper and
+    // non-copper ids in the v9 numbering) fails on EVERY bare payload.
+    for( PCB_LAYER_ID id : aBoard.GetEnabledLayers().CuStack() )
+        emit( id );
+
+    for( PCB_LAYER_ID id : aBoard.GetEnabledLayers().TechAndUserUIOrder() )
+        emit( id );
 
     s += ") " + aItemSexpr + ")";
     return s;
