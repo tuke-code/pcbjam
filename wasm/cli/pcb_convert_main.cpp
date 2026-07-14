@@ -679,6 +679,68 @@ int pcbToolsLintBoard( const char* aInPath, std::string& aError )
         return -1;
     }
 }
+
+
+// Full-parse board resave for the merged image's --resave driver (also on the
+// eeschema side): a bare load like pcbToolsLintBoard, then the s-expr writer
+// rewrites the board in the current format version. Zones are written
+// as-saved (no refill) — a format upgrade must not change geometry. Returns
+// 0 resaved / 4 load or parse failed / 5 write failed, with aError filled.
+int pcbToolsResaveBoard( const char* aInPath, const char* aOutPath, std::string& aError )
+{
+    wxFileName fn( wxString::FromUTF8( aInPath ) );
+    fn.MakeAbsolute();
+
+    kiRuntime();
+
+    std::unique_ptr<BOARD> brd;
+
+    try
+    {
+        brd.reset( PCB_IO_MGR::Load( PCB_IO_MGR::KICAD_SEXP, fn.GetFullPath() ) );
+
+        if( !brd )
+        {
+            aError = std::string( aInPath ) + ": error: failed to load board";
+            return 4;
+        }
+    }
+    catch( PARSE_ERROR& pe )
+    {
+        char buf[1024];
+        std::snprintf( buf, sizeof( buf ), "%s:%d:%d: error: %s", aInPath, pe.lineNumber,
+                       pe.byteIndex, (const char*) pe.ParseProblem().ToUTF8() );
+        aError = buf;
+        return 4;
+    }
+    catch( const IO_ERROR& ioe )
+    {
+        aError = std::string( aInPath ) + ": error: " + std::string( ioe.Problem().ToUTF8() );
+        return 4;
+    }
+    catch( const std::exception& e )
+    {
+        aError = std::string( aInPath ) + ": error: " + e.what();
+        return 4;
+    }
+
+    try
+    {
+        PCB_IO_MGR::Save( PCB_IO_MGR::KICAD_SEXP, wxString::FromUTF8( aOutPath ), brd.get() );
+    }
+    catch( const IO_ERROR& ioe )
+    {
+        aError = std::string( aOutPath ) + ": error: " + std::string( ioe.Problem().ToUTF8() );
+        return 5;
+    }
+    catch( const std::exception& e )
+    {
+        aError = std::string( aOutPath ) + ": error: " + e.what();
+        return 5;
+    }
+
+    return 0;
+}
 #endif // KICAD_TOOLS_COMBINED
 
 

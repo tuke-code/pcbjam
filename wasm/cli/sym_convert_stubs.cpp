@@ -34,11 +34,15 @@
 // ── (b) schematic-file entry points ──────────────────────────────────────────
 // Originally BOTH plugins' load+save were stubbed, severing the whole
 // schematic half. The --lint mode (ysync 0009 §7) needs the REAL s-expr
-// LoadSchematicFile back, so only three of the four stay stubbed: the s-expr
-// SAVE (lint/convert never write schematics) and the LEGACY load+save (.sch
-// lint unsupported). The re-rooted schematic object model costs binary size —
+// LoadSchematicFile back, and the merged kicad_tools image additionally
+// restores the s-expr SAVE for --resave (kicad-validity 0001 format upgrade)
+// — its serializer largely rides TUs the lint tier already links. The
+// standalone sym_convert keeps the save stubbed (lint/convert never write
+// schematics), and the LEGACY load+save stay stubbed everywhere (.sch
+// unsupported). The re-rooted schematic object model costs binary size —
 // the price of the lint tier riding this binary instead of a second wasm.
 
+#ifndef KICAD_TOOLS_COMBINED
 void SCH_IO_KICAD_SEXPR::SaveSchematicFile( const wxString& aFileName, SCH_SHEET*, SCHEMATIC*,
                                             const std::map<std::string, UTF8>* )
 {
@@ -46,6 +50,7 @@ void SCH_IO_KICAD_SEXPR::SaveSchematicFile( const wxString& aFileName, SCH_SHEET
             wxS( "sym_convert: schematic saving is compiled out (stub); cannot save '%s'" ),
             aFileName ) );
 }
+#endif // !KICAD_TOOLS_COMBINED
 
 
 SCH_SHEET* SCH_IO_KICAD_LEGACY::LoadSchematicFile( const wxString& aFileName, SCHEMATIC*,

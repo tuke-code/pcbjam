@@ -99,6 +99,9 @@
 // Merged image only: full-parse board lint via the pcbnew side
 // (pcb_convert_main.cpp) — the standalone eeschema tree has no pcbnew parser.
 int pcbToolsLintBoard( const char* aInPath, std::string& aError );
+// Merged image only: board load + s-expr rewrite for --resave (kicad-validity
+// 0001). 0 resaved / 4 load failed / 5 write failed.
+int pcbToolsResaveBoard( const char* aInPath, const char* aOutPath, std::string& aError );
 #endif
 
 #include <connection_graph.h>
@@ -700,6 +703,141 @@ wxString defaultOutPath( const wxFileName& aIn, const wxString& aSuffix, const w
     return out.GetFullPath();
 }
 
+// ── headless resave — format upgrade (kicad-validity 0001) ───────────────────
+// Full parse, then write back in the current file-format version. The write
+// goes to <outdir> as files (never stdout): the tools-job runner's contract is
+// "walk the output dir", and a hierarchical schematic produces one file per
+// sheet, mirroring the sheet files' layout relative to the root file's
+// directory (sheets outside it flatten to their basename). Zones/geometry are
+// written as-loaded — a format upgrade must not change content.
+// Exit: 0 resaved / 2 usage / 4 load or parse failed / 5 write failed. Only 4
+// means "the input is not valid KiCad" — the upload gate keys off it.
+
+int resaveSchematic( const char* aInPath, const wxFileName& aInFn, const wxString& aOutDir )
+{
+    std::unique_ptr<SCHEMATIC> schematic = loadSchematicHeadless( aInPath );
+
+    if( !schematic )
+        return 4;
+
+    IO_RELEASER<SCH_IO> pi( SCH_IO_MGR::FindPlugin( SCH_IO_MGR::SCH_KICAD ) );
+
+    const wxString rootDir = aInFn.GetPath( wxPATH_GET_SEPARATOR );
+
+    SCH_SHEET_LIST sheetList = schematic->BuildSheetListSortedByPageNumbers();
+    std::unordered_set<SCH_SCREEN*> saved;
+    int files = 0;
+
+    for( SCH_SHEET_PATH& path : sheetList )
+    {
+        SCH_SHEET*  sheet = path.Last();
+        SCH_SCREEN* screen = sheet ? sheet->GetScreen() : nullptr;
+
+        if( !screen || !saved.insert( screen ).second )
+            continue;
+
+        wxFileName srcFn( screen->GetFileName() );
+        srcFn.MakeAbsolute();
+
+        wxString rel;
+
+        if( srcFn.GetFullPath().StartsWith( rootDir, &rel ) )
+            ; // rel = path under the root file's directory
+        else
+            rel = srcFn.GetFullName();
+
+        wxFileName outFn( aOutDir + rel );
+
+        if( !outFn.DirExists() && !outFn.Mkdir( wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL ) )
+        {
+            std::fprintf( stderr, "%s: error: cannot create output directory %s\n", aInPath,
+                          (const char*) outFn.GetPath().ToUTF8() );
+            return 5;
+        }
+
+        try
+        {
+            pi->SaveSchematicFile( outFn.GetFullPath(), sheet, schematic.get() );
+        }
+        catch( const IO_ERROR& ioe )
+        {
+            std::fprintf( stderr, "%s: error: %s\n",
+                          (const char*) outFn.GetFullPath().ToUTF8(),
+                          (const char*) ioe.Problem().ToUTF8() );
+            return 5;
+        }
+
+        files++;
+    }
+
+    std::fprintf( stderr, "%s: OK (resave, %d sheet files) -> %s\n", aInPath, files,
+                  (const char*) aOutDir.ToUTF8() );
+    return 0;
+}
+
+
+int runResave( const char* aInPath, const char* aOutDir )
+{
+    wxFileName inFn( wxString::FromUTF8( aInPath ) );
+    inFn.MakeAbsolute();
+    const wxString ext = inFn.GetExt().Lower();
+
+    wxFileName outDirFn = wxFileName::DirName( wxString::FromUTF8( aOutDir ) );
+    outDirFn.MakeAbsolute();
+    const wxString outDir = outDirFn.GetPath( wxPATH_GET_SEPARATOR );
+
+    if( !outDirFn.DirExists() && !outDirFn.Mkdir( wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL ) )
+    {
+        std::fprintf( stderr, "%s: error: cannot create output directory %s\n", aInPath,
+                      (const char*) outDir.ToUTF8() );
+        return 5;
+    }
+
+    if( ext == wxS( "kicad_sch" ) )
+        return resaveSchematic( aInPath, inFn, outDir );
+
+    if( ext == wxS( "kicad_sym" ) || ext == wxS( "lib" ) )
+    {
+        // ConvertLibrary reads any recognized library format and writes the
+        // current s-expr format — resave and legacy upgrade in one call.
+        const wxString outPath = outDir + inFn.GetName() + wxS( ".kicad_sym" );
+
+        if( !SCH_IO_MGR::ConvertLibrary( nullptr, inFn.GetFullPath(), outPath ) )
+        {
+            std::fprintf( stderr, "%s: error: failed to convert symbol library\n", aInPath );
+            return 4;
+        }
+
+        std::fprintf( stderr, "%s: OK (resave) -> %s\n", aInPath,
+                      (const char*) outPath.ToUTF8() );
+        return 0;
+    }
+
+    if( ext == wxS( "kicad_pcb" ) )
+    {
+#ifdef KICAD_TOOLS_COMBINED
+        const wxString outPath = outDir + inFn.GetFullName();
+        std::string    error;
+        const int rc = pcbToolsResaveBoard( aInPath, (const char*) outPath.ToUTF8(), error );
+
+        if( rc != 0 )
+            std::fprintf( stderr, "%s\n", error.c_str() );
+        else
+            std::fprintf( stderr, "%s: OK (resave) -> %s\n", aInPath,
+                          (const char*) outPath.ToUTF8() );
+
+        return rc;
+#else
+        std::fprintf( stderr, "%s: error: board resave requires the merged kicad_tools build\n",
+                      aInPath );
+        return 2;
+#endif
+    }
+
+    std::fprintf( stderr, "%s: error: unsupported extension for --resave\n", aInPath );
+    return 2;
+}
+
 // ── headless ERC ──────────────────────────────────────────────────────────────
 
 int runErc( const char* aInPath, bool aJson, bool aStrict, const char* aOutPath )
@@ -1082,6 +1220,28 @@ int symConvertMain( int argc, char** argv )
         return allOk ? 0 : 1;
     }
 
+    if( argc >= 2 && std::strcmp( argv[1], "--resave" ) == 0 )
+    {
+        // Same rationale as --lint: headless runtime, parseable output.
+        wxDisableAsserts();
+
+        if( argc < 4 )
+        {
+            std::fprintf( stderr, "usage: kicad_tools --resave <file> <outdir>\n" );
+            return 2;
+        }
+
+        try
+        {
+            return runResave( argv[2], argv[3] );
+        }
+        catch( const std::exception& e )
+        {
+            std::fprintf( stderr, "%s: error: %s\n", argv[2], e.what() );
+            return 4;
+        }
+    }
+
     if( argc >= 2 && std::strcmp( argv[1], "--convert-lib" ) == 0 && argc >= 4 )
     {
         // The legacy plugin asserts on relative paths and (worse) writes an
@@ -1109,6 +1269,7 @@ int symConvertMain( int argc, char** argv )
 
     std::fprintf( stderr, "usage: kicad_tools --convert-lib <input.lib> <output.kicad_sym>\n"
                           "       kicad_tools --lint [--strict] <file> [<file>...]\n"
+                          "       kicad_tools --resave <file> <outdir>\n"
                           "       kicad_tools --erc [--json] [--strict] <file.kicad_sch> [<out>]\n"
                           "       kicad_tools --netlist [--xml] <file.kicad_sch> [<out>]\n"
                           "       kicad_tools --bom <file.kicad_sch> [<out>]\n"

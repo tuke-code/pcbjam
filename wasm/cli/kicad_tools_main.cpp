@@ -17,6 +17,12 @@
  *                       (.kicad_pcb files get a FULL parse here — the pcbnew
  *                       parser is linked; the lint driver calls back into
  *                       pcbToolsLintBoard on the pcb side)
+ *     kicad_tools --resave <file> <outdir>
+ *                       (full parse + rewrite in the current file-format
+ *                       version — kicad-validity 0001; .kicad_pcb via the
+ *                       pcbToolsResaveBoard callback, .kicad_sch one file per
+ *                       sheet, .kicad_sym/.lib via ConvertLibrary. Exit 4 =
+ *                       input invalid, 5 = write failed)
  *     kicad_tools --erc [--json] [--strict] <file.kicad_sch> [<out>]
  *     kicad_tools --netlist [--xml] <file.kicad_sch> [<out>]
  *     kicad_tools --bom <file.kicad_sch> [<out>]
