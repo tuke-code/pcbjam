@@ -314,18 +314,14 @@ function installQuitHook(
   opts: { fallbackUrl: string; log: (m: string) => void },
 ): () => void {
   const hook = () => {
-    // A same-origin referrer means we entered by an in-app hard navigation
-    // (ProjectView / NewFileDialog / tool-switch all location.assign), so
-    // going back lands wherever the user came from. Deep links and fresh tabs
-    // have no usable history — go to the fallback instead.
-    let sameOriginReferrer = false;
-    try {
-      sameOriginReferrer =
-        !!win.document.referrer &&
-        new URL(win.document.referrer).origin === win.location.origin;
-    } catch {
-      sameOriginReferrer = false;
-    }
+    // Any referrer means we entered by a real navigation — an in-app hard
+    // navigation (ProjectView / NewFileDialog / tool-switch all
+    // location.assign) OR the cross-origin management app (app.pcbjam.com →
+    // editor.pcbjam.com deep-links; the primary entry in the closed deploy).
+    // Quit behaves like the Back button: going back lands wherever the user
+    // came from. Deep links and fresh tabs have no referrer and no usable
+    // history — go to the fallback instead.
+    const hasReferrer = !!win.document.referrer;
 
     // Defer the navigation out of the wasm callback: this fires from inside the
     // frame's C++ destructor (via EM_ASM under Asyncify), and the teardown keeps
@@ -333,7 +329,7 @@ function installQuitHook(
     // aborted by that continuing teardown (only the same-document history.back()
     // survives) — so hand it to a fresh task once the wasm stack has unwound.
     setTimeout(() => {
-      if (sameOriginReferrer && win.history.length > 1) {
+      if (hasReferrer && win.history.length > 1) {
         opts.log("[quit] editor closed — history.back()");
         win.history.back();
       } else {

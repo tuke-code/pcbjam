@@ -73,8 +73,8 @@ test.describe('web app — File → Quit leaves the editor', () => {
   test('quit on a deep-linked editor falls back to the project page', async ({ page }) => {
     test.setTimeout(300000);
 
-    // Direct entry: no same-origin referrer, nothing meaningful to go back to —
-    // quit must land on the project page via the fallback URL.
+    // Direct entry (typed URL): no referrer, nothing meaningful to go back
+    // to — quit must land on the project page via the fallback URL.
     await page.goto(`/${SCOPE}/projects/demo/demo.kicad_sch`);
     await waitForToolReady(page, /demo — Schematic Editor/i);
 
