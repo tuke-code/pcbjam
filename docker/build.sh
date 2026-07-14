@@ -108,8 +108,11 @@ shift
 # host-side wasm-opt chain is the critical path and must start as early as
 # possible (especially with KICAD_PIPELINE=1). pcbnew/eeschema stay buildable as
 # standalone debug aids but are not part of "all" (not deployed).
+# kicad_tools joined "all" for the runner-image CI (tasks-runner 0001 R2) —
+# it finalizes in-container (no host wasm-opt tail), so it never contends
+# with the editor's critical path.
 if [[ "$APP_NAME" == "all" ]]; then
-    APPS=(kicad_editor occ_service calculator pl_editor gerbview)
+    APPS=(kicad_editor occ_service calculator pl_editor gerbview kicad_tools)
 else
     IFS=',' read -r -a APPS <<< "$APP_NAME"
     for app in "${APPS[@]}"; do
