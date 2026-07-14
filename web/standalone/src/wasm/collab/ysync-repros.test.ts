@@ -213,6 +213,7 @@ describe("bug 07b — sheet-switch gap: stale onItems writes into the old sheet'
     const m = createSheetCollabManager({
       mod,
       win,
+      scopeId: "S",
       projectId: "P",
       provider: { kind: "none" } satisfies ProviderConfig,
       seedDocForPath: () => undefined,

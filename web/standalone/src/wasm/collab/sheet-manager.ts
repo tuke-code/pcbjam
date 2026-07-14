@@ -72,7 +72,9 @@ export interface SheetManagerOptions {
   mod: KicadItemsModule;
   /** The global the C++ emit side calls into (`window.kicadCollab.onItems`). */
   win: KicadItemsWindow;
-  /** Project uuid — keys each room as `collabRoomId(projectId, sheetPath)`. */
+  /** Owning team's stable id (`"local"` when scope-less) — first room-id segment. */
+  scopeId: string;
+  /** Project uuid — keys each room as `collabRoomId(scopeId, projectId, sheetPath)`. */
   projectId: string;
   /** The env-selected Yjs provider config (same one the single-room path uses). */
   provider: ProviderConfig;
@@ -127,7 +129,7 @@ interface Room {
 }
 
 export function createSheetCollabManager(opts: SheetManagerOptions): SheetCollabManager {
-  const { mod, win, projectId, provider, seedDocForPath, log } = opts;
+  const { mod, win, scopeId, projectId, provider, seedDocForPath, log } = opts;
   const bridge = moduleItemsBridge(mod, win);
   const rooms = new Map<string, Room>();
   // In-flight connects, so connectAll() and switchTo() racing on the same sheet (api
@@ -179,7 +181,7 @@ export function createSheetCollabManager(opts: SheetManagerOptions): SheetCollab
     const pending = (async () => {
       const session = await connectKicadDoc({
         provider,
-        room: collabRoomId(projectId, sheetPath),
+        room: collabRoomId(scopeId, projectId, sheetPath),
       });
       // Invisible observer (read-only-viewer): drop the provider's initial
       // empty awareness state before anyone can see it.

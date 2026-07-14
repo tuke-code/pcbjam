@@ -27,6 +27,7 @@ export function LibToolPage() {
       <WasmTool
         tool={tool}
         slug="local"
+        scopeId="local"
         projectId="local"
         files={[]}
         libsSource={libsSource}

@@ -405,6 +405,7 @@ async function maybeConnectDocSession(
   opts: {
     docSource?: DocSource;
     tool: Tool;
+    scopeId: string;
     projectId: string;
     targetPath?: string;
     log: (m: string) => void;
@@ -414,7 +415,7 @@ async function maybeConnectDocSession(
   if (!opts.targetPath || !COLLAB_TOOLS.has(opts.tool)) return {};
 
   const { connectKicadDoc } = await import("@/wasm/collab");
-  const room = collabRoomId(opts.projectId, opts.targetPath);
+  const room = collabRoomId(opts.scopeId, opts.projectId, opts.targetPath);
   const session = await connectKicadDoc({ provider: yjsProviderConfig(), room });
 
   // Use the full doc state (meta + layout + items), NOT just item count: a
@@ -449,6 +450,7 @@ async function maybeStartCollab(
   opts: {
     tool: Tool;
     slug: string;
+    scopeId: string;
     projectId: string;
     targetPath?: string;
     collabSession?: KicadDocSession;
@@ -514,7 +516,7 @@ async function maybeStartCollab(
   // One room per (project, document). Two tabs of the same build compute the
   // same id, so cross-tab BroadcastChannel still works; network providers use it
   // verbatim to namespace + persist (see @pcbjam/shared collabRoomId).
-  const room = collabRoomId(opts.projectId, opts.targetPath ?? opts.tool);
+  const room = collabRoomId(opts.scopeId, opts.projectId, opts.targetPath ?? opts.tool);
   clog("starting collab", provider.kind, "room", room, "seedDoc:", !!seedDoc);
   const handle = await startKicadCollab(mod, win as unknown as KicadItemsWindow, {
     provider,
@@ -543,6 +545,7 @@ async function startSheetCollab(
   win: ToolWindow,
   opts: {
     slug: string;
+    scopeId: string;
     projectId: string;
     targetPath?: string;
     files: ToolFile[];
@@ -578,6 +581,7 @@ async function startSheetCollab(
   const manager = createSheetCollabManager({
     mod,
     win: win as unknown as KicadItemsWindow,
+    scopeId: opts.scopeId,
     projectId: opts.projectId,
     provider: yjsProviderConfig(),
     seedDocForPath: (sheet) => seedDocFromMemfs(win, opts.slug, sheet),
@@ -679,6 +683,7 @@ async function waitForWxUi(win: ToolWindow, timeoutMs = 25_000): Promise<void> {
 export function WasmTool({
   tool,
   slug,
+  scopeId,
   projectId,
   files,
   targetPath,
@@ -692,6 +697,8 @@ export function WasmTool({
 }: {
   tool: Tool;
   slug: string;
+  /** Owning team's stable id (`"local"` when scope-less) — first room-id segment. */
+  scopeId: string;
   /** Stable project id — used to key the collab room (see @pcbjam/shared). */
   projectId: string;
   files: ToolFile[];
@@ -1182,6 +1189,7 @@ export function WasmTool({
         const { session, targetBytes } = await maybeConnectDocSession(win, {
           docSource,
           tool,
+          scopeId,
           projectId,
           targetPath,
           log: append,
@@ -1242,6 +1250,7 @@ export function WasmTool({
         if ((tool === "pcbnew" || tool === "eeschema") && !collabOptOut && !readOnly) {
           crossAppRef.current =
             (await startCrossAppPresence({
+              scopeId,
               projectId,
               provider: yjsProviderConfig(),
               user: presenceUser(),
@@ -1259,6 +1268,7 @@ export function WasmTool({
           sheetManagerRef.current =
             (await startSheetCollab(win, {
               slug,
+              scopeId,
               projectId,
               targetPath,
               files,
@@ -1291,6 +1301,7 @@ export function WasmTool({
           const collabHandle = await maybeStartCollab(win, {
             tool,
             slug,
+            scopeId,
             projectId,
             targetPath,
             collabSession: session,

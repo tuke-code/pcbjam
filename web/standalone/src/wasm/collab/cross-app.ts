@@ -44,6 +44,7 @@ export interface CrossAppHandle {
 }
 
 export async function startCrossAppPresence(opts: {
+  scopeId: string;
   projectId: string;
   provider: ProviderConfig;
   user: PresenceUser;
@@ -51,7 +52,7 @@ export async function startCrossAppPresence(opts: {
 }): Promise<CrossAppHandle | undefined> {
   if (opts.provider.kind === "none") return undefined;
 
-  const room = presenceRoomId(opts.projectId);
+  const room = presenceRoomId(opts.scopeId, opts.projectId);
   const doc = new Y.Doc();
   let provider: YjsProvider;
   try {

@@ -70,6 +70,7 @@ export function ToolPage() {
       <WasmTool
         tool={tool}
         slug={slug}
+        scopeId={data.project.scopeId ?? "local"}
         projectId={data.project.id}
         files={data.files}
         targetPath={targetPath}

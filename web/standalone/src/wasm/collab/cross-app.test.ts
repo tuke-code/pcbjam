@@ -20,6 +20,7 @@ let projectSeq = 0;
 
 async function join(projectId: string, userId: string, tool: string): Promise<CrossAppHandle> {
   const h = await startCrossAppPresence({
+    scopeId: "S",
     projectId,
     provider: { kind: "broadcastchannel", settleMs: 10 },
     user: user(userId),
@@ -43,6 +44,7 @@ afterEach(async () => {
 describe("startCrossAppPresence", () => {
   it("returns undefined for the none provider", async () => {
     const h = await startCrossAppPresence({
+      scopeId: "S",
       projectId: "P",
       provider: { kind: "none" },
       user: user("alice"),

@@ -10,7 +10,9 @@ const { connectKicadDoc, bindKicadCollab, moduleItemsBridge } = vi.hoisted(() =>
 
 vi.mock("./index", () => ({ connectKicadDoc }));
 vi.mock("./kicad-binding", () => ({ bindKicadCollab, moduleItemsBridge }));
-vi.mock("@pcbjam/shared", () => ({ collabRoomId: (p: string, d: string) => `${p}:${d}` }));
+vi.mock("@pcbjam/shared", () => ({
+  collabRoomId: (s: string, p: string, d: string) => `${s}:${p}:${d}`,
+}));
 
 import { createSheetCollabManager } from "./sheet-manager";
 
@@ -53,6 +55,7 @@ function makeManager() {
   return createSheetCollabManager({
     mod: {} as never,
     win: {} as never,
+    scopeId: "S",
     projectId: "P",
     provider: { kind: "none" } as never,
     seedDocForPath: () => undefined,
@@ -167,13 +170,14 @@ describe("sheet-manager warm pool", () => {
   it("uses the pre-connected entry session (ydoc mode) instead of reconnecting", async () => {
     const entryDoc = makeDoc();
     const entrySession: FakeSession = {
-      room: "P:root.kicad_sch",
+      room: "S:P:root.kicad_sch",
       doc: entryDoc,
       provider: { destroy: vi.fn() },
     };
     const m = createSheetCollabManager({
       mod: {} as never,
       win: {} as never,
+      scopeId: "S",
       projectId: "P",
       provider: { kind: "none" } as never,
       seedDocForPath: () => undefined,

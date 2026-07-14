@@ -168,6 +168,7 @@ export function HomePage() {
       <WasmTool
         tool={launchedTool.tool}
         slug="local"
+        scopeId="local"
         projectId="local"
         files={[]}
         libsSource={launchedTool.libsSource}
@@ -185,6 +186,7 @@ export function HomePage() {
       <WasmTool
         tool={launched.tool}
         slug="local"
+        scopeId="local"
         projectId="local"
         files={local.files}
         targetPath={launched.target}
