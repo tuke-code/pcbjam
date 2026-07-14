@@ -69,8 +69,11 @@
 #include <layer_ids.h>
 #include <lset.h>
 #include <libraries/library_manager.h>
+#include <footprint.h>
+#include <pcb_io/kicad_sexpr/pcb_io_kicad_sexpr.h>
 #include <pcb_io/pcb_io_mgr.h>
 #include <pcb_marker.h>
+#include <richio.h>
 #include <pcb_plotter.h>
 #include <pcbplot.h>
 #include <pgm_base.h>
@@ -678,6 +681,120 @@ int pcbToolsLintBoard( const char* aInPath, std::string& aError )
         aError = std::string( aInPath ) + ": error: " + e.what();
         return -1;
     }
+}
+
+
+// Full-parse footprint lint for the merged image's --lint driver
+// (kicad-validity 0001 S): parse one .kicad_mod via the s-expr plugin's
+// ImportFootprint. Returns the pad count, or -1 with aError filled.
+int pcbToolsLintFootprint( const char* aInPath, std::string& aError )
+{
+    wxFileName fn( wxString::FromUTF8( aInPath ) );
+    fn.MakeAbsolute();
+
+    kiRuntime();
+
+    try
+    {
+        PCB_IO_KICAD_SEXPR plugin;
+        wxString           name;
+        std::unique_ptr<FOOTPRINT> fp( plugin.ImportFootprint( fn.GetFullPath(), name ) );
+
+        if( !fp )
+        {
+            aError = std::string( aInPath ) + ": error: not a footprint file";
+            return -1;
+        }
+
+        return (int) fp->Pads().size();
+    }
+    catch( PARSE_ERROR& pe )
+    {
+        char buf[1024];
+        std::snprintf( buf, sizeof( buf ), "%s:%d:%d: error: %s", aInPath, pe.lineNumber,
+                       pe.byteIndex, (const char*) pe.ParseProblem().ToUTF8() );
+        aError = buf;
+        return -1;
+    }
+    catch( const IO_ERROR& ioe )
+    {
+        aError = std::string( aInPath ) + ": error: " + std::string( ioe.Problem().ToUTF8() );
+        return -1;
+    }
+    catch( const std::exception& e )
+    {
+        aError = std::string( aInPath ) + ": error: " + e.what();
+        return -1;
+    }
+}
+
+
+// Footprint resave for --resave (kicad-validity 0001 S): parse + rewrite one
+// .kicad_mod in the current format, the exact FP_CACHE::Save incantation
+// (PRETTIFIED formatter + plugin Format). 0 / 4 load failed / 5 write failed.
+int pcbToolsResaveFootprint( const char* aInPath, const char* aOutPath, std::string& aError )
+{
+    wxFileName fn( wxString::FromUTF8( aInPath ) );
+    fn.MakeAbsolute();
+
+    kiRuntime();
+
+    std::unique_ptr<FOOTPRINT> fp;
+
+    try
+    {
+        PCB_IO_KICAD_SEXPR plugin;
+        wxString           name;
+        fp.reset( plugin.ImportFootprint( fn.GetFullPath(), name ) );
+
+        if( !fp )
+        {
+            aError = std::string( aInPath ) + ": error: not a footprint file";
+            return 4;
+        }
+    }
+    catch( PARSE_ERROR& pe )
+    {
+        char buf[1024];
+        std::snprintf( buf, sizeof( buf ), "%s:%d:%d: error: %s", aInPath, pe.lineNumber,
+                       pe.byteIndex, (const char*) pe.ParseProblem().ToUTF8() );
+        aError = buf;
+        return 4;
+    }
+    catch( const IO_ERROR& ioe )
+    {
+        aError = std::string( aInPath ) + ": error: " + std::string( ioe.Problem().ToUTF8() );
+        return 4;
+    }
+    catch( const std::exception& e )
+    {
+        aError = std::string( aInPath ) + ": error: " + e.what();
+        return 4;
+    }
+
+    try
+    {
+        // CTL_FOR_LIBRARY, NOT the default CTL_FOR_BOARD — the board flags
+        // include CTL_OMIT_FOOTPRINT_VERSION, which would strip the (version)
+        // header a standalone .kicad_mod must carry (FootprintSave sets the
+        // same flags before formatting).
+        PCB_IO_KICAD_SEXPR              writer( CTL_FOR_LIBRARY );
+        PRETTIFIED_FILE_OUTPUTFORMATTER formatter( wxString::FromUTF8( aOutPath ) );
+        writer.SetOutputFormatter( &formatter );
+        writer.Format( fp.get() );
+    }
+    catch( const IO_ERROR& ioe )
+    {
+        aError = std::string( aOutPath ) + ": error: " + std::string( ioe.Problem().ToUTF8() );
+        return 5;
+    }
+    catch( const std::exception& e )
+    {
+        aError = std::string( aOutPath ) + ": error: " + e.what();
+        return 5;
+    }
+
+    return 0;
 }
 
 

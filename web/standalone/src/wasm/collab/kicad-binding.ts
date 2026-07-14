@@ -15,6 +15,9 @@ import {
   wireItemUuids,
   wireLibSymbols,
   Y_KDOC_META,
+  Y_KDOC_REVERT_AT,
+  Y_KDOC_REVERT_NONCE,
+  Y_KDOC_REVERT_REASON,
   Y_KDOC_SEED_NONCE,
   ydocHasState,
   ydocSexprVersion,
@@ -43,6 +46,12 @@ import { clog, cwarn } from "./debug";
  * Until those land in the wasm, the binding is exercised by unit tests with a
  * fake editor bridge (kicad-binding.test.ts).
  */
+
+/**
+ * Window event fired when the backend rolled this doc back to its last valid
+ * state (kicad-validity 0001 B3). detail: { reason?: string; at?: string }.
+ */
+export const DOC_REVERTED_EVENT = "pcbjam:doc-reverted";
 
 /** The v2 per-item s-expr bridge (Stage C C++ contract), runtime-adapted. */
 export interface KicadItemsBridge {
@@ -191,6 +200,31 @@ export function bindKicadCollab(
     bridge.applyItems(JSON.stringify(wire));
   };
   items.observeDeep(observer);
+
+  // Validity-revert notice (kicad-validity 0001 B3): the backend stamps
+  // kdoc_meta.revertNonce when it rolls the doc back to the last valid state
+  // (the content itself arrives through the normal item sync above). Watched
+  // like seedNonce; surfaced as a window event for the shell's toast. The
+  // nonce is deduped so a reconnect replaying the same marker stays silent.
+  const revMeta = doc.getMap(Y_KDOC_META);
+  let lastRevertNonce = revMeta.get(Y_KDOC_REVERT_NONCE);
+  const onRevertMeta = () => {
+    const nonce = revMeta.get(Y_KDOC_REVERT_NONCE);
+    if (nonce === undefined || nonce === lastRevertNonce) return;
+    lastRevertNonce = nonce;
+    clog("doc reverted by backend:", revMeta.get(Y_KDOC_REVERT_REASON));
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent(DOC_REVERTED_EVENT, {
+          detail: {
+            reason: revMeta.get(Y_KDOC_REVERT_REASON),
+            at: revMeta.get(Y_KDOC_REVERT_AT),
+          },
+        }),
+      );
+    }
+  };
+  revMeta.observe(onRevertMeta);
 
   function seed(seedDoc?: KicadDoc, opts?: { editorMatchesDoc?: boolean }): void {
     seeded = true; // open the UP gate; everything below runs synchronously
@@ -344,6 +378,7 @@ export function bindKicadCollab(
       detachSeedArbitration?.();
       detachSeedArbitration = undefined;
       items.unobserveDeep(observer);
+      revMeta.unobserve(onRevertMeta);
     },
     items,
   };

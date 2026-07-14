@@ -14,9 +14,9 @@
  *   eeschema side (sym_convert_main.cpp) — everything else:
  *     kicad_tools --convert-lib <input.lib> <output.kicad_sym>
  *     kicad_tools --lint [--strict] <file> [<file>...]
- *                       (.kicad_pcb files get a FULL parse here — the pcbnew
- *                       parser is linked; the lint driver calls back into
- *                       pcbToolsLintBoard on the pcb side)
+ *                       (.kicad_pcb/.kicad_mod get a FULL parse here — the
+ *                       pcbnew parser is linked; the lint driver calls back
+ *                       into pcbToolsLintBoard/pcbToolsLintFootprint)
  *     kicad_tools --resave <file> <outdir>
  *                       (full parse + rewrite in the current file-format
  *                       version — kicad-validity 0001; .kicad_pcb via the

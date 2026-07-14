@@ -102,6 +102,10 @@ int pcbToolsLintBoard( const char* aInPath, std::string& aError );
 // Merged image only: board load + s-expr rewrite for --resave (kicad-validity
 // 0001). 0 resaved / 4 load failed / 5 write failed.
 int pcbToolsResaveBoard( const char* aInPath, const char* aOutPath, std::string& aError );
+// Merged image only: .kicad_mod full parse (returns pad count or -1) and
+// resave (0/4/5) — kicad-validity 0001 S.
+int pcbToolsLintFootprint( const char* aInPath, std::string& aError );
+int pcbToolsResaveFootprint( const char* aInPath, const char* aOutPath, std::string& aError );
 #endif
 
 #include <connection_graph.h>
@@ -539,6 +543,15 @@ bool lintOneFile( const char* aPath, bool aStrict )
                 else
                     tier = "full parse";
             }
+            else if( ext == wxS( "kicad_mod" ) )
+            {
+                std::string fpError;
+
+                if( pcbToolsLintFootprint( aPath, fpError ) < 0 )
+                    report.errors.push_back( fpError );
+                else
+                    tier = "full parse";
+            }
 #endif
             // Anything else (kicad_wks, kicad_pro …— and kicad_pcb outside
             // the merged kicad_tools image) stays structure-only.
@@ -813,12 +826,14 @@ int runResave( const char* aInPath, const char* aOutDir )
         return 0;
     }
 
-    if( ext == wxS( "kicad_pcb" ) )
+    if( ext == wxS( "kicad_pcb" ) || ext == wxS( "kicad_mod" ) )
     {
 #ifdef KICAD_TOOLS_COMBINED
         const wxString outPath = outDir + inFn.GetFullName();
         std::string    error;
-        const int rc = pcbToolsResaveBoard( aInPath, (const char*) outPath.ToUTF8(), error );
+        const int rc = ext == wxS( "kicad_pcb" )
+                ? pcbToolsResaveBoard( aInPath, (const char*) outPath.ToUTF8(), error )
+                : pcbToolsResaveFootprint( aInPath, (const char*) outPath.ToUTF8(), error );
 
         if( rc != 0 )
             std::fprintf( stderr, "%s\n", error.c_str() );
@@ -828,7 +843,8 @@ int runResave( const char* aInPath, const char* aOutDir )
 
         return rc;
 #else
-        std::fprintf( stderr, "%s: error: board resave requires the merged kicad_tools build\n",
+        std::fprintf( stderr, "%s: error: board/footprint resave requires the merged "
+                              "kicad_tools build\n",
                       aInPath );
         return 2;
 #endif

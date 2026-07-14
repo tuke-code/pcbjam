@@ -67,6 +67,7 @@ import {
   type FollowTarget,
 } from "@/wasm/collab/follow-user";
 import { startCrossAppPresence, type CrossAppHandle } from "@/wasm/collab/cross-app";
+import { DOC_REVERTED_EVENT } from "@/wasm/collab/kicad-binding";
 import {
   createComments,
   hasCommentsBridge,
@@ -790,6 +791,9 @@ export function WasmTool({
   // A collaborator updated library items that are PLACED in the open document
   // (LIB_ITEM_UPDATED_EVENT) — placed copies keep the previous version, so warn.
   const [libUpdate, setLibUpdate] = React.useState<string | null>(null);
+  // The backend rolled this document back to its last valid state
+  // (kicad-validity 0001 — DOC_REVERTED_EVENT from the collab binding).
+  const [docReverted, setDocReverted] = React.useState<string | null>(null);
   // Eager whole-library idb→wasm load in flight (the ~tens-of-seconds fat-load on
   // first chooser/editor open). Drives a full-cover overlay so the freeze reads as
   // "loading, just slow" rather than a hang. Null when idle; `done/total` count the
@@ -856,14 +860,23 @@ export function WasmTool({
           `placed copies keep the previous version until updated from the library.`,
       );
     };
+    const onDocReverted = (e: Event) => {
+      const d = (e as CustomEvent<{ reason?: string; at?: string }>).detail;
+      setDocReverted(
+        `This document was rolled back to its last valid state — invalid content ` +
+          `was detected${d?.reason ? ` (${d.reason})` : ""}. Recent edits may have been undone.`,
+      );
+    };
     window.addEventListener(LIB_BUSY_EVENT, onBusy);
     window.addEventListener(LIB_ERROR_EVENT, onError);
     window.addEventListener(LIB_ITEM_UPDATED_EVENT, onItemUpdated);
+    window.addEventListener(DOC_REVERTED_EVENT, onDocReverted);
     return () => {
       clearTimeout(busyTimer);
       window.removeEventListener(LIB_BUSY_EVENT, onBusy);
       window.removeEventListener(LIB_ERROR_EVENT, onError);
       window.removeEventListener(LIB_ITEM_UPDATED_EVENT, onItemUpdated);
+      window.removeEventListener(DOC_REVERTED_EVENT, onDocReverted);
     };
   }, []);
 
@@ -880,6 +893,13 @@ export function WasmTool({
     const t = setTimeout(() => setLibUpdate(null), 10_000);
     return () => clearTimeout(t);
   }, [libUpdate]);
+
+  // Auto-dismiss the doc-reverted toast (longest — the user should see it).
+  React.useEffect(() => {
+    if (!docReverted) return;
+    const t = setTimeout(() => setDocReverted(null), 15_000);
+    return () => clearTimeout(t);
+  }, [docReverted]);
 
   // Full-library eager load overlay. The fat-load fires one loading:true/false
   // pair PER library (222 on the full set), and between them the C++ side parses
@@ -1644,6 +1664,18 @@ export function WasmTool({
           title="Dismiss"
         >
           {libUpdate}
+        </button>
+      )}
+
+      {/* Backend rolled this doc back to the last valid state (kicad-validity). */}
+      {docReverted && (
+        <button
+          data-testid="doc-reverted-toast"
+          className="absolute left-1/2 top-3 z-40 max-w-md -translate-x-1/2 rounded bg-orange-950/95 px-3 py-2 text-center text-xs text-orange-100 shadow-lg ring-1 ring-orange-500/40"
+          onClick={() => setDocReverted(null)}
+          title="Dismiss"
+        >
+          {docReverted}
         </button>
       )}
 
