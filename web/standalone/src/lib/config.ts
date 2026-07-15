@@ -61,15 +61,14 @@ export const WAITLIST_URL =
   import.meta.env.VITE_WAITLIST_URL || "https://www.pcbjam.com/api/waitlist";
 
 /**
- * Plausible analytics (privacy-friendly, cookieless). Off unless a domain is set
- * (plain dev/checkout stays untracked). `PLAUSIBLE_DOMAIN` is the `data-domain`
- * the dashboard is keyed by; `PLAUSIBLE_SRC` is the script URL (override to a
- * self-hosted/proxied script — e.g. on cdn.pcbjam.com — if plausible.io won't
- * load under the demo's COEP `require-corp`). See main.tsx for the injection.
+ * Plausible analytics (privacy-friendly, cookieless). Off unless a script URL is
+ * set (plain dev/checkout stays untracked). `PLAUSIBLE_SRC` is the shared site's
+ * pa-*.js script URL — the pa- id keys the dashboard, no data-domain needed.
+ * Point it at a self-hosted/proxied copy — e.g. on cdn.pcbjam.com — if
+ * plausible.io won't load under the demo's COEP `require-corp`. See main.tsx
+ * for the injection.
  */
-export const PLAUSIBLE_DOMAIN = import.meta.env.VITE_PLAUSIBLE_DOMAIN || null;
-export const PLAUSIBLE_SRC =
-  import.meta.env.VITE_PLAUSIBLE_SRC || "https://plausible.io/js/script.js";
+export const PLAUSIBLE_SRC = import.meta.env.VITE_PLAUSIBLE_SRC || null;
 
 /**
  * Where the standalone reads PROJECTS from (env VITE_PROJECT_SOURCE):

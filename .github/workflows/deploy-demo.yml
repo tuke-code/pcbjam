@@ -93,13 +93,13 @@ jobs:
       #    full KiCad library set is served read-only from libs/kicad/$LIB_TAG
       #    (published once by publish-libs.yml — run it first for a new lib tag).
       - name: Build demo
-        # Plausible: set the repo Actions VARIABLE `PLAUSIBLE_DOMAIN` (e.g.
-        # demo.pcbjam.com) to enable analytics; unset ⇒ "" ⇒ build-demo leaves it off.
+        # Plausible: the shared pa- script covering all pcbjam properties
+        # (one dashboard, segment by hostname).
         run: >
           node scripts/deploy/build-demo.mjs --tag "${{ steps.tag.outputs.tag }}"
           --cdn "$CDN" --lib-tag "$LIB_TAG"
           ${MODELS_TAG:+--models-tag "$MODELS_TAG"}
-          --plausible "${{ vars.PLAUSIBLE_DOMAIN }}"
+          --plausible "https://plausible.io/js/pa-KjNS9YmidydULZTstsjRg.js"
 
       # 4) Ensure the Pages project exists (first deploy creates it; no-op after).
       #    Its production branch must equal PAGES_PROD_BRANCH or deploys land as

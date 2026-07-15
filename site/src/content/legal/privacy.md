@@ -1,7 +1,7 @@
 ---
 title: Privacy Policy
 description: How PCBJam handles your personal data.
-updated: 2026-06-10
+updated: 2026-07-15
 ---
 
 ## 1. A quick summary
@@ -11,7 +11,7 @@ This summary is here to help you understand our practices at a glance. It is **n
 - **Who we are.** PCBJam is a browser-based PCB-design application (built on the open-source KiCad EDA toolchain) operated by Emergence-Engineering Kft. ("PCBJam", "we", "us"). We are the **data controller** for the personal data described here.
 - **What we collect.** The email address you give us when you join the waitlist, account details, the projects and design files you create or upload, limited technical and usage data, your communications with us, and — if you buy a paid plan — limited transaction data from our payment provider.
 - **Your design files.** Your projects are **private by default.** We process them on our servers only to run the service you ask for (storage, rendering, design-rule checks, compiling, exports, and the collaboration/sharing you choose to enable). We do not sell them and we do not use their contents to advertise to you.
-- **Analytics.** We use **Vercel Web Analytics, which is cookieless and does not track you across other websites.** It does not build an advertising profile of you.
+- **Analytics.** We use **Plausible Analytics, which is cookieless and does not track you across other websites.** It does not build an advertising profile of you.
 - **Payments** are handled by **Paddle**, which acts as the "Merchant of Record" and an **independent data controller** for your payment information (see §8).
 - **Your rights.** You can access, correct, export, or delete your data, object to certain processing, and withdraw consent at any time. EU/UK users can complain to a data-protection regulator; California users have specific rights under the CCPA (see §13).
 - **Contact.** contact@emergence-engineering.com (or hello@pcbjam.com).
@@ -102,13 +102,13 @@ Where we rely on **legitimate interests**, we have weighed our interests against
 
 ## 6. Analytics — and why we don't track you
 
-We use **Vercel Web Analytics** to understand how PCBJam is used so we can improve it. According to Vercel, this product is **cookieless** and privacy-focused:
+We use **Plausible Analytics** (Plausible Insights OÜ, an EU company) to understand how PCBJam is used so we can improve it. According to Plausible, this product is **cookieless** and privacy-focused:
 
-- it does **not** use third-party cookies; instead, visitors are counted using a **hash generated from the incoming request**, which is **automatically discarded after 24 hours**;
-- it does **not** collect identifiers that **track or cross-check you across different applications or websites**, and it is **not tied to your IP address**;
-- the data is **anonymous and aggregated** — page views, approximate location, device/OS/browser type, and referrer.
+- it does **not** use cookies or any other device storage; instead, visitors are counted using a **hash generated from the incoming request**, with a salt that is **rotated and deleted every 24 hours**, so no persistent identifier exists;
+- it does **not** collect identifiers that **track or cross-check you across different applications or websites**, and your **raw IP address is not stored**;
+- the data is **anonymous and aggregated** — page views, approximate location, device/OS/browser type, and referrer — and is **stored on servers in the EU**.
 
-Because this analytics does **not** involve cross-context behavioural advertising or cross-site tracking, **we do not consider it a "sale" or "sharing" of personal information** under California law (see §13). Vercel acts as our **processor** for this analytics. See Vercel's [analytics privacy documentation](https://vercel.com/docs/analytics/privacy-policy) and [Data Processing Addendum](https://vercel.com/legal/dpa).
+Because this analytics does **not** involve cross-context behavioural advertising or cross-site tracking, **we do not consider it a "sale" or "sharing" of personal information** under California law (see §13). Plausible acts as our **processor** for this analytics. See Plausible's [data policy](https://plausible.io/data-policy) and [Data Processing Agreement](https://plausible.io/dpa).
 
 ---
 
@@ -142,7 +142,8 @@ We do **not** sell your personal data. We share it only with the following categ
 
 | Recipient | What they do | Their role | More info |
 |---|---|---|---|
-| **Vercel** | Hosting/infrastructure and cookieless web analytics | **Processor** | [Vercel DPA](https://vercel.com/legal/dpa) · [Privacy](https://vercel.com/legal/privacy-policy) |
+| **Vercel** | Hosting/infrastructure | **Processor** | [Vercel DPA](https://vercel.com/legal/dpa) · [Privacy](https://vercel.com/legal/privacy-policy) |
+| **Plausible** | Cookieless web analytics | **Processor** | [Plausible DPA](https://plausible.io/dpa) · [Data policy](https://plausible.io/data-policy) |
 | **Paddle** | Payments / Merchant of Record | **Independent controller** (for payment data) | [Paddle Privacy](https://www.paddle.com/legal/privacy) |
 | **Resend** | Sending transactional and marketing email | **Processor** | [Resend DPA](https://resend.com/legal/dpa) · [Subprocessors](https://resend.com/legal/subprocessors) |
 | **Cloudflare** | Storing your project files (R2 object storage), hosting application/account data, and network delivery & security (CDN, DNS, WAF) | **Processor** | [Cloudflare DPA](https://www.cloudflare.com/cloudflare-customer-dpa/) · [GDPR hub](https://www.cloudflare.com/trust-hub/gdpr/) |

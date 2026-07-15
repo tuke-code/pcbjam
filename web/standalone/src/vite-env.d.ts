@@ -30,6 +30,8 @@ interface ImportMetaEnv {
   readonly VITE_YJS_ENDPOINT?: string;
   /** Optional connection token for the collab provider. */
   readonly VITE_YJS_TOKEN?: string;
+  /** Plausible pa-*.js script URL; unset ⇒ no tracking (dev default). */
+  readonly VITE_PLAUSIBLE_SRC?: string;
 }
 
 interface ImportMeta {

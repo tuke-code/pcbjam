@@ -31,7 +31,7 @@ function parseArgs(argv) {
     // cross-posts to <landing>/api/waitlist unless --waitlist overrides it.
     landing: "https://pcbjam.com",
     waitlist: null,
-    // Plausible analytics data-domain. Off unless given (or VITE_PLAUSIBLE_DOMAIN
+    // Plausible pa-*.js script URL. Off unless given (or VITE_PLAUSIBLE_SRC
     // is already in the environment, which passes straight through).
     plausible: null,
   };
@@ -126,7 +126,7 @@ function main() {
     VITE_LANDING_URL: a.landing,
     VITE_WAITLIST_URL: a.waitlist,
     // Plausible analytics: explicit --plausible wins, else any env-provided value.
-    ...(a.plausible ? { VITE_PLAUSIBLE_DOMAIN: a.plausible } : {}),
+    ...(a.plausible ? { VITE_PLAUSIBLE_SRC: a.plausible } : {}),
   };
 
   console.log(`build-demo: tag=${a.tag} cdn=${a.cdn}`);
@@ -137,7 +137,7 @@ function main() {
   console.log(`  VITE_LIBS_SOURCE=${env.VITE_LIBS_SOURCE}${env.VITE_LIBS_MANIFEST_URL ? ` (${env.VITE_LIBS_MANIFEST_URL})` : ""}`);
   console.log(`  VITE_MODELS_MANIFEST_URL=${env.VITE_MODELS_MANIFEST_URL ?? "(unset — 3D models off)"}`);
   console.log(`  VITE_LANDING_URL=${env.VITE_LANDING_URL} VITE_WAITLIST_URL=${env.VITE_WAITLIST_URL}`);
-  console.log(`  VITE_PLAUSIBLE_DOMAIN=${env.VITE_PLAUSIBLE_DOMAIN || "(off)"}`);
+  console.log(`  VITE_PLAUSIBLE_SRC=${env.VITE_PLAUSIBLE_SRC || "(off)"}`);
 
   // Keep the dev-only WASM symlink out of the bundle (it'd copy 100s of MB into
   // dist/; the CDN serves it). In CI it isn't present, so this is a no-op there.

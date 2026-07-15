@@ -1,7 +1,7 @@
 ---
 title: Cookie Policy
 description: How PCBJam uses cookies and similar technologies, and the choices you have.
-updated: 2026-06-10
+updated: 2026-07-15
 ---
 
 This Cookie Policy explains how **PCBJam** ("PCBJam", "we", "us", "our") uses cookies and similar technologies — such as browser local storage, IndexedDB and cache storage — when you visit **pcbjam.com** or use the PCBJam application (the "Service"), and the choices you have.
@@ -84,11 +84,11 @@ If you buy a paid plan, checkout is handled by **Paddle** as our **Merchant of R
 
 ## 5. Analytics: how we measure usage without cookies
 
-We want to understand how PCBJam is used so we can improve it, **without tracking you.** We use **Vercel Web Analytics**. According to Vercel's documentation (as revised 18 March 2026), and confirmed by our own inspection of the analytics script as currently shipped on this site, it:
+We want to understand how PCBJam is used so we can improve it, **without tracking you.** We use **Plausible Analytics**, an EU-based, open-source, privacy-first analytics service operated by Plausible Insights OÜ. According to Plausible's [data policy](https://plausible.io/data-policy), and confirmed by our own inspection of the analytics script as currently shipped on this site, it:
 
 - sets **no cookie** and stores **no identifier** on your device — visitors are counted using a **hash created from the incoming request**, and the script uses no cookies, local storage, or other device storage;
-- does **not** keep that visitor hash — it is **automatically discarded after 24 hours**;
-- records **anonymous, aggregated** data points (such as page URL, referrer, approximate location, browser and device type) that are **not** used to build a profile of you or to follow you across other sites.
+- does **not** keep a persistent visitor identifier — the hash is generated with a salt that is **rotated and deleted every 24 hours**, so you cannot be recognised from one day to the next, and your raw IP address is not stored;
+- records **anonymous, aggregated** data points (such as page URL, referrer, approximate location, browser and device type) that are **not** used to build a profile of you or to follow you across other sites, and the data is **stored on servers in the EU**.
 
 Because it stores nothing on your device and the data it records cannot identify you, **we consider that this measurement does not require your prior consent**, and it is not part of any consent banner.
 
@@ -99,7 +99,8 @@ We do **not** use Google Analytics, advertising pixels, or any cross-site tracki
 | Third party | Role | What they may set | Their notice |
 |---|---|---|---|
 | **Paddle** (Paddle.com Market Limited and affiliates) | Merchant of Record / payments | Checkout, security and fraud-prevention cookies; their own non-essential cookies (with consent where required, via Paddle's own controls). Independent controller. | [Paddle Privacy Policy](https://www.paddle.com/legal/privacy); Paddle's cookie controls appear within its checkout. |
-| **Vercel** (Vercel Inc.) | Hosting and cookieless analytics | No analytics cookies (cookieless, see Section 5); at most strictly-necessary hosting cookies. | [Vercel Analytics privacy](https://vercel.com/docs/analytics/privacy-policy) · [Vercel Privacy](https://vercel.com/legal/privacy-policy) |
+| **Plausible** (Plausible Insights OÜ) | Cookieless analytics | Nothing — no cookies and no device storage (see Section 5). | [Plausible Data Policy](https://plausible.io/data-policy) · [Plausible Privacy](https://plausible.io/privacy) |
+| **Vercel** (Vercel Inc.) | Hosting | At most strictly-necessary hosting cookies. | [Vercel Privacy](https://vercel.com/legal/privacy-policy) |
 
 We are not responsible for the privacy practices of these third parties; please review their notices. We update this list as our integrations change.
 

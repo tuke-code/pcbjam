@@ -103,7 +103,7 @@ function main() {
     VITE_APP_TAG: a.tag,
     VITE_GIT_SHA: gitSha(repoRoot),
     VITE_REPO_URL: a.repo,
-    ...(a.plausible ? { VITE_PLAUSIBLE_DOMAIN: a.plausible } : {}),
+    ...(a.plausible ? { VITE_PLAUSIBLE_SRC: a.plausible } : {}),
   };
 
   console.log(`build-editor: tag=${a.tag} api=${a.apiBase} cdn=${a.cdn}`);
@@ -114,7 +114,7 @@ function main() {
   console.log(`  VITE_LIBS_SOURCE=${env.VITE_LIBS_SOURCE}`);
   console.log(`  VITE_MODELS_MANIFEST_URL=${env.VITE_MODELS_MANIFEST_URL ?? "(unset — 3D models off)"}`);
   console.log(`  VITE_APP_TAG=${env.VITE_APP_TAG} VITE_GIT_SHA=${env.VITE_GIT_SHA || "(none)"}`);
-  console.log(`  VITE_PLAUSIBLE_DOMAIN=${env.VITE_PLAUSIBLE_DOMAIN || "(off)"}`);
+  console.log(`  VITE_PLAUSIBLE_SRC=${env.VITE_PLAUSIBLE_SRC || "(off)"}`);
 
   // Keep the dev-only WASM symlink out of the bundle (CDN serves it).
   const hadWasm = existsSync(publicWasm) || isSymlink(publicWasm);

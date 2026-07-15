@@ -2,7 +2,6 @@
 import { ClientRouter } from 'astro:transitions';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
-import Analytics from '@vercel/analytics/astro';
 import '../styles/global.css';
 
 interface Props {
@@ -63,6 +62,38 @@ const ogImageAbs = new URL(ogImage, Astro.site ?? Astro.url).href;
 
     {/* SPA-style navigation: swaps the page without a full reload. */}
     <ClientRouter />
+
+    {/* Privacy-friendly analytics by Plausible (cookieless, no consent banner
+        needed). The pa- script id keys the shared dashboard covering all
+        pcbjam properties. Prod builds only — `astro dev` stays untracked, and
+        Plausible ignores localhost regardless. Auto-tracks pageviews across
+        ClientRouter navigations (History API). crossorigin="anonymous" so the
+        script still loads on the COEP require-corp routes (see vercel.json):
+        cross-origin subresources there must be fetched with CORS. */}
+    {
+      import.meta.env.PROD && (
+        <>
+          <script
+            is:inline
+            async
+            crossorigin="anonymous"
+            src="https://plausible.io/js/pa-KjNS9YmidydULZTstsjRg.js"></script>
+          <script is:inline>
+            window.plausible =
+              window.plausible ||
+              function () {
+                (plausible.q = plausible.q || []).push(arguments);
+              };
+            plausible.init =
+              plausible.init ||
+              function (i) {
+                plausible.o = i || {};
+              };
+            plausible.init();
+          </script>
+        </>
+      )
+    }
   </head>
   <body>
     <Header />
@@ -80,6 +111,5 @@ const ogImageAbs = new URL(ogImage, Astro.site ?? Astro.url).href;
       )
     }
     <Footer />
-    <Analytics />
   </body>
 </html>

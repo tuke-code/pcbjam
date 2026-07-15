@@ -5,7 +5,7 @@ import App from "./App";
 import { initAnalytics } from "./lib/analytics";
 import "./index.css";
 
-// Privacy-friendly analytics (Plausible), only when VITE_PLAUSIBLE_DOMAIN is set.
+// Privacy-friendly analytics (Plausible), only when VITE_PLAUSIBLE_SRC is set.
 initAnalytics();
 
 const queryClient = new QueryClient({

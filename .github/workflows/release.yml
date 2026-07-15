@@ -124,13 +124,13 @@ jobs:
       # Standalone pinned to the CDN + this tag's manifest-<tag>.json (written by
       # publish-wasm above) + the full library set at libs/kicad/$LIB_TAG.
       - name: Build demo
-        # Plausible: set the repo Actions VARIABLE `PLAUSIBLE_DOMAIN` (e.g.
-        # demo.pcbjam.com) to enable analytics; unset ⇒ "" ⇒ build-demo leaves it off.
+        # Plausible: the shared pa- script covering all pcbjam properties
+        # (one dashboard, segment by hostname).
         run: >
           node scripts/deploy/build-demo.mjs --tag "${{ needs.meta.outputs.tag }}"
           --cdn "$CDN" --lib-tag "$LIB_TAG"
           ${MODELS_TAG:+--models-tag "$MODELS_TAG"}
-          --plausible "${{ vars.PLAUSIBLE_DOMAIN }}"
+          --plausible "https://plausible.io/js/pa-KjNS9YmidydULZTstsjRg.js"
 
       - name: Ensure Pages project exists
         run: >
@@ -171,13 +171,13 @@ jobs:
       - name: Install standalone workspace
         run: pnpm --dir web install --frozen-lockfile
 
-      # --plausible: the editor tracks as its OWN Plausible site (separate
-      # dashboard from the demo's vars.PLAUSIBLE_DOMAIN and the mgmt app's).
+      # --plausible: the shared pa- script covering all pcbjam properties
+      # (one dashboard, segment by hostname).
       - name: Build editor (remote mode)
         run: >
           node scripts/deploy/build-editor.mjs --tag "$RELEASE_TAG"
           --cdn "$CDN" --api-base "$EDITOR_API_BASE"
-          --plausible "editor.pcbjam.com"
+          --plausible "https://plausible.io/js/pa-KjNS9YmidydULZTstsjRg.js"
           ${MODELS_TAG:+--models-tag "$MODELS_TAG"}
 
       - name: Ensure Pages project exists
