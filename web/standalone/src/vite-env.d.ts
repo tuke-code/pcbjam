@@ -34,6 +34,8 @@ interface ImportMetaEnv {
   readonly VITE_PLAUSIBLE_SRC?: string;
   /** Management app origin (e.g. https://app.pcbjam.com); set ⇒ non-editor routes redirect there (lib/redirect.ts). */
   readonly VITE_APP_URL?: string;
+  /** "1" ⇒ honor `?user=`/`?libowner=` identity overrides (dev/e2e harnesses only — NEVER production builds). */
+  readonly VITE_ALLOW_USER_OVERRIDE?: string;
 }
 
 interface ImportMeta {

@@ -108,6 +108,7 @@ export const LOCAL_PROJECTS_ENABLED =
   import.meta.env.VITE_LOCAL_PROJECTS === "idb";
 
 import { colorForUser, type PresenceUser } from "@pcbjam/shared";
+import { sessionIdentity } from "@/lib/session-identity";
 import type { ProviderConfig, ProviderKind } from "@/wasm/collab";
 import { cdnLibsSource } from "@/wasm/libs/cdn-source";
 import { cdnModelsSource, type Model3dSource } from "@/wasm/libs/models-source";
@@ -170,30 +171,47 @@ export function docSourceConfig(): DocSource {
  *   "off"              — disable libs (empty sym-lib-table).
  */
 /**
- * The (thin, pre-auth) current user — sent on every request via USER_HEADER and
- * doubling as the personal scope slug. `?user=`/`?libowner=` (e2e isolation) win
- * over `VITE_USER`/`VITE_LIBS_OWNER`, else a stable local default.
+ * `?user=`/`?libowner=` identity overrides are honored only when the BUILD
+ * opts in (VITE_ALLOW_USER_OVERRIDE=1 — dev servers and e2e harnesses set it);
+ * production builds never do, so a user can't pick an arbitrary identity via
+ * the URL (collab-presence 0009).
+ */
+const USER_OVERRIDE_ALLOWED =
+  import.meta.env.VITE_ALLOW_USER_OVERRIDE === "1";
+
+/**
+ * The current user slug — sent on every request via USER_HEADER and doubling
+ * as the personal scope slug. Precedence (collab-presence 0009):
+ * `?user=`/`?libowner=` when the build allows overrides (e2e isolation) →
+ * the authenticated session user (lib/session-identity.ts, resolved from
+ * /api/me during tool boot) → `VITE_USER`/`VITE_LIBS_OWNER` → a stable local
+ * default.
  */
 export function userSlug(): string {
-  if (typeof window !== "undefined") {
+  if (USER_OVERRIDE_ALLOWED && typeof window !== "undefined") {
     const q = new URLSearchParams(window.location.search);
     const p = q.get("user") ?? q.get("libowner");
     if (p) return p;
   }
+  const session = sessionIdentity();
+  if (session) return session.slug;
   return (
     import.meta.env.VITE_USER ?? import.meta.env.VITE_LIBS_OWNER ?? "local-user"
   );
 }
 
 /**
- * The local user's presence identity (collab-presence 0001): the pre-auth slug
- * doubles as id + display name, color is the deterministic palette hash — so
- * every peer computes the same identity for this user with no coordination.
- * Real auth/avatars later replace only how this object is built.
+ * The local user's presence identity (collab-presence 0001/0009): id is the
+ * slug (session slug once /api/me resolves), name is the session display name
+ * (or email) when the session identity is the active one, else the slug
+ * verbatim; color is the deterministic palette hash — the live room replaces
+ * it with the nth-in-room claim (presence.ts).
  */
 export function presenceUser(): PresenceUser {
   const slug = userSlug();
-  return { id: slug, name: slug, color: colorForUser(slug) };
+  const session = sessionIdentity();
+  const name = session && session.slug === slug ? session.name : slug;
+  return { id: slug, name, color: colorForUser(slug) };
 }
 
 /**

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node scripts/link-wasm.mjs && vite",
+    "dev": "node scripts/link-wasm.mjs && VITE_ALLOW_USER_OVERRIDE=1 vite",
     "dev:demo": "node ../../scripts/deploy/dev-demo.mjs",
     "link-wasm": "node scripts/link-wasm.mjs",
     "build": "tsc --noEmit && vite build",

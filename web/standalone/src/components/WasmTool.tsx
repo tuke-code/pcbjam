@@ -16,6 +16,7 @@ import {
 } from "@pcbjam/shared";
 import { ChevronDown, ChevronUp, EyeOff, Loader2, PanelsTopLeft } from "lucide-react";
 import {
+  API_BASE_URL,
   currentScope,
   libsSourceConfig,
   modelsSourceConfig,
@@ -25,6 +26,7 @@ import {
   type DocSource,
 } from "@/lib/config";
 import { defaultFileName, newFileTemplate, withExtension } from "@/lib/new-file";
+import { loadSessionIdentity } from "@/lib/session-identity";
 import { bootKicadTool } from "@/wasm/boot";
 import { resolveWasmBase } from "@/wasm/wasm-assets";
 import {
@@ -1195,6 +1197,12 @@ export function WasmTool({
 
     void (async () => {
       try {
+        // Real identity (collab-presence 0009 A): resolve the session user in
+        // parallel with the WASM download; awaited after boot, before anything
+        // binds presence/comments, so presenceUser()/userSlug() speak for the
+        // authenticated user (anonymous/example backends resolve to null and
+        // the pre-auth slug fallback stays).
+        const identityReady = loadSessionIdentity(API_BASE_URL);
         // Resolve the per-tool asset base at runtime (CDN manifest → versioned
         // folder, or the flat local /wasm in dev). See wasm/wasm-assets.ts.
         const base = await resolveWasmBase(tool, assetBaseUrl);
@@ -1240,6 +1248,9 @@ export function WasmTool({
           frame: TOOL_FRAME[tool],
           mobile: mobileUi,
         });
+        // Identity must be settled before the doc session / presence binds
+        // below — effectively instant, it raced the multi-second wasm boot.
+        await identityReady;
         // Register the save sink before the file opens: from here on, every
         // editor File→Save (MEMFS write) is routed onward through saveBytes.
         // Read-only sessions register neither upload nor the save-driven room

@@ -91,6 +91,9 @@ export default defineConfig({
       // (scripts/dev-gpl.mjs). Only effective on cold starts: with
       // reuseExistingServer an already-running stack must have set it itself.
       VITE_LOCAL_PROJECTS: 'idb',
+      // e2e identity isolation: presence/comments specs mint per-run users via
+      // `?user=` — only builds that set this honor the param (0009).
+      VITE_ALLOW_USER_OVERRIDE: '1',
     },
   },
 });
