@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { openOverlayMenu } from './overlay-menu';
 
 /**
  * Figma-like comments e2e (collab-presence 0005): two tabs of the real React
@@ -28,6 +29,7 @@ async function bootAs(page: Page, user: string): Promise<void> {
     .toMatch(TITLE);
   // The comment controls mount once the collab session + bridge are up; the
   // action buttons live inside the expandable bar — open it for the test.
+  await openOverlayMenu(page); // the comment bar lives in the overlay menu (0010)
   await expect(page.getByTestId('comment-bar-toggle')).toBeVisible({ timeout: 30000 });
   await page.getByTestId('comment-bar-toggle').click();
   await expect(page.getByTestId('comment-mode-toggle')).toBeVisible();
@@ -96,7 +98,9 @@ test('comment lifecycle across two tabs: create → reply → resolve → delete
 
   // Resolved pins hide from the default (unresolved) pin set in both tabs…
   await expect(page.getByTestId('comment-pin')).toHaveCount(0, { timeout: 20000 });
-  // …but stay reachable via the panel's "resolved" filter.
+  // …but stay reachable via the panel's "resolved" filter. (The popover
+  // click above closed the overlay menu — click-away — so re-open it.)
+  await openOverlayMenu(page);
   await page.getByTestId('comment-panel-toggle').click();
   await page.getByTestId('comment-show-resolved').check();
   await expect(page.getByTestId('comment-panel-item')).toHaveCount(1);
@@ -106,6 +110,7 @@ test('comment lifecycle across two tabs: create → reply → resolve → delete
   await expect(page.getByTestId('comment-popover')).toBeVisible();
   await page.getByTestId('comment-delete-thread').click();
 
+  await openOverlayMenu(page); // the delete click closed the menu (click-away)
   await expect(page.getByTestId('comment-panel-item')).toHaveCount(0, { timeout: 20000 });
   await expect(pageB.getByTestId('comment-pin')).toHaveCount(0, { timeout: 20000 });
   await pageB.close();

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { openOverlayMenu } from './overlay-menu';
 
 /**
  * Comment pins vs. canvas resize (collab-presence 0005 regression): the DOM
@@ -28,6 +29,7 @@ async function bootAs(page: Page, user: string): Promise<void> {
       intervals: [1000],
     })
     .toMatch(TITLE);
+  await openOverlayMenu(page); // the comment bar lives in the overlay menu (0010)
   await expect(page.getByTestId('comment-bar-toggle')).toBeVisible({ timeout: 30000 });
   await page.getByTestId('comment-bar-toggle').click();
   await expect(page.getByTestId('comment-mode-toggle')).toBeVisible();

@@ -80,6 +80,7 @@ import {
 } from "@/wasm/collab/comments";
 import { PresenceRoster } from "@/components/PresenceRoster";
 import { CommentLayer } from "@/components/CommentLayer";
+import { OverlayMenu } from "@/components/OverlayMenu";
 import { hasTunerBridge, PresenceTuner, type TunerModule } from "@/components/PresenceTuner";
 import {
   createSheetCollabManager,
@@ -895,6 +896,9 @@ export function WasmTool({
   // the DOM layer maps world→CSS with. Both rebind with the collab session
   // (per sheet in eeschema).
   const [commentsCtl, setCommentsCtl] = React.useState<CommentsController | null>(null);
+  // The overlay menu's comments section (0010): a ref-callback slot the
+  // CommentLayer portals its bar/panel into; null while the menu is closed.
+  const [commentsSlot, setCommentsSlot] = React.useState<HTMLDivElement | null>(null);
   const [viewportState, setViewportState] = React.useState<ViewportState | null>(null);
   const commentsRef = React.useRef<CommentsController | null>(null);
   // Dev-time presence style tuner (VITE_PRESENCE_TUNER=1) — set once the wasm
@@ -1653,61 +1657,78 @@ export function WasmTool({
         </div>
       )}
 
-      {/* Top-right overlay row: who else is in this file (awareness roster),
-          where this project lives / whether Save persists (chip hidden while
-          the UI is hidden), and the Figma-like hide/show-UI toggle — the one
-          control that stays up in canvas-only mode. Read-only sessions swap
-          the toggle for a "View only" pill (chrome stays force-hidden). */}
-      {ready &&
-        (readOnly ||
-          setChromeFn !== null ||
-          peers.length > 0 ||
-          (sourceDescriptor && !effectiveChromeHidden)) && (
-          <div className="absolute right-3 top-3 z-20 flex items-center gap-2">
-            {peers.length > 0 && (
-              <PresenceRoster
-                peers={peers}
-                activeSheetPath={activeSheetPath}
-                following={followingTarget}
-                onFollow={(t) => {
-                  if (t) followRef.current?.follow(t);
-                  else followRef.current?.unfollow();
-                }}
-              />
-            )}
-            {sourceDescriptor && !effectiveChromeHidden && (
-              <SourceChip descriptor={sourceDescriptor} />
-            )}
-            {readOnly && (
-              <span
-                data-testid="view-only-pill"
-                className="flex h-8 items-center rounded-full bg-black/70 px-3 text-xs font-medium text-white shadow-sm ring-1 ring-inset ring-white/20"
-              >
-                View only
+      {/* Overlay menu (0010): the single draggable circular icon replacing the
+          old top-right row. Its badge is the peer count; the panel stacks the
+          session sections — roster, source chip, view-only pill, follow row,
+          comments (portal slot filled by CommentLayer), chrome toggle. It is
+          the one control that stays up in canvas-only (chrome-hidden) mode. */}
+      {ready && (
+        <OverlayMenu badge={peers.length}>
+          {peers.length > 0 && (
+            <PresenceRoster
+              peers={peers}
+              activeSheetPath={activeSheetPath}
+              following={followingTarget}
+              onFollow={(t) => {
+                if (t) followRef.current?.follow(t);
+                else followRef.current?.unfollow();
+              }}
+            />
+          )}
+          {sourceDescriptor && <SourceChip descriptor={sourceDescriptor} />}
+          {readOnly && (
+            <span
+              data-testid="view-only-pill"
+              className="flex h-8 items-center rounded-full bg-black/70 px-3 text-xs font-medium text-white shadow-sm ring-1 ring-inset ring-white/20"
+            >
+              View only
+            </span>
+          )}
+          {followingTarget && (
+            <div className="flex items-center gap-2 text-xs text-white">
+              <span>
+                Following <span className="font-semibold">{followingTarget.name}</span>
               </span>
-            )}
-            {setChromeFn !== null && !readOnly && (
               <button
-                data-testid="chrome-toggle"
-                aria-pressed={chromeHidden}
-                // same pill design as the comment-bar toggle below it
-                className="flex h-8 min-w-8 items-center justify-center rounded-full bg-black/70 text-white shadow-sm ring-1 ring-inset ring-white/20 hover:bg-black/85"
-                title={`${chromeHidden ? "Show" : "Hide"} UI (${CHROME_HOTKEY_LABEL})`}
-                onClick={() => toggleChromeHidden()}
+                type="button"
+                className="rounded-full bg-white/15 px-2 py-0.5 font-medium hover:bg-white/25"
+                onClick={() => followRef.current?.unfollow()}
               >
-                {chromeHidden ? <PanelsTopLeft size={15} /> : <EyeOff size={15} />}
+                Stop
               </button>
-            )}
-          </div>
-        )}
+            </div>
+          )}
+          {commentsCtl && (
+            <div
+              data-testid="overlay-menu-comments"
+              ref={setCommentsSlot}
+              className="flex w-full flex-col items-start gap-2"
+            />
+          )}
+          {setChromeFn !== null && !readOnly && (
+            <button
+              data-testid="chrome-toggle"
+              aria-pressed={chromeHidden}
+              className="flex h-8 items-center gap-2 rounded-full bg-black/70 px-3 text-xs text-white shadow-sm ring-1 ring-inset ring-white/20 hover:bg-black/85"
+              title={`${chromeHidden ? "Show" : "Hide"} UI (${CHROME_HOTKEY_LABEL})`}
+              onClick={() => toggleChromeHidden()}
+            >
+              {chromeHidden ? <PanelsTopLeft size={15} /> : <EyeOff size={15} />}
+              {chromeHidden ? "Show UI" : "Hide UI"}
+            </button>
+          )}
+        </OverlayMenu>
+      )}
 
       {/* Figma-like comments (0005): GAL pin dots + this DOM layer (hit targets,
-          thread popovers, comment mode, panel). */}
+          thread popovers, comment mode, panel). The bar + list panel render
+          into the overlay menu's comments slot (0010). */}
       {ready && commentsCtl && (
         <CommentLayer
           controller={commentsCtl}
           viewport={viewportState}
           currentUser={presenceUser().id}
+          menuSlot={commentsSlot}
         />
       )}
 

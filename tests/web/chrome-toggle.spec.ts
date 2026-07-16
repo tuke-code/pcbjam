@@ -1,4 +1,5 @@
 import { test, expect, type Browser, type Page } from '@playwright/test';
+import { openOverlayMenu } from './overlay-menu';
 
 /**
  * Figma-like "hide UI" toggle e2e (desktop): Cmd/Ctrl+\ and the floating
@@ -85,7 +86,9 @@ test('Ctrl+\\ hides every non-canvas UI element; the canvas reclaims the viewpor
   );
   // shell overlays follow the toggle…
   await expect(page.getByText(/console \(/)).toHaveCount(0);
-  // …but the toggle button itself stays reachable
+  // …but the toggle stays reachable inside the overlay menu (0010) — the
+  // FAB is the canvas-only survivor.
+  await openOverlayMenu(page);
   await expect(page.locator('[data-testid="chrome-toggle"]')).toBeVisible();
 
   await page.screenshot({ path: 'test-results/web-chrome-hidden.png', scale: 'css' });
@@ -94,7 +97,8 @@ test('Ctrl+\\ hides every non-canvas UI element; the canvas reclaims the viewpor
 test('the floating button restores EXACTLY the pre-hide chrome (no over-shown panes)', async () => {
   test.setTimeout(120_000);
 
-  // still hidden from the previous test — restore via the button
+  // still hidden from the previous test — restore via the button (in the menu)
+  await openOverlayMenu(page);
   await page.locator('[data-testid="chrome-toggle"]').click();
 
   await expect.poll(() => visibleMenuTitles(page), { timeout: 15000 }).toBeGreaterThan(0);

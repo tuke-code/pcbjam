@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { openOverlayMenu } from './overlay-menu';
 
 /**
  * Presence roster e2e (collab-presence 0001): two tabs of the real React app on
@@ -42,11 +43,14 @@ test('two tabs on one file see each other in the roster; leaving removes promptl
 
   await bootAs(page, 'alice');
 
-  // Before anyone else joins, alice has no roster chip at all.
+  // Before anyone else joins, alice has no roster section in the overlay
+  // menu (0010) at all.
+  await openOverlayMenu(page);
   await expect(page.getByTestId('presence-roster')).toHaveCount(0);
 
   const pageB = await context.newPage();
   await bootAs(pageB, 'bob');
+  await openOverlayMenu(pageB);
 
   // Each side shows the other user (avatar keyed by slug), not itself.
   await expect(page.locator('[data-presence-user="bob"]')).toBeVisible({ timeout: 30000 });

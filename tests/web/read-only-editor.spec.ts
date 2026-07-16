@@ -1,4 +1,5 @@
 import { test, expect, type Browser, type Page } from '@playwright/test';
+import { openOverlayMenu } from './overlay-menu';
 
 /**
  * Read-only viewer e2e (read-only-viewer): `?readonly=1` boots the pcbnew
@@ -118,6 +119,8 @@ test('viewer boots locked: chrome-less, nothing selectable, hotkey edits inert, 
   // "View only" pill is the one read-only affordance; Ctrl+\ stays inert.
   await expect.poll(() => visibleMenuTitles(viewer), { timeout: 15000 }).toBe(0);
   await expect(viewer.getByText(/console \(/)).toHaveCount(0);
+  // The pill + (absent) chrome toggle live inside the overlay menu (0010).
+  await openOverlayMenu(viewer);
   await expect(viewer.locator('[data-testid="chrome-toggle"]')).toHaveCount(0);
   await expect(viewer.getByTestId('view-only-pill')).toBeVisible();
   await viewer.keyboard.press('Control+\\');
@@ -136,6 +139,7 @@ test('viewer boots locked: chrome-less, nothing selectable, hotkey edits inert, 
   expect(await visibleMenuTitles(viewer)).toBe(0);
 
   // The writer beside it keeps the full UI (positive control for the above).
+  await openOverlayMenu(writer);
   await expect(writer.locator('[data-testid="chrome-toggle"]')).toBeVisible();
   await expect(writer.getByTestId('view-only-pill')).toHaveCount(0);
 

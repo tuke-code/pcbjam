@@ -1,4 +1,5 @@
 import { test, expect, devices, type Page, type Browser } from '@playwright/test';
+import { openOverlayMenu } from './overlay-menu';
 
 /**
  * Mobile canvas-only mode e2e (features/mobile) — runs under the
@@ -310,7 +311,9 @@ test('editor is canvas-only: no menubar, GL canvas fills the viewport', async ()
 });
 
 test('the floating toggle brings the full UI up and back off (Figma-like hide-UI)', async () => {
-  // Canvas-only is the mobile DEFAULT, but the toggle must stay reachable.
+  // Canvas-only is the mobile DEFAULT, but the toggle must stay reachable —
+  // inside the overlay menu (0010); the FAB is the persistent control.
+  await openOverlayMenu(page);
   const toggle = page.locator('[data-testid="chrome-toggle"]');
   await expect(toggle, 'toggle button present in canvas-only mode').toBeVisible();
 

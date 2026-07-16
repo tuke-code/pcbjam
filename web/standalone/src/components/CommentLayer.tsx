@@ -1,4 +1,5 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 import type { CommentAnchor } from "@pcbjam/shared";
 import { Eye, EyeOff, List, MessageSquarePlus, MessageSquareText, X } from "lucide-react";
 import {
@@ -54,10 +55,15 @@ export function CommentLayer({
   controller,
   viewport,
   currentUser,
+  menuSlot,
 }: {
   controller: CommentsController;
   viewport: ViewportState | null;
   currentUser: string;
+  /** The overlay menu's comments section (0010): the bar + list panel portal
+   *  into it while the menu is open; null (menu closed) renders neither.
+   *  Pins, popovers, composer and the click catcher stay canvas-anchored. */
+  menuSlot: HTMLElement | null;
 }) {
   const [threads, setThreads] = React.useState<ResolvedThread[]>(controller.threads());
   const [barOpen, setBarOpen] = React.useState(false);
@@ -200,58 +206,116 @@ export function CommentLayer({
   const visibleThreads = threads.filter((t) => showResolved || !t.resolved);
   const pinThreads = hidden ? [] : visibleThreads;
 
+  // Comment toolbar + list panel: portaled into the overlay menu's comments
+  // slot (0010) while the menu is open — in-flow there, not absolute.
+  const menuUi = menuSlot
+    ? createPortal(
+        <>
+          <div className="flex items-center gap-2">
+            <button
+              data-testid="comment-bar-toggle"
+              title="Comments"
+              onClick={() => setBarOpen((o) => !o)}
+              className={`flex h-8 min-w-8 items-center justify-center gap-1 rounded-full px-2 text-xs shadow-sm ring-1 ring-inset ring-white/20 ${
+                barOpen ? "bg-sky-600 text-white" : "bg-black/70 text-white hover:bg-black/85"
+              }`}
+            >
+              <MessageSquareText size={15} />
+              {threads.length > 0 && <span>{threads.length}</span>}
+            </button>
+            {barOpen && (
+              <div className="flex items-center gap-1 rounded-full bg-black/70 p-1 shadow-sm ring-1 ring-inset ring-white/20">
+                <button
+                  data-testid="comment-mode-toggle"
+                  title={mode ? "Cancel comment (Esc)" : "New comment"}
+                  onClick={() => {
+                    if (hidden) toggleHidden();
+                    setMode((m) => !m);
+                    setDraft(null);
+                  }}
+                  className={`flex h-6 w-6 items-center justify-center rounded-full ${
+                    mode ? "bg-amber-500 text-black" : "text-white hover:bg-white/15"
+                  }`}
+                >
+                  <MessageSquarePlus size={14} />
+                </button>
+                <button
+                  data-testid="comment-panel-toggle"
+                  title="Comment list"
+                  onClick={() => setPanel((p) => !p)}
+                  className={`flex h-6 w-6 items-center justify-center rounded-full ${
+                    panel ? "bg-white/25 text-white" : "text-white hover:bg-white/15"
+                  }`}
+                >
+                  <List size={14} />
+                </button>
+                <button
+                  data-testid="comment-visibility-toggle"
+                  title={hidden ? "Show comments" : "Hide comments"}
+                  onClick={toggleHidden}
+                  className="flex h-6 w-6 items-center justify-center rounded-full text-white hover:bg-white/15"
+                >
+                  {hidden ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Threads panel (filter + jump-to). */}
+          {panel && (
+            <div className="flex max-h-[50vh] w-full flex-col overflow-hidden rounded-lg bg-black/60 text-white ring-1 ring-inset ring-white/15">
+              <div className="flex items-center justify-between px-3 py-2 text-xs font-semibold">
+                <span>Comments ({visibleThreads.length})</span>
+                <label className="flex items-center gap-1 font-normal text-white/70">
+                  <input
+                    data-testid="comment-show-resolved"
+                    type="checkbox"
+                    checked={showResolved}
+                    onChange={(e) => setShowResolved(e.target.checked)}
+                  />
+                  resolved
+                </label>
+              </div>
+              <div className="overflow-y-auto">
+                {visibleThreads.length === 0 && (
+                  <p className="px-3 pb-3 text-xs text-white/50">No comments yet.</p>
+                )}
+                {visibleThreads.map((t) => (
+                  <button
+                    key={t.id}
+                    data-testid="comment-panel-item"
+                    onClick={() => {
+                      if (hidden) toggleHidden();
+                      controller.jumpTo(t.id);
+                      setOpenId(t.id);
+                    }}
+                    className="block w-full border-t border-white/10 px-3 py-2 text-left text-xs hover:bg-white/10"
+                  >
+                    <span
+                      className="font-semibold"
+                      style={{ color: controller.colorFor(t.createdBy) }}
+                    >
+                      {t.createdBy}
+                    </span>{" "}
+                    <span className="text-white/50">
+                      {timeAgo(t.createdAt)} ago{t.resolved ? " · resolved" : ""}
+                    </span>
+                    <span className="mt-0.5 block truncate text-white/90">
+                      {t.messages[0]?.body ?? ""}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </>,
+        menuSlot,
+      )
+    : null;
+
   return (
     <>
-      {/* Comment toolbar: one icon expanding into a small horizontal bar. */}
-      <div className="absolute right-3 top-12 z-30 flex flex-row-reverse items-center gap-2">
-        <button
-          data-testid="comment-bar-toggle"
-          title="Comments"
-          onClick={() => setBarOpen((o) => !o)}
-          className={`flex h-8 min-w-8 items-center justify-center gap-1 rounded-full px-2 text-xs shadow-sm ring-1 ring-inset ring-white/20 ${
-            barOpen ? "bg-sky-600 text-white" : "bg-black/70 text-white hover:bg-black/85"
-          }`}
-        >
-          <MessageSquareText size={15} />
-          {threads.length > 0 && <span>{threads.length}</span>}
-        </button>
-        {barOpen && (
-          <div className="flex items-center gap-1 rounded-full bg-black/70 p-1 shadow-sm ring-1 ring-inset ring-white/20">
-            <button
-              data-testid="comment-mode-toggle"
-              title={mode ? "Cancel comment (Esc)" : "New comment"}
-              onClick={() => {
-                if (hidden) toggleHidden();
-                setMode((m) => !m);
-                setDraft(null);
-              }}
-              className={`flex h-6 w-6 items-center justify-center rounded-full ${
-                mode ? "bg-amber-500 text-black" : "text-white hover:bg-white/15"
-              }`}
-            >
-              <MessageSquarePlus size={14} />
-            </button>
-            <button
-              data-testid="comment-panel-toggle"
-              title="Comment list"
-              onClick={() => setPanel((p) => !p)}
-              className={`flex h-6 w-6 items-center justify-center rounded-full ${
-                panel ? "bg-white/25 text-white" : "text-white hover:bg-white/15"
-              }`}
-            >
-              <List size={14} />
-            </button>
-            <button
-              data-testid="comment-visibility-toggle"
-              title={hidden ? "Show comments" : "Hide comments"}
-              onClick={toggleHidden}
-              className="flex h-6 w-6 items-center justify-center rounded-full text-white hover:bg-white/15"
-            >
-              {hidden ? <EyeOff size={14} /> : <Eye size={14} />}
-            </button>
-          </div>
-        )}
-      </div>
+      {menuUi}
 
       {/* Comment-mode click catcher over the drawing area only. */}
       {mode && glRect && (
@@ -308,50 +372,6 @@ export function CommentLayer({
         />
       )}
 
-      {/* Threads panel (filter + jump-to). */}
-      {panel && (
-        <div className="absolute right-3 top-24 z-30 flex max-h-[60vh] w-72 flex-col overflow-hidden rounded-lg bg-black/85 text-white shadow-lg ring-1 ring-inset ring-white/20">
-          <div className="flex items-center justify-between px-3 py-2 text-xs font-semibold">
-            <span>Comments ({visibleThreads.length})</span>
-            <label className="flex items-center gap-1 font-normal text-white/70">
-              <input
-                data-testid="comment-show-resolved"
-                type="checkbox"
-                checked={showResolved}
-                onChange={(e) => setShowResolved(e.target.checked)}
-              />
-              resolved
-            </label>
-          </div>
-          <div className="overflow-y-auto">
-            {visibleThreads.length === 0 && (
-              <p className="px-3 pb-3 text-xs text-white/50">No comments yet.</p>
-            )}
-            {visibleThreads.map((t) => (
-              <button
-                key={t.id}
-                data-testid="comment-panel-item"
-                onClick={() => {
-                  if (hidden) toggleHidden();
-                  controller.jumpTo(t.id);
-                  setOpenId(t.id);
-                }}
-                className="block w-full border-t border-white/10 px-3 py-2 text-left text-xs hover:bg-white/10"
-              >
-                <span className="font-semibold" style={{ color: controller.colorFor(t.createdBy) }}>
-                  {t.createdBy}
-                </span>{" "}
-                <span className="text-white/50">
-                  {timeAgo(t.createdAt)} ago{t.resolved ? " · resolved" : ""}
-                </span>
-                <span className="mt-0.5 block truncate text-white/90">
-                  {t.messages[0]?.body ?? ""}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
     </>
   );
 }

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { openOverlayMenu } from './overlay-menu';
 
 /**
  * Follow-user e2e (collab-presence 0008): two tabs on the demo BOARD share
@@ -81,7 +82,9 @@ test('B follows A: viewport mirrors, then local input breaks the follow', async 
     })
     .toBe(true);
 
-  // B sees alice in the roster and clicks her avatar → follow.
+  // B sees alice in the roster (inside the overlay menu, 0010) and clicks
+  // her avatar → follow.
+  await openOverlayMenu(b);
   const avatar = b.locator('[data-presence-user="alice"]');
   await expect(avatar).toBeVisible({ timeout: 30000 });
   await avatar.click();
