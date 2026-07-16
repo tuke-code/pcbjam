@@ -11,6 +11,7 @@ import { createReadStream } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import cors from "@fastify/cors";
 import Fastify from "fastify";
 import { initServer } from "@ts-rest/fastify";
@@ -55,7 +56,17 @@ const PROJECT_DIR = path.resolve(
   process.env.PROJECT_DIR ?? "./project",
 );
 const PORT = Number(process.env.PORT ?? 3060);
+// Bind to loopback by default: this is an unauthenticated reference backend, so
+// it shouldn't be reachable off-box unless an operator opts in via HOST. The
+// owner namespace is a client-asserted hint, not an auth boundary — see
+// user-libs.ts.
+const HOST = process.env.HOST ?? "127.0.0.1";
 const CORS_ORIGIN = process.env.CORS_ORIGIN ?? "http://localhost:3048";
+
+// Write bounds: a real s-expr symbol/footprint body is KB. Cap the body parser
+// well below the old 1 GiB so a single request can't write unbounded data.
+// Overridable.
+const MAX_ITEM_BYTES = Number(process.env.MAX_ITEM_BYTES ?? 5 * 1024 * 1024);
 
 const TEXT_EXT = new Set([
   ".kicad_pcb",
@@ -147,21 +158,19 @@ async function project(scope: string): Promise<Project> {
   };
 }
 
-async function main(): Promise<void> {
-  const app = Fastify({ logger: true, bodyLimit: 1024 * 1024 * 1024 });
+export async function buildApp(): Promise<import("fastify").FastifyInstance> {
+  const app = Fastify({
+    logger: process.env.NODE_ENV !== "test",
+    bodyLimit: MAX_ITEM_BYTES,
+  });
+  // CORS: an explicit origin list is always reflected with credentials. A `*`
+  // opt-in is different — reflect-any-origin WITH credentials is unsafe, so a
+  // wildcard forces credentials OFF. The invariant is enforced in code, not just
+  // documented in the config.
+  const wildcard = CORS_ORIGIN === "*";
   await app.register(cors, {
-    // `true` REFLECTS the request origin (never the literal `*`), so it stays
-    // valid for the editor's credentialed fetches; allow-credentials is what
-    // lets the browser accept those responses (cookie-less callers unaffected).
-    //
-    // SECURITY INVARIANT: reflected-origin + allow-credentials is safe ONLY
-    // while this example backend holds no ambient credentials (no cookies, no
-    // sessions, no auth — which is its whole design; default origin is the
-    // explicit :3048, `*` is an operator opt-in). If any credentialed auth is
-    // ever added here, the `*` reflection mode MUST go — allow only explicit
-    // origin lists.
-    origin: CORS_ORIGIN === "*" ? true : CORS_ORIGIN.split(","),
-    credentials: true,
+    origin: wildcard ? true : CORS_ORIGIN.split(","),
+    credentials: !wildcard,
   });
   app.get("/health", async () => ({ ok: true }));
 
@@ -314,11 +323,19 @@ async function main(): Promise<void> {
     },
   );
 
-  await app.listen({ port: PORT, host: "0.0.0.0" });
-  app.log.info(`serving project "${SLUG}" from ${PROJECT_DIR}`);
+  return app;
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+async function main(): Promise<void> {
+  const app = await buildApp();
+  await app.listen({ port: PORT, host: HOST });
+  app.log.info(`serving project "${SLUG}" from ${PROJECT_DIR} on ${HOST}:${PORT}`);
+}
+
+// Only self-start when run directly (not when imported by a test).
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

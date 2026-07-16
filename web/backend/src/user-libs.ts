@@ -21,6 +21,12 @@ import { extForKind } from "./libs.js";
 
 export const DEFAULT_OWNER = "default";
 
+// Write quotas: bound per-owner lib count and per-lib item count so an
+// unauthenticated caller can't create unlimited libs/items; per-body size is
+// capped by the server's bodyLimit (413). Overridable.
+const MAX_LIBS_PER_OWNER = Number(process.env.MAX_LIBS_PER_OWNER ?? 100);
+const MAX_ITEMS_PER_LIB = Number(process.env.MAX_ITEMS_PER_LIB ?? 1000);
+
 export interface UserLibsConfig {
   /** Root for owner-namespaced writable user libs; null ⇒ writes disabled. */
   dir: string | null;
@@ -82,11 +88,16 @@ async function writeIndex(dir: string, idx: IndexFile): Promise<void> {
 
 export class UserLibError extends Error {
   constructor(
-    public status: 400 | 404 | 409,
+    public status: 400 | 404 | 409 | 429,
     message: string,
   ) {
     super(message);
   }
+}
+
+/** Count an owner's existing user libs (dirs with a readable index.json). */
+async function ownerLibCount(cfg: UserLibsConfig, owner: string): Promise<number> {
+  return (await listUserLibs(cfg, owner)).length;
 }
 
 /** Create a user lib for an owner. Idempotent-ish: 409 if the id already exists. */
@@ -100,6 +111,12 @@ export async function createUserLib(
   if (!dir) throw new UserLibError(400, "user libs not configured or bad name");
   if (await readIndex(dir)) {
     throw new UserLibError(409, `library "${id}" already exists`);
+  }
+  if ((await ownerLibCount(cfg, owner)) >= MAX_LIBS_PER_OWNER) {
+    throw new UserLibError(
+      400,
+      `library limit reached (max ${MAX_LIBS_PER_OWNER} per owner)`,
+    );
   }
   await fs.mkdir(dir, { recursive: true });
   const idx: IndexFile = { type: "user", name, description: null, items: [] };
@@ -185,10 +202,19 @@ export async function writeUserItem(
   const idx = await readIndex(dir);
   if (!idx) throw new UserLibError(404, `user library "${lib}" not found`);
 
-  await fs.writeFile(path.join(dir, `${name}${ext}`), body, "utf8");
-
   const items = idx.items ?? [];
   const existing = items.find((i) => i.kind === kind && i.name === name);
+  // Only NEW items grow the lib — overwrites of an existing item are always
+  // allowed (the editor re-saves), so being at the cap never blocks edits.
+  if (!existing && items.length >= MAX_ITEMS_PER_LIB) {
+    throw new UserLibError(
+      429,
+      `item limit reached (max ${MAX_ITEMS_PER_LIB} per library)`,
+    );
+  }
+
+  await fs.writeFile(path.join(dir, `${name}${ext}`), body, "utf8");
+
   if (!existing) items.push({ kind, name });
   idx.items = items;
   await writeIndex(dir, idx);
