@@ -289,3 +289,80 @@ describe("presence over the BroadcastChannel awareness relay", () => {
     expect(fromBob[0]!.user.color).toBe(PRESENCE_COLORS[0]);
   });
 });
+
+/**
+ * 0009 C — comment-author seeded colors: the doc's existing comment authors
+ * hold palette slots (deterministic first-appearance order), live claims
+ * avoid them, an author rejoining adopts their own slot, and colorOf answers
+ * offline authors from the seed instead of the hash.
+ */
+describe("comment-author color seeds (0009 C)", () => {
+  const seedsOf = (entries: Array<[string, string]>) => () => new Map(entries);
+
+  it("a joining user claims around the seeded authors' slots", async () => {
+    const channel = `presence-test-${channelSeq++}`;
+    const a = client(channel);
+    a.presence = createPresence({
+      awareness: a.awareness,
+      user: user("alice"),
+      tool: "pcbnew",
+      seedColors: seedsOf([["old-author", PRESENCE_COLORS[0]!]]),
+    });
+    await settle();
+    // Slot 0 belongs to old-author's pins → alice takes slot 1.
+    expect(a.presence.colorOf("alice")).toBe(PRESENCE_COLORS[1]);
+  });
+
+  it("an author rejoining adopts their own comment slot", async () => {
+    const channel = `presence-test-${channelSeq++}`;
+    const a = client(channel);
+    a.presence = createPresence({
+      awareness: a.awareness,
+      user: user("alice"),
+      tool: "pcbnew",
+      seedColors: seedsOf([
+        ["bob", PRESENCE_COLORS[0]!],
+        ["alice", PRESENCE_COLORS[1]!],
+      ]),
+    });
+    await settle();
+    expect(a.presence.colorOf("alice")).toBe(PRESENCE_COLORS[1]);
+  });
+
+  it("colorOf answers offline authors from the seed, not the hash", async () => {
+    const channel = `presence-test-${channelSeq++}`;
+    const a = client(channel);
+    a.presence = createPresence({
+      awareness: a.awareness,
+      user: user("alice"),
+      tool: "pcbnew",
+      seedColors: seedsOf([["offline-bob", PRESENCE_COLORS[3]!]]),
+    });
+    await settle();
+    expect(a.presence.colorOf("offline-bob")).toBe(PRESENCE_COLORS[3]);
+    // A user with neither presence nor comments still hash-falls-back.
+    expect(a.presence.colorOf("stranger")).toBe(colorForUser("stranger"));
+  });
+
+  it("a live peer's published color beats the seed", async () => {
+    const channel = `presence-test-${channelSeq++}`;
+    const a = client(channel);
+    a.presence = createPresence({
+      awareness: a.awareness,
+      user: user("alice"),
+      tool: "pcbnew",
+    });
+    await settle();
+    const b = client(channel);
+    await settle();
+    b.presence = createPresence({
+      awareness: b.awareness,
+      user: user("bob"),
+      tool: "pcbnew",
+      // Stale seed claims alice sits on slot 5 — her live claim (slot 0) wins.
+      seedColors: seedsOf([["alice", PRESENCE_COLORS[5]!]]),
+    });
+    await settle();
+    expect(b.presence.colorOf("alice")).toBe(PRESENCE_COLORS[0]);
+  });
+});

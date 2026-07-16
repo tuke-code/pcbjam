@@ -3,6 +3,7 @@ import {
   addMessage,
   args,
   colorForUser,
+  commentAuthorColors,
   createThread,
   deleteThread,
   editMessage,
@@ -122,7 +123,12 @@ export function createComments(opts: {
 }): CommentsController {
   const { doc, mod, user } = opts;
   const iuPerMm = IU_PER_MM[opts.tool] ?? 1e6;
-  const colorFor = (userId: string) => opts.colorFor?.(userId) ?? colorForUser(userId);
+  // Fallback chain: live presence (nth-in-room) → the doc's comment-author
+  // slot (0009 C — presence-less binds still color deterministically) → hash.
+  const colorFor = (userId: string) =>
+    opts.colorFor?.(userId) ??
+    commentAuthorColors(doc).get(userId) ??
+    colorForUser(userId);
 
   let cache: ResolvedThread[] = [];
   let visible = true;

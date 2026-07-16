@@ -2,6 +2,7 @@ import * as React from "react";
 import {
   collabRoomId,
   docToFile,
+  commentAuthorColors,
   EXTENSION_TOOL,
   FILELESS_TOOLS,
   fileToDoc,
@@ -1076,7 +1077,11 @@ export function WasmTool({
     // publish this user's identity and mirror the peers into the roster chip.
     // pcbnew/pl_editor bind once; eeschema rebinds per active sheet, so the
     // roster shows who is on the SAME sheet (room = sheet).
-    const startPresence = (provider: YjsProvider | undefined, sheetPath?: string) => {
+    const startPresence = (
+      provider: YjsProvider | undefined,
+      sheetPath?: string,
+      doc?: import("yjs").Doc,
+    ) => {
       // Invisible observer (read-only-viewer): never bind presence — no roster,
       // no cursor/selection emit, no awareness state (peers stays empty).
       if (readOnly) return;
@@ -1097,6 +1102,9 @@ export function WasmTool({
         user: presenceUser(),
         tool,
         sheetPath,
+        // Round-robin colors seeded by the doc's comment authors (0009 C):
+        // claims avoid their slots, an author rejoining adopts their own.
+        ...(doc ? { seedColors: () => commentAuthorColors(doc) } : {}),
       });
       presenceRef.current = presence;
       presence.subscribe(setPeers);
@@ -1381,7 +1389,7 @@ export function WasmTool({
               onActiveChange: (activeRoom) => {
                 driftRef.current?.stop();
                 driftRef.current = null;
-                startPresence(activeRoom?.provider, activeRoom?.sheetPath);
+                startPresence(activeRoom?.provider, activeRoom?.sheetPath, activeRoom?.doc);
                 startComments(activeRoom?.doc);
                 if (activeRoom && !readOnly) {
                   driftRef.current = startDriftDetection({
@@ -1412,7 +1420,7 @@ export function WasmTool({
             onStatus: setStatus,
           });
           collabDocRef.current = collabHandle?.doc ?? null;
-          startPresence(collabHandle?.provider);
+          startPresence(collabHandle?.provider, undefined, collabHandle?.doc);
           startComments(collabHandle?.doc);
           if (collabHandle && targetPath && COLLAB_TOOLS.has(tool) && !readOnly) {
             driftRef.current = startDriftDetection({

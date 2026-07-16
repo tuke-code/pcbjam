@@ -85,12 +85,14 @@ export function claimedPresenceColor(userId: string): string | undefined {
   return g_claims.get(userId);
 }
 
-/** Least-used palette color among the OTHER users in `states` — the lowest
+/** Least-used palette color among the OTHER users in `states` PLUS the doc's
+ *  comment authors (0009 C — their pins hold palette slots too) — the lowest
  *  free slot while the room is smaller than the palette, fair reuse after. */
 function lowestFreeColor(
   states: Map<number, unknown>,
   ownClientId: number,
   ownUserId: string,
+  seedColors?: ReadonlyMap<string, string>,
 ): string {
   const usage = new Array(PRESENCE_COLORS.length).fill(0);
 
@@ -100,6 +102,13 @@ function lowestFreeColor(
     if (!parsed.success || parsed.data.user.id === ownUserId) continue;
     const idx = (PRESENCE_COLORS as readonly string[]).indexOf(parsed.data.user.color);
     if (idx >= 0) usage[idx]++;
+  }
+  if (seedColors) {
+    for (const [author, color] of seedColors) {
+      if (author === ownUserId) continue;
+      const idx = (PRESENCE_COLORS as readonly string[]).indexOf(color);
+      if (idx >= 0) usage[idx]++;
+    }
   }
 
   const min = Math.min(...usage);
@@ -137,12 +146,18 @@ export function createPresence(opts: {
   user: PresenceUser;
   tool: string;
   sheetPath?: string;
+  /** The doc's comment-author palette assignments (0009 C, lazily read):
+   *  claimed around, adopted for our own past comments, and the offline-
+   *  author fallback in colorOf. Undefined ⇒ pre-0009 behavior. */
+  seedColors?: () => ReadonlyMap<string, string>;
 }): PresenceHandle {
   const { awareness } = opts;
+  const seeds = () => opts.seedColors?.();
 
   // Nth-in-room color: adopt a same-user tab's color, else keep an earlier
-  // claim (sticky across sheet rebinds), else claim the lowest free palette
-  // slot given the peers already in the room.
+  // claim (sticky across sheet rebinds), else our own comment-author slot
+  // (the doc's pins already show us in it — cursor should match), else claim
+  // the lowest palette slot free among live peers AND comment authors.
   let claimed = g_claims.get(opts.user.id) ?? null;
   if (!claimed) {
     for (const [clientId, raw] of awareness.getStates()) {
@@ -154,8 +169,14 @@ export function createPresence(opts: {
       }
     }
   }
+  if (!claimed) claimed = seeds()?.get(opts.user.id) ?? null;
   if (!claimed) {
-    claimed = lowestFreeColor(awareness.getStates(), awareness.clientID, opts.user.id);
+    claimed = lowestFreeColor(
+      awareness.getStates(),
+      awareness.clientID,
+      opts.user.id,
+      seeds(),
+    );
   }
   g_claims.set(opts.user.id, claimed);
 
@@ -214,7 +235,12 @@ export function createPresence(opts: {
       }
 
       if (parsed.data.user.color === user.color && clientId < awareness.clientID) {
-        user.color = lowestFreeColor(awareness.getStates(), awareness.clientID, user.id);
+        user.color = lowestFreeColor(
+          awareness.getStates(),
+          awareness.clientID,
+          user.id,
+          seeds(),
+        );
         g_claims.set(user.id, user.color);
         patch({ user: { ...user } });
         clog("presence: color collision — re-claimed", user.color);
@@ -293,7 +319,9 @@ export function createPresence(opts: {
           return parsed.data.user.color;
         }
       }
-      return colorForUser(userId);
+      // Offline users: their comment-author slot (0009 C) beats the hash —
+      // deterministic, and lowestFreeColor keeps live claims off it.
+      return seeds()?.get(userId) ?? colorForUser(userId);
     },
     destroy() {
       if (destroyed) return;
