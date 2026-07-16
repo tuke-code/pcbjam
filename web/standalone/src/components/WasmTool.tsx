@@ -18,6 +18,7 @@ import {
 import { ChevronDown, ChevronUp, EyeOff, Loader2, PanelsTopLeft } from "lucide-react";
 import {
   API_BASE_URL,
+  APP_URL,
   currentScope,
   libsSourceConfig,
   modelsSourceConfig,
@@ -27,6 +28,7 @@ import {
   type DocSource,
 } from "@/lib/config";
 import { defaultFileName, newFileTemplate, withExtension } from "@/lib/new-file";
+import { redirectTargetFor } from "@/lib/redirect";
 import { loadSessionIdentity } from "@/lib/session-identity";
 import { bootKicadTool } from "@/wasm/boot";
 import { resolveWasmBase } from "@/wasm/wasm-assets";
@@ -348,8 +350,8 @@ let quitHandled = false;
  * tool-switch hook's location.assign). The wx port's UnloadCallback runs on
  * BEFOREUNLOAD — i.e. the instant the navigation starts, while this document
  * keeps running until the next one commits — and closes the top frame, which
- * fires wxAppTopWindowClosed. Without the latch the quit hook then
- * history.back()s over the in-flight navigation (the pagehide latch below is
+ * fires wxAppTopWindowClosed. Without the latch the quit hook then navigates
+ * to the exit URL over the in-flight navigation (the pagehide latch below is
  * too late: pagehide only fires at commit time). One-shot per document, same
  * as the pagehide latch — this page is on its way out.
  */
@@ -383,31 +385,23 @@ if (typeof window !== "undefined") {
 
 function installQuitHook(
   win: ToolWindow,
-  opts: { fallbackUrl: string; log: (m: string) => void },
+  opts: { exitUrl: string; log: (m: string) => void },
 ): () => void {
   const hook = () => {
-    // Any referrer means we entered by a real navigation — an in-app hard
-    // navigation (ProjectView / NewFileDialog / tool-switch all
-    // location.assign) OR the cross-origin management app (app.pcbjam.com →
-    // editor.pcbjam.com deep-links; the primary entry in the closed deploy).
-    // Quit behaves like the Back button: going back lands wherever the user
-    // came from. Deep links and fresh tabs have no referrer and no usable
-    // history — go to the fallback instead.
-    const hasReferrer = !!win.document.referrer;
-
+    // Quit always navigates to the exit URL (project overview / home). Never
+    // history.back(): every in-app entry AND every tool switch is a hard
+    // location.assign(), so after a schematic ⇄ pcb switch the previous
+    // history entry is another editor — unwinding history strands the user
+    // there instead of leaving the editor.
+    //
     // Defer the navigation out of the wasm callback: this fires from inside the
     // frame's C++ destructor (via EM_ASM under Asyncify), and the teardown keeps
     // running after we return. A cross-document location.assign() started here is
-    // aborted by that continuing teardown (only the same-document history.back()
-    // survives) — so hand it to a fresh task once the wasm stack has unwound.
+    // aborted by that continuing teardown — so hand it to a fresh task once the
+    // wasm stack has unwound.
     setTimeout(() => {
-      if (hasReferrer && win.history.length > 1) {
-        opts.log("[quit] editor closed — history.back()");
-        win.history.back();
-      } else {
-        opts.log(`[quit] editor closed — no in-app history, going to ${opts.fallbackUrl}`);
-        win.location.assign(opts.fallbackUrl);
-      }
+      opts.log(`[quit] editor closed — going to ${opts.exitUrl}`);
+      win.location.assign(opts.exitUrl);
     }, 0);
   };
 
@@ -1042,12 +1036,16 @@ export function WasmTool({
       log: append,
     });
 
-    // File→Quit leaves the editor. Lib editors (/:scope/libs/:name) have no
-    // project overview to fall back to — go home instead.
+    // File→Quit leaves the editor for the project overview — lib editors
+    // (/:scope/libs/:name) have none, so they exit home instead. Both are
+    // non-editor surfaces: on a backed deploy (APP_URL set) they belong to the
+    // management app, so quit goes straight there (one hop instead of letting
+    // App.tsx's 0006 redirect bounce it).
     const segments = win.location.pathname.split("/").filter(Boolean);
+    const exitPath =
+      segments[1] === "libs" ? "/" : projectPath(currentScope(), slug);
     const removeQuitHook = installQuitHook(win, {
-      fallbackUrl:
-        segments[1] === "libs" ? "/" : projectPath(currentScope(), slug),
+      exitUrl: redirectTargetFor(APP_URL, exitPath) ?? exitPath,
       log: append,
     });
 

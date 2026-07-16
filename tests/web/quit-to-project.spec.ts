@@ -2,14 +2,15 @@ import { test, expect, type Page } from '@playwright/test';
 import { clickMenuBarItem, clickMenuItemByText } from '../e2e/utils/element-tracker';
 
 /**
- * File → Quit e2e: quitting an editor must leave it, like the browser Back
- * button — return to wherever the user navigated in from (the project page),
- * falling back to the project page on a deep link with no same-origin history.
+ * File → Quit e2e: quitting an editor must leave it for the project overview,
+ * however the editor was entered (project-page link or deep link).
  *
  * The wx wasm port notifies the page when the app's top window is destroyed
  * (window.wxAppTopWindowClosed, wxwidgets src/wasm/toplevel.cpp); WasmTool maps
- * that to history.back() / location.assign(projectPath). A quit vetoed by the
- * unsaved-changes prompt never destroys the frame, so it never navigates.
+ * that to location.assign(projectPath) — deliberately NOT history.back(),
+ * which strands the user in the previous editor after a tool switch (see
+ * quit-after-tool-switch.spec.ts). A quit vetoed by the unsaved-changes prompt
+ * never destroys the frame, so it never navigates.
  *
  * URL-only assertions — no screenshots.
  */
@@ -70,11 +71,11 @@ test.describe('web app — File → Quit leaves the editor', () => {
     await page.waitForURL(PROJECT_URL_RE, { timeout: 30000 });
   });
 
-  test('quit on a deep-linked editor falls back to the project page', async ({ page }) => {
+  test('quit on a deep-linked editor goes to the project page', async ({ page }) => {
     test.setTimeout(300000);
 
-    // Direct entry (typed URL): no referrer, nothing meaningful to go back
-    // to — quit must land on the project page via the fallback URL.
+    // Direct entry (typed URL): no project page in this tab's history —
+    // quit must land on the project overview all the same.
     await page.goto(`/${SCOPE}/projects/demo/demo.kicad_sch`);
     await waitForToolReady(page, /demo — Schematic Editor/i);
 
