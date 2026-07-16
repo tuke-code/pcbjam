@@ -108,6 +108,27 @@ export async function uploadFileBytes(
   }
 }
 
+/**
+ * Create a project file that a tool switch found missing (WasmTool's nav
+ * hook): write `bytes` at `relPath` unless the file already exists on the
+ * source — the hook's file list is a mount-time snapshot, and a collaborator
+ * may have created the file since (never clobber it with an empty template).
+ * Unlike `uploadFileBytes` there is deliberately NO download fallback: a
+ * read-only source rejects (uploader absent, or the composite's per-slug
+ * ReadOnlyProjectError) and the caller keeps the editor where it is.
+ */
+export async function createProjectFileIfMissing(
+  slug: string,
+  relPath: string,
+  bytes: Uint8Array,
+): Promise<void> {
+  const source = projectSource();
+  if (!source.uploadFileBytes) throw new ReadOnlyProjectError(slug);
+  const { files } = await source.getProject(slug);
+  if (files.some((file) => file.path === relPath)) return;
+  await source.uploadFileBytes(slug, relPath, bytes);
+}
+
 // --- collaboration drift reporting (ysync; backend-only) ---
 
 /**

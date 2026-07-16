@@ -1,6 +1,7 @@
 import { useParams, useSearchParams } from "react-router-dom";
 import { parseToolParam, toolForFile, type Tool } from "@pcbjam/shared";
 import {
+  createProjectFileIfMissing,
   fetchFileBytes,
   uploadFileBytes,
   useProject,
@@ -79,6 +80,11 @@ export function ToolPage() {
           readOnly
             ? undefined
             : (relPath, bytes) => uploadFileBytes(slug, relPath, bytes)
+        }
+        createFile={
+          readOnly
+            ? undefined
+            : (relPath, bytes) => createProjectFileIfMissing(slug, relPath, bytes)
         }
         docSource={docSource}
         sourceDescriptor={sourceDescriptor}

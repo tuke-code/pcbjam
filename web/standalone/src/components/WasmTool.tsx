@@ -24,6 +24,7 @@ import {
   yjsProviderConfig,
   type DocSource,
 } from "@/lib/config";
+import { defaultFileName, newFileTemplate, withExtension } from "@/lib/new-file";
 import { bootKicadTool } from "@/wasm/boot";
 import { resolveWasmBase } from "@/wasm/wasm-assets";
 import {
@@ -231,9 +232,16 @@ function installToolNavigationHook(
     slug: string;
     files: ToolFile[];
     targetPath?: string;
+    /** Persist a new file into the project (see the WasmTool prop). Absent ⇒
+     *  this session can't create one, and a missing target stays a no-op. */
+    createFile?: (relPath: string, bytes: Uint8Array) => Promise<void>;
     log: (m: string) => void;
   },
 ): () => void {
+  // One create at a time: a double-fired menu item must not upload twice.
+  // Cleared only on failure — success navigates the page away.
+  let pendingCreate: string | null = null;
+
   const hook = (rawToolName: string, rawFileName: string): boolean => {
     const nextTool = normalizeToolName(rawToolName);
 
@@ -248,8 +256,48 @@ function installToolNavigationHook(
       : chooseToolFile(opts.files, nextTool, requestedPath, opts.targetPath);
 
     if (!FILELESS_TOOLS.has(nextTool) && !nextPath) {
-      opts.log(`[nav] no project file found for ${nextTool}: ${rawFileName}`);
-      return false;
+      // Native KiCad's "Switch to PCB Editor" with no board opens pcbnew on a
+      // NEW empty board at the derived path — mirror it by creating the
+      // templated counterpart in the project (the shape NewFileDialog writes)
+      // and navigating to it. Only sessions that can persist pass `createFile`
+      // (ToolPage); viewers and scratch/local-folder sessions keep the quiet
+      // no-op. C++ calls this hook synchronously (EM_ASM_INT) and ignores the
+      // result beyond a log line, so the create+navigate runs async and we
+      // answer true optimistically once it's kicked off.
+      const createFile = opts.createFile;
+      if (!createFile) {
+        opts.log(`[nav] no project file found for ${nextTool}: ${rawFileName}`);
+        return false;
+      }
+      if (pendingCreate) {
+        opts.log(`[nav] create already pending: ${pendingCreate}`);
+        return true;
+      }
+      const relPath =
+        requestedPath ??
+        (opts.targetPath
+          ? withExtension(nextTool, fileStem(opts.targetPath))
+          : defaultFileName(nextTool));
+      const url =
+        projectPath(currentScope(), opts.slug, relPath) + win.location.search;
+      pendingCreate = relPath;
+      void (async () => {
+        try {
+          const bytes = new TextEncoder().encode(
+            newFileTemplate(nextTool, crypto.randomUUID()),
+          );
+          await createFile(relPath, bytes);
+          opts.log(`[nav] created missing ${nextTool} file ${relPath} -> ${url}`);
+          markDeliberateNavigation();
+          win.location.assign(url);
+        } catch (e) {
+          pendingCreate = null;
+          opts.log(
+            `[nav] create failed for ${relPath}: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+      })();
+      return true;
     }
 
     // Scope/kind/name grammar: a fileless tool boots at `…/-/:tool`; a file route
@@ -261,6 +309,7 @@ function installToolNavigationHook(
         : projectPath(scope, opts.slug, nextPath)) + win.location.search;
 
     opts.log(`[nav] ${rawToolName} ${rawFileName || "(no file)"} -> ${url}`);
+    markDeliberateNavigation();
     win.location.assign(url);
     return true;
   };
@@ -285,6 +334,20 @@ function installToolNavigationHook(
 
 let activeQuitHook: (() => void) | undefined;
 let quitHandled = false;
+
+/**
+ * Latch the quit dispatcher off ahead of a deliberate in-app navigation (the
+ * tool-switch hook's location.assign). The wx port's UnloadCallback runs on
+ * BEFOREUNLOAD — i.e. the instant the navigation starts, while this document
+ * keeps running until the next one commits — and closes the top frame, which
+ * fires wxAppTopWindowClosed. Without the latch the quit hook then
+ * history.back()s over the in-flight navigation (the pagehide latch below is
+ * too late: pagehide only fires at commit time). One-shot per document, same
+ * as the pagehide latch — this page is on its way out.
+ */
+function markDeliberateNavigation() {
+  quitHandled = true;
+}
 
 const quitDispatcher = () => {
   if (quitHandled) return;
@@ -686,6 +749,7 @@ export function WasmTool({
   targetPath,
   fetchBytes,
   saveBytes,
+  createFile,
   docSource,
   assetBaseUrl,
   libsSource,
@@ -718,6 +782,15 @@ export function WasmTool({
    * MEMFS-only (e.g. Y.Doc-backed sessions).
    */
   saveBytes?: SaveBytes;
+  /**
+   * Create a new file in the project (tool-switch auto-create: eeschema's
+   * "Switch to PCB Editor" when no board exists yet). Persisted BEFORE the
+   * hook navigates, so the next ToolPage load finds it. Omit for sessions
+   * that can't persist a new project file (read-only viewers, scratch and
+   * local-folder sessions) — a missing switch target then stays a logged
+   * no-op.
+   */
+  createFile?: (relPath: string, bytes: Uint8Array) => Promise<void>;
   /**
    * Where this project's DOCUMENT lives (see lib/config docSourceConfig):
    * "ydoc" materializes the target file from its collab room when the room has
@@ -953,6 +1026,7 @@ export function WasmTool({
       slug,
       files,
       targetPath,
+      createFile,
       log: append,
     });
 
@@ -969,7 +1043,7 @@ export function WasmTool({
       removeNavigationHook();
       removeQuitHook();
     };
-  }, [slug, files, targetPath, append]);
+  }, [slug, files, targetPath, createFile, append]);
 
   React.useEffect(() => {
     // Guard re-entry: the WASM runtime is process-global and must boot exactly

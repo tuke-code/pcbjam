@@ -6,7 +6,7 @@ import { defineConfig, devices } from '@playwright/test';
  * playwright-kicad.config.ts which drives the standalone tool harness HTMLs
  * under tests/apps/kicad.
  *
- * These tests exercise the real web open paths: navigate to /p/<project>/<tool>/<file>,
+ * These tests exercise the real web open paths: navigate to /:scope/projects/:name/<file>,
  * let WasmTool boot the tool in-document (boot.ts), drive the project into MEMFS
  * and auto-open the file (open-flow.ts via Module.kicadOpenFile), and assert the
  * editor loaded wizard-free.
@@ -21,6 +21,15 @@ import { defineConfig, devices } from '@playwright/test';
  */
 
 const FRONTEND_URL = process.env.WEB_APP_URL ?? 'http://localhost:3048';
+// Keep the cold-started stack consistent with WEB_APP_URL overrides (e.g. a
+// sibling worktree squatting :3048): vite binds the URL's port and the backend
+// allows that origin, so overriding one env var relocates the whole frontend.
+const FRONTEND_PORT = new URL(FRONTEND_URL).port || '3048';
+// Backend counterpart — same override story for :3060 squatters. BACKEND_URL
+// is the var global-setup-web.ts already probes; the cold-started reference
+// backend binds its port and the editor is pointed at it.
+const BACKEND_URL = process.env.BACKEND_URL ?? 'http://localhost:3060';
+const BACKEND_PORT = new URL(BACKEND_URL).port || '3060';
 
 export default defineConfig({
   globalSetup: './web/global-setup-web.ts',
@@ -73,8 +82,15 @@ export default defineConfig({
       ...process.env,
       // resolved against web/backend/ (the backend's cwd)
       PROJECT_DIR: '../../tests/fixtures/demo',
-      VITE_API_BASE_URL: 'http://localhost:3060',
-      CORS_ORIGIN: 'http://localhost:3048',
+      PORT: BACKEND_PORT,
+      VITE_API_BASE_URL: BACKEND_URL,
+      CORS_ORIGIN: FRONTEND_URL,
+      STANDALONE_PORT: FRONTEND_PORT,
+      // The missing-file tool-switch spec builds a browser-local (IDB) project
+      // through the home page — same flag the dev/demo stacks set
+      // (scripts/dev-gpl.mjs). Only effective on cold starts: with
+      // reuseExistingServer an already-running stack must have set it itself.
+      VITE_LOCAL_PROJECTS: 'idb',
     },
   },
 });

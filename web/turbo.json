@@ -2,10 +2,12 @@
   "$schema": "https://turbo.build/schema.json",
   "globalEnv": [
     "PORT",
+    "STANDALONE_PORT",
     "PROJECT_DIR",
     "CORS_ORIGIN",
     "WASM_SRC_DIR",
     "VITE_API_BASE_URL",
+    "VITE_LOCAL_PROJECTS",
     "VITE_WASM_ASSET_BASE_URL"
   ],
   "tasks": {

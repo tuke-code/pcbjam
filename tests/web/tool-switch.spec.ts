@@ -8,8 +8,9 @@ import { clickMenuBarItem, clickMenuItemByText, stableShot } from '../e2e/utils/
  * Native KiCad spawns a process for this via ExecuteFile (common/gestfich.cpp);
  * the WASM build delegates to window.kicadWebOpenTool (WasmTool.tsx), which
  * maps the MEMFS file path to the project-relative file and calls
- * location.assign(/p/demo/<tool>/<file>). Each direction is a full page
- * navigation followed by a fresh wasm boot — hence the generous timeouts.
+ * location.assign(/:scope/projects/:name/<file>) — the tool is inferred from
+ * the file extension. Each direction is a full page navigation followed by a
+ * fresh wasm boot — hence the generous timeouts.
  */
 
 async function waitForToolReady(page: Page, titleRe: RegExp): Promise<void> {
@@ -29,6 +30,12 @@ async function waitForToolReady(page: Page, titleRe: RegExp): Promise<void> {
     null,
     { timeout: 30000 }
   );
+  // The boot and eager-library overlays (WasmTool, `absolute inset-0 z-30`)
+  // cover the whole editor including the menubar — synthetic menu clicks land
+  // on them until they clear (eeschema hydrates the full symbol set post-boot).
+  await expect(page.locator("div.absolute.inset-0.z-30")).toHaveCount(0, {
+    timeout: 180000,
+  });
 }
 
 async function switchTool(
@@ -54,7 +61,7 @@ test.describe('web app — tool switching', () => {
     await switchTool(
       page,
       'Switch to PCB Editor',
-      /\/p\/demo\/pcbnew\/demo\.kicad_pcb/,
+      /\/default\/projects\/demo\/demo\.kicad_pcb/,
       /demo — PCB Editor/i
     );
 
@@ -70,7 +77,7 @@ test.describe('web app — tool switching', () => {
     await switchTool(
       page,
       'Switch to Schematic Editor',
-      /\/p\/demo\/eeschema\/demo\.kicad_sch/,
+      /\/default\/projects\/demo\/demo\.kicad_sch/,
       /demo — Schematic Editor/i
     );
 
