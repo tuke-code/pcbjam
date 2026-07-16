@@ -19,6 +19,7 @@ import {
   fileToDoc,
   isEmptyKicadDelta,
   type Tool,
+  ydocSexprVersion,
   yToDoc,
 } from "@pcbjam/shared";
 import * as Y from "yjs";
@@ -54,6 +55,23 @@ export interface DriftDetectOptions {
 
 const DEFAULT_EVERY_N = 50;
 
+/** Reports per session cap — a real reconciler bug must not flood the backend. */
+const MAX_REPORTS_PER_SESSION = 20;
+
+/** djb2 over the drift-defining JSON — dedupe key, not a security hash. */
+function driftKey(body: DriftReportBody): string {
+  const canon = JSON.stringify({
+    diff: body.diff,
+    layoutChanged: body.layoutChanged,
+    metaChanged: body.metaChanged,
+  });
+  let h = 5381;
+  for (let i = 0; i < canon.length; i++) {
+    h = ((h << 5) + h + canon.charCodeAt(i)) | 0;
+  }
+  return h.toString(36);
+}
+
 function isCollabTool(tool: Tool): tool is CollabTool {
   return tool in SAVE_FN;
 }
@@ -87,9 +105,16 @@ export function startDriftDetection(opts: DriftDetectOptions): DriftDetector {
   let changes = 0;
   let inFlight = false;
   let stopped = false;
+  // Session dedupe + cap (0003 §throttle): a stable divergence recomputes to
+  // the same diff every N edits — report it once, not forever. Tracked at
+  // compute time (fire-and-forget sends may still fail; the server dedupes
+  // against its latest stored row too, so a lost report is acceptable).
+  let lastKey: string | null = null;
+  let reported = 0;
 
   // Synchronous on purpose: serialize the live model, diff it against the Y.Doc,
-  // and return the report body (or null when there's no drift). Being fully
+  // and return the report body (or null when there's no drift, the drift is
+  // unchanged since the last report, or the session cap is spent). Being fully
   // synchronous is what lets the session-end check finish during page unload.
   function computeDrift(): DriftReportBody | null {
     save(scratchPath);
@@ -114,7 +139,23 @@ export function startDriftDetection(opts: DriftDetectOptions): DriftDetector {
     const metaChanged = ydocDoc.root !== wasmDoc.root;
     if (isEmptyKicadDelta(diff) && !layoutChanged && !metaChanged) return null;
 
-    return { docPath: opts.targetPath, wasmDoc, ydocDoc, diff, layoutChanged, metaChanged };
+    const body: DriftReportBody = {
+      docPath: opts.targetPath,
+      wasmDoc,
+      ydocDoc,
+      diff,
+      layoutChanged,
+      metaChanged,
+      // The docs above are version-blind (yToDoc normalizes v1/v2) — this is
+      // the only signal of which storage encoding the Y.Doc actually used.
+      sexprVersion: ydocSexprVersion(opts.doc),
+    };
+    const key = driftKey(body);
+    if (key === lastKey) return null;
+    if (reported >= MAX_REPORTS_PER_SESSION) return null;
+    lastKey = key;
+    reported++;
+    return body;
   }
 
   async function checkOnce(): Promise<void> {
