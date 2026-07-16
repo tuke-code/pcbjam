@@ -40,6 +40,16 @@
 
   var params = new URLSearchParams(location.search);
 
+  // The ?base= / ?cdn= / ?tag= overrides choose where the WASM bootstrap scripts
+  // are loaded from and are injected as classic <script src>, so they must be
+  // honored in LOCAL DEVELOPMENT ONLY — a shipped page ignores them. This is a
+  // static public/ asset (no `import.meta.env.DEV` substitution), so the check
+  // is a runtime hostname test.
+  var DEV_HOSTS = ["localhost", "127.0.0.1", "[::1]", "", "0.0.0.0"];
+  function devParam(name) {
+    return DEV_HOSTS.indexOf(location.hostname) !== -1 ? params.get(name) : null;
+  }
+
   // KiCad paths baked into the WASM build (see web/standalone/src/wasm/constants.ts).
   // KICAD_VERSION_DIR MUST match the deployed build's GetMajorMinorVersion() — the
   // config we seed to suppress the first-run wizard is only read from THIS dir.
@@ -116,10 +126,10 @@
   }
 
   function resolveBase() {
-    var override = params.get("base");
+    var override = devParam("base");
     if (override) return Promise.resolve(override.replace(/\/+$/, ""));
-    var root = (params.get("cdn") || CDN_ROOT).replace(/\/+$/, "");
-    var tagParam = params.get("tag");
+    var root = (devParam("cdn") || CDN_ROOT).replace(/\/+$/, "");
+    var tagParam = devParam("tag");
     var tagP = tagParam
       ? Promise.resolve(tagParam)
       : fetchJson(root + "/manifest-latest.json").then(function (m) {

@@ -18,6 +18,45 @@ export const prerender = false;
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 /**
+ * Redact an address for logs: keep the domain (useful for debugging a
+ * misconfigured send) but mask the local-part so logs never hold the raw
+ * address.
+ */
+function maskEmail(email: string): string {
+  const at = email.indexOf('@');
+  if (at <= 0) return '***';
+  return `${email.slice(0, 1)}***@${email.slice(at + 1)}`;
+}
+
+/**
+ * Best-effort per-key rate limit — an in-process sliding window that bounds
+ * bursts from one warm instance. NOT a complete defense on serverless (fresh
+ * instances don't share it), so production should ALSO front this with a shared
+ * store (Vercel KV / Upstash) or a CAPTCHA. Kept dependency-free so it runs.
+ */
+const RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const RATE_MAX_PER_IP = 5;
+const RATE_MAX_PER_EMAIL = 2;
+const rateHits = new Map<string, number[]>();
+
+function rateLimited(key: string, max: number, now: number): boolean {
+  const hits = (rateHits.get(key) ?? []).filter((t) => now - t < RATE_WINDOW_MS);
+  if (hits.length >= max) {
+    rateHits.set(key, hits);
+    return true;
+  }
+  hits.push(now);
+  rateHits.set(key, hits);
+  return false;
+}
+
+/** Client IP from the standard proxy headers (Vercel sets x-forwarded-for). */
+function clientIp(request: Request): string {
+  const xff = request.headers.get('x-forwarded-for');
+  return (xff ? xff.split(',')[0] : '').trim() || 'unknown';
+}
+
+/**
  * CORS headers when the request Origin is in the configured allowlist — lets the
  * static demo (demo.pcbjam.com, no backend of its own) cross-post the form. A
  * same-origin submit sends no Origin and gets no CORS headers (it doesn't need
@@ -86,9 +125,24 @@ export const POST: APIRoute = async ({ request }) => {
     return wantsJson ? json(400, { ok: false, error: 'invalid_email' }, cors) : redirect('error');
   }
 
+  // Rate limit: bound per-IP and per-address submissions. Checked after
+  // validation so invalid emails don't consume budget.
+  const now = Date.now();
+  const ip = clientIp(request);
+  if (
+    rateLimited(`ip:${ip}`, RATE_MAX_PER_IP, now) ||
+    rateLimited(`email:${email}`, RATE_MAX_PER_EMAIL, now)
+  ) {
+    return wantsJson
+      ? json(429, { ok: false, error: 'rate_limited' }, cors)
+      : redirect('error');
+  }
+
   // No key configured (e.g. local dev without secrets): accept + log, don't 500.
   if (!RESEND_API_KEY) {
-    console.warn(`[waitlist] RESEND_API_KEY not set — skipping send. email=${email} source=${source}`);
+    console.warn(
+      `[waitlist] RESEND_API_KEY not set — skipping send. email=${maskEmail(email)} source=${source}`,
+    );
     return wantsJson ? json(200, { ok: true }, cors) : redirect('ok');
   }
 
