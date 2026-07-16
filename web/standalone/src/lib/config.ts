@@ -51,6 +51,16 @@ export const LANDING_URL = (
 ).replace(/\/+$/, "");
 
 /**
+ * The companion management app's origin (no trailing slash), e.g.
+ * "https://app.pcbjam.com". When set (the backed editor deploy), non-editor
+ * surfaces — home, project overview, mgmt-only paths — redirect there; see
+ * lib/redirect.ts (standalone-hardening 0006). Unset (dev / demo) keeps every
+ * route local.
+ */
+export const APP_URL =
+  (import.meta.env.VITE_APP_URL || "").replace(/\/+$/, "") || null;
+
+/**
  * Where the in-editor waitlist form POSTs. The demo is a fully static deploy with
  * no backend, so it cross-posts to the landing site's serverless endpoint (which
  * sends CORS for this origin). Same JSON contract as site/src/pages/api/waitlist.ts.

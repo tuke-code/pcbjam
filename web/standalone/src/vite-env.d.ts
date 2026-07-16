@@ -32,6 +32,8 @@ interface ImportMetaEnv {
   readonly VITE_YJS_TOKEN?: string;
   /** Plausible pa-*.js script URL; unset ⇒ no tracking (dev default). */
   readonly VITE_PLAUSIBLE_SRC?: string;
+  /** Management app origin (e.g. https://app.pcbjam.com); set ⇒ non-editor routes redirect there (lib/redirect.ts). */
+  readonly VITE_APP_URL?: string;
 }
 
 interface ImportMeta {

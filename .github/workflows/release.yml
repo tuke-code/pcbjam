@@ -45,6 +45,9 @@ env:
   # order when both change: pcbjam-private first, then this repo.
   EDITOR_PAGES_PROJECT: pcbjam-editor
   EDITOR_API_BASE: https://api.pcbjam.com
+  # Mgmt app origin: non-editor routes on the editor host redirect here
+  # (standalone-hardening 0006). The demo build never sets this.
+  EDITOR_APP_BASE: https://app.pcbjam.com
   CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
   CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
   WRANGLER_CMD: npx --yes wrangler@4
@@ -176,7 +179,7 @@ jobs:
       - name: Build editor (remote mode)
         run: >
           node scripts/deploy/build-editor.mjs --tag "$RELEASE_TAG"
-          --cdn "$CDN" --api-base "$EDITOR_API_BASE"
+          --cdn "$CDN" --api-base "$EDITOR_API_BASE" --app-base "$EDITOR_APP_BASE"
           --plausible "https://plausible.io/js/pa-KjNS9YmidydULZTstsjRg.js"
           ${MODELS_TAG:+--models-tag "$MODELS_TAG"}
 

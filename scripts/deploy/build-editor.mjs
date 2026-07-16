@@ -34,6 +34,9 @@ function parseArgs(argv) {
     // kicad-packages3D snapshot (libs/kicad-models/<tag>/); omitted ⇒ 3D models off.
     modelsTag: null,
     plausible: null,
+    // Companion mgmt app origin; set ⇒ non-editor routes redirect there
+    // (standalone-hardening 0006). Omitted ⇒ every route renders locally.
+    appBase: null,
   };
   for (let i = 2; i < argv.length; i++) {
     const next = () => argv[++i];
@@ -45,6 +48,7 @@ function parseArgs(argv) {
       case "--yjs-endpoint": a.yjsEndpoint = next(); break;
       case "--models-tag": a.modelsTag = next(); break;
       case "--plausible": a.plausible = next(); break;
+      case "--app-base": a.appBase = next(); break;
       default: throw new Error(`unknown arg: ${argv[i]}`);
     }
   }
@@ -54,6 +58,7 @@ function parseArgs(argv) {
   a.apiBase = a.apiBase.replace(/\/+$/, "");
   a.repo = a.repo.replace(/\/+$/, "");
   a.yjsEndpoint = (a.yjsEndpoint || a.apiBase).replace(/\/+$/, "");
+  if (a.appBase) a.appBase = a.appBase.replace(/\/+$/, "");
   return a;
 }
 
@@ -104,6 +109,9 @@ function main() {
     VITE_GIT_SHA: gitSha(repoRoot),
     VITE_REPO_URL: a.repo,
     ...(a.plausible ? { VITE_PLAUSIBLE_SRC: a.plausible } : {}),
+    // Non-editor surfaces bounce to the mgmt app (mirror of the closed repo's
+    // VITE_STANDALONE_URL pointing the other way).
+    ...(a.appBase ? { VITE_APP_URL: a.appBase } : {}),
   };
 
   console.log(`build-editor: tag=${a.tag} api=${a.apiBase} cdn=${a.cdn}`);
@@ -115,6 +123,7 @@ function main() {
   console.log(`  VITE_MODELS_MANIFEST_URL=${env.VITE_MODELS_MANIFEST_URL ?? "(unset — 3D models off)"}`);
   console.log(`  VITE_APP_TAG=${env.VITE_APP_TAG} VITE_GIT_SHA=${env.VITE_GIT_SHA || "(none)"}`);
   console.log(`  VITE_PLAUSIBLE_SRC=${env.VITE_PLAUSIBLE_SRC || "(off)"}`);
+  console.log(`  VITE_APP_URL=${env.VITE_APP_URL || "(unset — no non-editor redirect)"}`);
 
   // Keep the dev-only WASM symlink out of the bundle (CDN serves it).
   const hadWasm = existsSync(publicWasm) || isSymlink(publicWasm);
