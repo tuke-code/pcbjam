@@ -1114,6 +1114,22 @@
       "engine": "chromium"
     },
     {
+      "name": "project-sync-00-board-open.png",
+      "engine": "chromium"
+    },
+    {
+      "name": "project-sync-01-update-dialog.png",
+      "engine": "chromium"
+    },
+    {
+      "name": "project-sync-02-resync-first-R777.png",
+      "engine": "chromium"
+    },
+    {
+      "name": "project-sync-03-resync-second-R888.png",
+      "engine": "chromium"
+    },
+    {
       "name": "propgrid-01-loaded.png",
       "engine": "chromium"
     },
@@ -1455,6 +1471,10 @@
     },
     {
       "name": "web-read-only-viewer.png",
+      "engine": "chromium"
+    },
+    {
+      "name": "web-switch-missing-pcb-created.png",
       "engine": "chromium"
     },
     {
@@ -1846,6 +1866,22 @@
       "engine": "firefox"
     },
     {
+      "name": "project-sync-00-board-open.png",
+      "engine": "firefox"
+    },
+    {
+      "name": "project-sync-01-update-dialog.png",
+      "engine": "firefox"
+    },
+    {
+      "name": "project-sync-02-resync-first-R777.png",
+      "engine": "firefox"
+    },
+    {
+      "name": "project-sync-03-resync-second-R888.png",
+      "engine": "firefox"
+    },
+    {
       "name": "symbol_editor-01-loaded.png",
       "engine": "firefox"
     },
@@ -1887,6 +1923,10 @@
     },
     {
       "name": "web-read-only-viewer.png",
+      "engine": "firefox"
+    },
+    {
+      "name": "web-switch-missing-pcb-created.png",
       "engine": "firefox"
     },
     {
