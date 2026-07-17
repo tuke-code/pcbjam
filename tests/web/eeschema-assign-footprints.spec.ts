@@ -136,7 +136,7 @@ test('Tools → Assign Footprints opens CvPcb (merged third kiface)', async ({ p
   for (let i = 0; i < 60 && !up; i++) {
     await page.mouse.move(c.x + (i % 5) * 4, c.y + (i % 3) * 4);
     up = await cvpcbUp(page);
-    if (!up) await page.waitForTimeout(1000);
+    if (!up) await page.waitForTimeout(1000); // dwell: poll interval while pumping the wx event loop; the surrounding loop asserts `up`
   }
 
   if (!up) {
@@ -161,7 +161,7 @@ test('Tools → Assign Footprints opens CvPcb (merged third kiface)', async ({ p
   // Let the frame finish its first paint (footprint/symbol panes), then shoot
   // for eyeball review of the three-pane UI.
   await page.mouse.move(c.x + 2, c.y + 2);
-  await page.waitForTimeout(2000);
+  await page.waitForTimeout(2000); // dwell: let the frame finish its first paint before the eyeball screenshot
   await page.screenshot({ path: SHOT('02-cvpcb'), scale: 'css' });
 
   // The footprint pane is fed over the wasm↔js libs bridge — poll until
@@ -174,7 +174,7 @@ test('Tools → Assign Footprints opens CvPcb (merged third kiface)', async ({ p
     );
     if (fpCalls.length > 0) break;
     await page.mouse.move(c.x + (i % 5) * 3, c.y + (i % 3) * 3);
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(1000); // dwell: poll interval while pumping the wx loop; the surrounding loop asserts fpCalls
   }
   console.log(
     `[cvpcb-open] fp bridge calls: ${JSON.stringify(fpCalls.map((call) => [call[0], call[1], call[2], call[4]]))}`,
