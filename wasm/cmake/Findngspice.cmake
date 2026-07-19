@@ -1,17 +1,19 @@
 # Findngspice.cmake - Stub for WASM builds
-# ngspice is not available in WASM builds (KICAD_SPICE=OFF)
-# We provide stub values so CMake configuration succeeds
+# The editor never links libngspice: the simulator engine runs in the
+# ngspice_service worker (docs/features/ngspice-split/), and eeschema binds to
+# the statically linked sharedspice CLIENT (wasm/stubs/sharedspice_client.cpp)
+# in NGSPICE::init_dll()'s __EMSCRIPTEN__ branch.
 
 if(EMSCRIPTEN OR NOT KICAD_SPICE)
-    message(STATUS "ngspice not available for WASM build (using header stub)")
+    message(STATUS "ngspice: WASM build uses the sharedspice client header stub")
 
-    # Set variables to indicate ngspice is "found" but disabled
+    # Set variables to indicate ngspice is "found"
     set(ngspice_FOUND TRUE)
     set(NGSPICE_FOUND TRUE)
 
-    # Point at our header-only stub at wasm/stubs/ngspice/sharedspice.h so
-    # eeschema's sim/ngspice.{h,cpp} can compile. The library link line stays
-    # empty — the simulator frame is never instantiated in WASM.
+    # Point at wasm/stubs/ngspice/sharedspice.h: the sharedspice types plus
+    # the pcbjam_ngSpice_* client declarations. The library link line stays
+    # empty — the engine lives in ngspice_service.wasm.
     set(NGSPICE_INCLUDE_DIR "${CMAKE_CURRENT_LIST_DIR}/../stubs")
     set(NGSPICE_LIBRARY "")
     set(NGSPICE_LIBRARIES "")

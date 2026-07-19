@@ -1,9 +1,12 @@
 # 11 — Re-enable the SPICE simulator
 
-> **Verdict: port, ~1–2 weeks.** The groundwork is half-done in-repo: a wasm ngspice build
-> script already exists, the simulator sources already compile, and the only unavoidable
-> upstream-file edit is a ~25-line block swapping `wxDynamicLibrary` for direct static
-> symbols. Multiple working emscripten ngspice ports exist as precedent.
+> **DONE (2026-07-17), as a worker service rather than a static link — see
+> [docs/features/ngspice-split/](../ngspice-split/README.md).** The analysis
+> below predates the implementation; the "static link into eeschema.wasm"
+> recipe it recommends was superseded by the occ_service-style split (crash
+> isolation, lazy loading, and an in-service solution for XSPICE's .cm dlopen
+> via a static code-model registry). The ~25-line `init_dll()` edit happened
+> as predicted; `KICAD_SPICE=OFF` and the model-data stubs are gone.
 
 ## Current state (more nuanced than "KICAD_SPICE=OFF")
 

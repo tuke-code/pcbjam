@@ -81,7 +81,7 @@ trap 'kw_fail 130; exit 130' INT TERM
 
 cd "$(dirname "$0")/.."
 
-VALID_APPS="kicad_editor | pcbnew | eeschema | calculator | pl_editor | gerbview | kicad_tools | occ_service | all"
+VALID_APPS="kicad_editor | pcbnew | eeschema | calculator | pl_editor | gerbview | kicad_tools | occ_service | ngspice_service | all"
 
 usage() {
     echo "Usage: ./docker/build.sh <app>[,<app>...] [args...]" >&2
@@ -112,12 +112,12 @@ shift
 # it finalizes in-container (no host wasm-opt tail), so it never contends
 # with the editor's critical path.
 if [[ "$APP_NAME" == "all" ]]; then
-    APPS=(kicad_editor occ_service calculator pl_editor gerbview kicad_tools)
+    APPS=(kicad_editor occ_service ngspice_service calculator pl_editor gerbview kicad_tools)
 else
     IFS=',' read -r -a APPS <<< "$APP_NAME"
     for app in "${APPS[@]}"; do
         case "$app" in
-            kicad_editor|pcbnew|eeschema|calculator|pl_editor|gerbview|kicad_tools|occ_service) ;;
+            kicad_editor|pcbnew|eeschema|calculator|pl_editor|gerbview|kicad_tools|occ_service|ngspice_service) ;;
             *)
                 echo "Error: unknown app '$app' (expected: ${VALID_APPS})" >&2
                 usage
@@ -275,10 +275,10 @@ postprocess_app() {
     local app="$1"
     local out_dir="output"
 
-    # The headless CLI and the OCC service are finalized in-container (real
-    # tools, small -g0 wasm) and build with ASYNCIFY=0, so they need no host
-    # post-processing (no dyncall shims, no finalize, no asyncify).
-    if [ "$app" = "kicad_tools" ] || [ "$app" = "occ_service" ]; then
+    # The headless CLI and the OCC/ngspice services are finalized in-container
+    # (real tools, small -g0 wasm) and build with ASYNCIFY=0, so they need no
+    # host post-processing (no dyncall shims, no finalize, no asyncify).
+    if [ "$app" = "kicad_tools" ] || [ "$app" = "occ_service" ] || [ "$app" = "ngspice_service" ]; then
         echo "Skipping host post-processing for ${app} (finalized in-container)"
         return 0
     fi

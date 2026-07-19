@@ -43,12 +43,13 @@ const TOOLS = [
   "gerbview",
   "calculator",
   "occ_service",
+  "ngspice_service",
 ];
 
 // Files that make up a self-contained tool bundle. `<tool>` is substituted.
 const SHARED_FILES = ["wx.js", "wx-dom.js", "images.tar.gz"];
 const toolFiles = (tool) =>
-  tool === "occ_service"
+  tool === "occ_service" || tool === "ngspice_service"
     ? [`${tool}.wasm`, `${tool}.js`]
     : [`${tool}.wasm`, `${tool}.js`, ...SHARED_FILES];
 

@@ -1,6 +1,7 @@
 import { test as base } from '@playwright/test';
 import * as path from 'path';
 import { setupTestLogger, writeTestLogs, TestLogger, MAIN_CANVAS, waitForApp, tryLoadApp, getCanvasBox, KICAD_LOGS_DIR, getTestFileName } from '../e2e/utils/test-utils';
+import { installNgspiceServiceStub } from './utils/ngspice-service';
 import { installOccServiceStub } from './utils/occ-service';
 
 // Extend base test with automatic logging
@@ -14,6 +15,10 @@ export const test = base.extend<{
   // the lazy-load boundary.
   page: async ({ page }, use) => {
     await installOccServiceStub(page);
+    // The ngspice_service provider follows the same ambient pattern (the
+    // standalone installs it for every kicad_editor boot); the worker is only
+    // fetched on the first simulator request.
+    await installNgspiceServiceStub(page);
     await use(page);
   },
 

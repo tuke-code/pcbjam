@@ -235,7 +235,9 @@ else
 fi
 
 # Step 2: Build dependencies
-# Note: --with-occ for OpenCASCADE, but NOT ngspice since KICAD_SPICE=OFF
+# Note: --with-occ for OpenCASCADE. The ngspice dep is NOT needed here — the
+# editor links only the sharedspice client stub; the engine is the separate
+# ngspice_service app (scripts/kicad/build-ngspice_service.sh builds its dep).
 if [ $SKIP_DEPS -eq 0 ]; then
     kw_stage deps
     log_info "Building dependencies..."
@@ -547,7 +549,6 @@ emcmake cmake "${KICAD_DIR}" \
     -DwxWidgets_CONFIG_EXECUTABLE="${WX_BUILD}/wx-config" \
     \
     -DKICAD_BUILD_QA_TESTS=OFF \
-    -DKICAD_SPICE=OFF \
     -DKICAD_USE_EGL=OFF \
     -DKICAD_USE_BUNDLED_GLEW=ON \
     -DKICAD_BUILD_3D_VIEWER_WASM=${BUILD_3D_VIEWER} \

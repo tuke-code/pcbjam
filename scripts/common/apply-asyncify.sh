@@ -106,6 +106,18 @@ echo "  BINARYEN_CORES=${BINARYEN_CORES}  LD_PRELOAD=${WASM_OPT_PRELOAD:-<none>}
 
 SRC="${INPUT_WASM}"
 
+# Refuse to double-instrument. A postprocess re-run on an artifact that a
+# previous (killed/partial) run already asyncified re-instruments the
+# instrumented module: the pass balloons to OOM/jetsam death, and the output
+# would be broken anyway. The asyncify export names only exist in a module
+# the pass already touched. Recover by re-copying the pristine post-link
+# artifact from the docker volume (docker/build.sh compile copy step).
+if LC_ALL=C grep -aq "asyncify_start_unwind" "${INPUT_WASM}"; then
+    echo "ERROR: ${INPUT_WASM} already contains asyncify exports - refusing to" >&2
+    echo "double-instrument. Restore the pristine post-link wasm first." >&2
+    exit 1
+fi
+
 # 1. (native wasm-EH only) hoist C++ catch arms so Asyncify can suspend from inside them.
 if [ "$DO_HOIST" = 1 ]; then
     echo "Running --hoist-cpp-catches${HOIST_G:+ (keeping names for removelist matching)}..."

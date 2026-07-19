@@ -24,3 +24,9 @@ BRepCheck_ParallelAnalyzer::operator*
 ShapeFix_Wire::FixGap3d*
 ShapeFix_Wire::FixGap2d*
 PCB_EDIT_FRAME::setupUIConditions*
+# The ngspice model-parameter table initializers (sim_model_ngspice_data_*.cpp,
+# restored for the simulator split): thousands of straight-line emplace_backs,
+# nothing that can suspend. Uninstrumented they stay under the JS engines'
+# per-function locals limit and shave the post-asyncify module size
+# (bsim4/b3soi/b4soi/hsim alone are the four largest functions in eeschema).
+NGSPICE_MODEL_INFO_MAP::add*

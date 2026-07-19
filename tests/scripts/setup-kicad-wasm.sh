@@ -89,6 +89,8 @@ copy_app pl_editor        && found_any=1
 copy_app gerbview         && found_any=1
 # OCC 3D service (lazy worker module; pcbnew's STEP export + model parsing)
 copy_app occ_service      || true
+# ngspice simulation service (lazy worker module; eeschema's simulator)
+copy_app ngspice_service  || true
 
 if [ "$found_any" -eq 0 ]; then
     echo "Error: no kicad_editor/calculator/pl_editor/gerbview artifacts found in output/ or docker volume" >&2

@@ -1,10 +1,12 @@
 /*
  * Minimal stub of ngspice's sharedspice.h for KiCad WASM builds.
  *
- * Only the type names referenced by kicad/eeschema/sim/ngspice.{h,cpp} need
- * to exist. The eeschema sim layer compiles but the simulator frame is never
- * instantiated in WASM (FRAME_SIMULATOR's try/catch in IFACE::CreateKiWindow
- * catches the init failure and returns nullptr).
+ * Provides the type names referenced by kicad/eeschema/sim/ngspice.{h,cpp}
+ * plus the declarations of the sharedspice CLIENT (sharedspice_client.cpp):
+ * the real engine runs in the ngspice_service worker
+ * (docs/features/ngspice-split/), and NGSPICE::init_dll()'s __EMSCRIPTEN__
+ * branch binds its function pointers to the pcbjam_ngSpice_* forwarders
+ * declared below instead of dlopen'ing libngspice.
  *
  * We intentionally do NOT define NGSPICE_PACKAGE_VERSION so that ngspice.h's
  * fallback `typedef bool NG_BOOL;` (line 46) provides the boolean type.
@@ -47,6 +49,23 @@ typedef int (ControlledExit)(int, bool, bool, int, void*);
 typedef int (SendData)(pvecvaluesall, int, int, void*);
 typedef int (SendInitData)(pvecinfoall, int, void*);
 typedef int (BGThreadRunning)(bool, int, void*);
+
+/*
+ * The sharedspice client (wasm/stubs/sharedspice_client.cpp): RPC forwarders
+ * to the ngspice_service worker, signature-compatible with NGSPICE's private
+ * function-pointer typedefs (the pcbjam_ prefix avoids shadowing by those
+ * class-scope typedef names inside init_dll).
+ */
+void         pcbjam_ngSpice_Init(SendChar*, SendStat*, ControlledExit*, SendData*,
+                                 SendInitData*, BGThreadRunning*, void*);
+int          pcbjam_ngSpice_Circ(char** circarray);
+int          pcbjam_ngSpice_Command(char* command);
+pvector_info pcbjam_ngGet_Vec_Info(char* vecname);
+char*        pcbjam_ngCM_Input_Path(const char* path);
+char*        pcbjam_ngSpice_CurPlot(void);
+char**       pcbjam_ngSpice_AllPlots(void);
+char**       pcbjam_ngSpice_AllVecs(char* plotname);
+bool         pcbjam_ngSpice_Running(void);
 
 #ifdef __cplusplus
 }

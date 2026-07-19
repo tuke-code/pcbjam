@@ -12,6 +12,7 @@ import {
 } from "./constants";
 import { installModel3dHandler } from "./libs/models-bridge";
 import type { Model3dSource } from "./libs/models-source";
+import { installNgspiceService } from "./ngspice-service";
 import { installOccService } from "./occ-service";
 import {
   buildFpLibTable,
@@ -262,6 +263,9 @@ async function doBoot(opts: BootOptions): Promise<void> {
   // set; the worker itself is only fetched lazily on first use.
   if (bundle === "kicad_editor") {
     installOccService(log);
+    // ngspice service (eeschema simulator): same lazy pattern — synchronous
+    // provider install here, worker fetched on first Inspect → Simulator.
+    installNgspiceService(log);
   }
 
   if (libsSource && libKinds.length) {

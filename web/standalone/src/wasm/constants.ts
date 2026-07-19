@@ -50,7 +50,11 @@ export type Bundle =
   // Headless lazy OCC worker module (docs/features/occ-split/) — fetched by the
   // occService provider on first STEP export / STEP-IGES model parse; backs no
   // tool/route of its own.
-  | "occ_service";
+  | "occ_service"
+  // Headless lazy ngspice worker module (docs/features/ngspice-split/) —
+  // fetched by the ngspiceService provider when eeschema's simulator first
+  // initializes; backs no tool/route of its own.
+  | "ngspice_service";
 
 /**
  * Which deployed WASM bundle actually backs each tool. The four editors share the

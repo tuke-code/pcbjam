@@ -11,7 +11,7 @@ export KICAD_VERSION="8.99"
 
 # From vcpkg.json overrides (pinned versions)
 export GLM_VERSION="0.9.9.8"
-export NGSPICE_VERSION="45.2"
+export NGSPICE_VERSION="46"
 export PROTOBUF_VERSION="3.21.12"
 export PYTHON_VERSION="3.11.5"
 export WXWIDGETS_VERSION="3.3.1"
@@ -51,7 +51,9 @@ export CAIRO_URL="https://cairographics.org/releases/cairo-${CAIRO_VERSION}.tar.
 export PIXMAN_URL="https://cairographics.org/releases/pixman-${PIXMAN_VERSION}.tar.gz"
 export OCC_URL="https://github.com/Open-Cascade-SAS/OCCT/archive/refs/tags/V${OCC_VERSION//./_}.tar.gz"
 export RAPIDJSON_URL="https://github.com/Tencent/rapidjson/archive/${RAPIDJSON_COMMIT}.tar.gz"
-export NGSPICE_URL="https://sourceforge.net/projects/ngspice/files/ng-spice-rework/${NGSPICE_VERSION}/ngspice-${NGSPICE_VERSION}.tar.gz/download"
+# downloads.sourceforge.net serves the file directly; the projects/... /download
+# form returns an HTML redirect page that breaks curl-based fetches.
+export NGSPICE_URL="https://downloads.sourceforge.net/project/ngspice/ng-spice-rework/${NGSPICE_VERSION}/ngspice-${NGSPICE_VERSION}.tar.gz"
 
 # SHA256 checksums (to be filled in after first successful download)
 # export ZSTD_SHA256=""
