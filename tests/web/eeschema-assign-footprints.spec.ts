@@ -91,6 +91,12 @@ test('Tools → Assign Footprints opens CvPcb (merged third kiface)', async ({ p
   await expect
     .poll(() => page.title(), { timeout: 150000, intervals: [1000] })
     .toMatch(/Schematic Editor/i);
+  // The wx UI (canvas, registry, title) is live seconds BEFORE WasmTool drops
+  // its opaque boot overlay — `ready` only flips after the collab seed +
+  // waitForWxUi. A click in that window lands on the overlay, the Tools popup
+  // never opens, and the menu-item wait below times out. Same guard as
+  // chrome-toggle.spec.ts: boot + lib fat-load overlays are both `inset-0 z-30`.
+  await expect(page.locator('div.inset-0.z-30')).toHaveCount(0, { timeout: 150000 });
   await page.screenshot({ path: SHOT('01-boot'), scale: 'css' });
 
   expect(await clickMenuBarItem(page, 'Tools'), 'Tools menu opened').toBe(true);
@@ -125,6 +131,15 @@ test('Tools → Assign Footprints opens CvPcb (merged third kiface)', async ({ p
     }
   }, item);
 
+  // TODO(cvpcb-open-trap): ~1/9 local web-firefox runs die right here — the
+  // EVT.MENU dispatch traps ("wx_dom_event(48,9) failed" + worker
+  // "RuntimeError: index out of bounds"), eeschema survives, CvPcb never
+  // appears, zero libs-bridge calls. Same trap signature as the
+  // eeschema-fp-selector CI trap (docs/features/web-e2e-rot/01) — which
+  // reproduced on macOS real GL, so it is NOT llvmpipe-only. Needs a
+  // debug-symbol repro; post-link binaryen rewriting makes the shipped
+  // module's DWARF useless for symbolizing the trap offset.
+  //
   // The frame construction + netlist mail runs off wxPostEvent'd follow-ups,
   // which the wx WASM port only flushes on input events — wiggle the mouse
   // while polling. (No auto-answering of prompts here: CvPcb itself shows an
