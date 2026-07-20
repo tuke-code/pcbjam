@@ -14,8 +14,9 @@
  * looks like a user save (no upload, no peer-tab dirty flag).
  */
 import {
-  docDelta,
+  compareSlots,
   type DriftReportBody,
+  driftDocDelta,
   fileToDoc,
   isEmptyKicadDelta,
   type Tool,
@@ -58,10 +59,17 @@ const DEFAULT_EVERY_N = 50;
 /** Reports per session cap — a real reconciler bug must not flood the backend. */
 const MAX_REPORTS_PER_SESSION = 20;
 
-/** djb2 over the drift-defining JSON — dedupe key, not a security hash. */
+/**
+ * djb2 over the drift-defining JSON — dedupe key, not a security hash.
+ *
+ * `diff.reordered` and `layoutReordered` are excluded on purpose: they are not
+ * drift, and v2's order churn would otherwise change the key on every pass and
+ * defeat the "report a stable divergence once" rule.
+ */
 function driftKey(body: DriftReportBody): string {
+  const { reordered: _reordered, ...diff } = body.diff;
   const canon = JSON.stringify({
-    diff: body.diff,
+    diff,
     layoutChanged: body.layoutChanged,
     metaChanged: body.metaChanged,
   });
@@ -132,10 +140,13 @@ export function startDriftDetection(opts: DriftDetectOptions): DriftDetector {
 
     const wasmDoc = fileToDoc(text);
     const ydocDoc = yToDoc(opts.doc);
-    const diff = docDelta(ydocDoc, wasmDoc);
-    // docDelta covers items only; flag layout/preamble divergence separately.
-    const layoutChanged =
-      JSON.stringify(ydocDoc.layout) !== JSON.stringify(wasmDoc.layout);
+    // Order-only differences go to `diff.reordered` / `layoutReordered`: y-sexpr
+    // v2 reorders legitimately, so they are noise, not divergence (kicad-delta.ts).
+    const diff = driftDocDelta(ydocDoc, wasmDoc);
+    // driftDocDelta covers items only; flag layout/preamble divergence separately.
+    const layoutRelation = compareSlots(ydocDoc.layout, wasmDoc.layout);
+    const layoutChanged = layoutRelation === "different";
+    const layoutReordered = layoutRelation === "reordered";
     const metaChanged = ydocDoc.root !== wasmDoc.root;
     if (isEmptyKicadDelta(diff) && !layoutChanged && !metaChanged) return null;
 
@@ -145,6 +156,7 @@ export function startDriftDetection(opts: DriftDetectOptions): DriftDetector {
       ydocDoc,
       diff,
       layoutChanged,
+      layoutReordered,
       metaChanged,
       // The docs above are version-blind (yToDoc normalizes v1/v2) — this is
       // the only signal of which storage encoding the Y.Doc actually used.
@@ -166,7 +178,9 @@ export function startDriftDetection(opts: DriftDetectOptions): DriftDetector {
       if (body) {
         log(
           `[drift] ${opts.targetPath}: +${body.diff.added.length} ~${body.diff.updated.length} -${body.diff.removed.length}` +
-            `${body.layoutChanged ? " layout" : ""}${body.metaChanged ? " meta" : ""}`,
+            `${body.diff.reordered.length ? ` (${body.diff.reordered.length} reordered, not drift)` : ""}` +
+            `${body.layoutChanged ? " layout" : ""}${body.layoutReordered ? " layout-reordered" : ""}` +
+            `${body.metaChanged ? " meta" : ""}`,
         );
         await reportDrift(opts.slug, body);
       }

@@ -37,6 +37,14 @@ interface ToolCfg {
   empty: string;
   /** Known-volatile top-level tokens to ignore (serializer nondeterminism). */
   ignoreTokens?: string[];
+  /**
+   * uuids that live in the FILE but are legitimately absent from the items wire,
+   * because they identify the document rather than an item — e.g. a schematic's
+   * root `(uuid …)`, which travels in kdoc_meta/kdoc_layout, not kdoc_items.
+   * Listed explicitly per fixture so `expectWireMatchesFile` can subtract them
+   * without blanket-ignoring "the wire dropped an item", which is a real defect.
+   */
+  wireOmitsUuids?: string[];
 }
 
 type Mod = {
@@ -161,6 +169,62 @@ async function roundTrip(
   return { orig, regen };
 }
 
+/**
+ * One boot: the file the tool would SAVE, and the per-item blobs it would put on
+ * the collab WIRE, taken from the same model at the same moment.
+ */
+async function fileAndWire(
+  context: BrowserContext,
+  cfg: ToolCfg,
+): Promise<{ file: string; wire: string }> {
+  const page = await context.newPage();
+  await bootOpen(page, cfg, cfg.fixture, "rt");
+  const file = await saveRead(page, cfg, "orig_dump");
+  const snap = await page.evaluate(() => window.Module.kicadCollabSnapshotItems());
+  await page.close();
+
+  // Splice the blobs into one synthetic document so sexprDiff can index them by
+  // uuid. Non-footprint blobs already arrive wrapped in their own `(kicad_pcb …)`
+  // envelope; nesting is harmless — only uuid-bearing forms are compared, and the
+  // envelope's layers/version carry none.
+  const blobs: string[] = JSON.parse(snap).added.map((w: { sexpr: string }) => w.sexpr);
+  return { file, wire: `(${cfg.tool}_wire ${blobs.join("\n")})` };
+}
+
+/**
+ * THE invariant this suite was missing. `roundTrip` compares two FILE saves, so a
+ * wire blob written in a different dialect than the file writer round-trips
+ * perfectly and still corrupts the Y.Doc — which is exactly what happened:
+ *
+ *   - pcbnew serialized wire footprints through CLIPBOARD_IO (CTL_FOR_CLIPBOARD),
+ *     which unlike CTL_FOR_BOARD emits `(version …) (generator …)
+ *     (generator_version …)` INSIDE every `(footprint …)`. Every footprint of
+ *     every board drifted, permanently.
+ *   - eeschema serialized symbols with `aForClipboard=true`, whose
+ *     `MakeRelativeTo(currentSheet)` collapses `(instances … (path "/<sheet>" …))`
+ *     to `(path "")` — so materializing the Y.Doc would strip every symbol's sheet
+ *     path, reference and unit.
+ *
+ * The Y.Doc is the source of truth for the FILE, so the two must agree token for
+ * token. NOTE: no `ignoreTokens` here on purpose — `generator_version` is exactly
+ * one of the tokens the pcbnew bug leaked, and ignoring it would re-mask it. (The
+ * fixture-vs-build version mismatch that `ignoreTokens` exists for lives on the
+ * ROOT form, which carries no uuid and is therefore never compared.)
+ */
+async function expectWireMatchesFile(context: BrowserContext, cfg: ToolCfg): Promise<void> {
+  const { file, wire } = await fileAndWire(context, cfg);
+  const raw = sexprDiff(file, wire);
+  const omitted = new Set(cfg.wireOmitsUuids ?? []);
+  const diff = {
+    ...raw,
+    removed: raw.removed.filter((u) => !omitted.has(u)),
+  };
+  expect(
+    diff.added.length === 0 && diff.removed.length === 0 && diff.changed.length === 0,
+    `wire blobs disagree with the file save:\n${JSON.stringify(diff, null, 2)}`,
+  ).toBe(true);
+}
+
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
 const PL: ToolCfg = {
@@ -213,6 +277,68 @@ const SCH: ToolCfg = {
 )
 `,
   ignoreTokens: ["generator_version"],
+};
+
+// A schematic carrying a real SYMBOL with `(instances …)`. The wire-vs-file test
+// below needs one: the eeschema clipboard dialect rewrote the instance path
+// relative to the current sheet, collapsing it to `(path "")`. A wire-only
+// fixture (SCH above) cannot catch that — only symbols have instances.
+const SCH_SYM: ToolCfg = {
+  ...SCH,
+  // The schematic's own root uuid is document identity (kdoc_meta/kdoc_layout),
+  // never an item on the items wire — so the file has it and the wire does not.
+  wireOmitsUuids: ["11111111-1111-1111-1111-111111111111"],
+  fixture: `(kicad_sch
+	(version 20250114)
+	(generator "eeschema")
+	(generator_version "9.0")
+	(uuid "11111111-1111-1111-1111-111111111111")
+	(paper "A4")
+	(lib_symbols
+		(symbol "Device:R"
+			(pin_numbers (hide yes))
+			(pin_names (offset 0))
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(property "Reference" "R" (at 2.032 0 90) (effects (font (size 1.27 1.27))))
+			(property "Value" "R" (at 0 0 90) (effects (font (size 1.27 1.27))))
+			(symbol "R_0_1"
+				(rectangle (start -1.016 -2.54) (end 1.016 2.54)
+					(stroke (width 0.254) (type default)) (fill (type none)))
+			)
+			(symbol "R_1_1"
+				(pin passive line (at 0 3.81 270) (length 1.27)
+					(name "~" (effects (font (size 1.27 1.27))))
+					(number "1" (effects (font (size 1.27 1.27)))))
+				(pin passive line (at 0 -3.81 90) (length 1.27)
+					(name "~" (effects (font (size 1.27 1.27))))
+					(number "2" (effects (font (size 1.27 1.27)))))
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 100 100 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "33333333-0000-0000-0000-000000000001")
+		(property "Reference" "R1" (at 102 99 0) (effects (font (size 1.27 1.27)) (justify left)))
+		(property "Value" "R" (at 102 101 0) (effects (font (size 1.27 1.27)) (justify left)))
+		(pin "1" (uuid "33333333-0000-0000-0000-0000000000a1"))
+		(pin "2" (uuid "33333333-0000-0000-0000-0000000000a2"))
+		(instances
+			(project "rt"
+				(path "/11111111-1111-1111-1111-111111111111" (reference "R1") (unit 1))
+			)
+		)
+	)
+	(sheet_instances (path "/" (page "1")))
+)
+`,
 };
 
 const PCB: ToolCfg = {
@@ -354,6 +480,26 @@ test.describe("round trip: file → yjs → file", () => {
       diff.equal,
       `round trip lost data:\n${JSON.stringify(diff, null, 2)}`,
     ).toBe(true);
+    expect(hasAbort(testLogger), "no WASM abort").toBe(false);
+  });
+
+  // The wire dialect must BE the file dialect — see expectWireMatchesFile. These
+  // two would both have failed before the CTL_FOR_BOARD / aForClipboard=false fix:
+  // pcbnew on the `(version)(generator)(generator_version)` triple inside every
+  // footprint, eeschema on `(instances … (path ""))`.
+  test("pcbnew wire blobs match the file save token for token", async ({
+    context,
+    testLogger,
+  }) => {
+    await expectWireMatchesFile(context, PCB_FP);
+    expect(hasAbort(testLogger), "no WASM abort").toBe(false);
+  });
+
+  test("eeschema wire blobs keep the symbol's instance path", async ({
+    context,
+    testLogger,
+  }) => {
+    await expectWireMatchesFile(context, SCH_SYM);
     expect(hasAbort(testLogger), "no WASM abort").toBe(false);
   });
 

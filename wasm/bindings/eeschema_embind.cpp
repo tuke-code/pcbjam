@@ -355,10 +355,22 @@ void emitSheetChanged()
     }, s.c_str() );
 }
 
-// Serialize one live schematic item to its native s-expr via the clipboard
-// formatter (the exact path Ctrl-C uses: a one-item SCH_SELECTION through
-// SCH_IO_KICAD_SEXPR::Format). For a symbol the output also carries its
-// (lib_symbols …) definition, just like a copy does.
+// Serialize one live schematic item to its native s-expr via a one-item
+// SCH_SELECTION through SCH_IO_KICAD_SEXPR::Format. For a symbol the output also
+// carries its (lib_symbols …) definition (that prelude is emitted for any symbol
+// in the selection, independent of aForClipboard).
+//
+// aForClipboard MUST be false. Clipboard mode is a LOSSY, paste-oriented dialect:
+// it rewrites `(instances (project … (path …)))` relative to aRelativePath — so a
+// symbol on the current sheet collapses to `(path "")` — takes the REFERENCE field
+// from the per-sheet instance instead of the ordinal one, and keeps orphaned
+// instance data (sch_io_kicad_sexpr.cpp saveSymbol: ~758-766, ~791-806, ~903).
+// The Y.Doc is the source of truth for the FILE, so a wire blob must be byte-equal
+// to that item's subtree in a full file save; clipboard form would silently strip
+// every symbol's sheet path and unit/reference on materialize.
+//
+// aRelativePath is still required (Format wxCHECKs it non-null) but is unread on
+// the aForClipboard=false path.
 std::string itemBlob( SCH_EDIT_FRAME* aFrame, SCH_ITEM* aItem )
 {
     SCH_SELECTION sel;
@@ -368,7 +380,7 @@ std::string itemBlob( SCH_EDIT_FRAME* aFrame, SCH_ITEM* aItem )
     STRING_FORMATTER   fmt;
     SCH_IO_KICAD_SEXPR plugin;
     plugin.Format( &sel, &aFrame->GetCurrentSheet(), aFrame->Schematic(), &fmt,
-                   /*aForClipboard*/ true );
+                   /*aForClipboard*/ false );
     return fmt.GetString();
 }
 

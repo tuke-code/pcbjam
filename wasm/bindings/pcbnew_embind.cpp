@@ -294,27 +294,55 @@ json itemToJson( BOARD_ITEM* aItem )
     return j;
 }
 
-// ── s-expr clipboard blob (the generic `added` mechanism) ────────────────────────────────────
+// ── s-expr item blob (the generic `added` mechanism) ─────────────────────────────────────────
 //
 // For added items beyond the natively-reconstructed PCB_TRACK (footprints, vias, zones, graphic
-// shapes/text…), reuse KiCad's own copy/paste serializer, CLIPBOARD_IO. It Format()s a one-item
-// selection exactly as Ctrl-C does — a bare `(footprint …)` for a footprint, or a fake
-// `(kicad_pcb … <layers> <item>)` envelope for everything else (the bare item tokens like
-// `(segment`/`(via`/`(zone` are NOT accepted by the parser top-level, so the envelope is
-// required). CLIPBOARD_IO normally talks to the system clipboard; SetWriter/SetReader redirect
-// it to a string so it works headless / in wasm.
+// shapes/text…), serialize one item with the BOARD writer's control set: a bare `(footprint …)`
+// for a footprint, or a fake `(kicad_pcb … <layers> <item>)` envelope for everything else (the
+// bare item tokens like `(segment`/`(via`/`(zone` are NOT accepted by the parser top-level, so
+// the envelope is required).
+//
+// The envelope still comes from CLIPBOARD_IO::SaveSelection, which is also what supplies the
+// `(layers …)` block the parser needs; CLIPBOARD_IO normally talks to the system clipboard, so
+// SetWriter/SetReader redirect it to a string to work headless / in wasm. Footprints take the
+// dedicated path below instead — see blobForItem for why the clipboard dialect is wrong here.
 
-// Serialize one live board item to a clipboard blob (used only for `added` payloads — NOT the
+// A board writer we can point at a BOARD. PCB_IO_KICAD_SEXPR's default control set is
+// CTL_FOR_BOARD — exactly what a .kicad_pcb save uses — but only CLIPBOARD_IO exposes a
+// public SetBoard(); m_board is protected on PCB_IO, so a two-line subclass gets us the
+// file writer without a fork change.
+class WIRE_BOARD_IO : public PCB_IO_KICAD_SEXPR
+{
+public:
+    explicit WIRE_BOARD_IO( BOARD* aBoard ) : PCB_IO_KICAD_SEXPR( CTL_FOR_BOARD )
+    {
+        m_board = aBoard;
+    }
+};
+
+// Serialize one live board item to a wire blob (used only for `added` payloads — NOT the
 // diff unit, so `changed`/`removed` stay light and the blob never drives change detection).
 //
-// Footprints DON'T go through SaveSelection: its "make safe to transfer" step copies the
+// The blob MUST be byte-equal to that item's subtree in a full .kicad_pcb save: the Y.Doc is
+// the source of truth for the FILE, so any writer difference is a permanent, unfixable drift
+// and corrupts what a server-side materialize writes.
+//
+// That is why footprints use CTL_FOR_BOARD and not CLIPBOARD_IO's CTL_FOR_CLIPBOARD. The two
+// differ by exactly CTL_OMIT_FOOTPRINT_VERSION (pcb_io_kicad_sexpr.h), so clipboard form emits
+//     (footprint "Lib:C1206" (version 20260206) (generator "pcbnew") (generator_version "10.0") …)
+// — three tokens a board-embedded footprint never has (pcb_io_kicad_sexpr.cpp ~1201). Every
+// footprint of every board drifted on those three lines. For non-footprints the two control
+// sets are identical (the bit only gates footprint output), so the SaveSelection path below
+// is already file-equivalent and keeps its `(kicad_pcb … <layers> <item>)` envelope, which the
+// parser requires — bare `(segment`/`(via`/`(zone` are not accepted at top level.
+//
+// Footprints also DON'T go through SaveSelection: its "make safe to transfer" step copies the
 // footprint, and FOOTPRINT's copy ctor ASSIGNS the mandatory fields into the new footprint's
 // freshly-constructed ones (`*existingField = *field`; EDA_ITEM::operator= keeps the target's
 // uuid) — so Reference/Value/Datasheet/Description would carry NEW uuids in every blob,
 // breaking the wire's identity-by-uuid (every emit would read as field remove+add, and round
-// trips lose the field uuids). Instead we make the same safety copy ourselves, RESTORE the
-// mandatory-field uuids from the source, and Format it directly — the same Format machinery
-// SaveSelection uses internally, so asyncify behavior is identical.
+// trips lose the field uuids). The copy ctor now restores those uuids itself (footprint.cpp),
+// but we keep making the safety copy here so the live item is never mutated.
 std::string blobForItem( BOARD* aBoard, BOARD_ITEM* aItem )
 {
     if( aItem->Type() == PCB_FOOTPRINT_T )
@@ -322,26 +350,17 @@ std::string blobForItem( BOARD* aBoard, BOARD_ITEM* aItem )
         const FOOTPRINT* src = static_cast<const FOOTPRINT*>( aItem );
         FOOTPRINT        copy( *src );
 
-        for( PCB_FIELD* field : copy.GetFields() )
-        {
-            if( field->IsMandatory() )
-            {
-                if( const PCB_FIELD* srcField = src->GetField( field->GetId() ) )
-                    const_cast<KIID&>( field->m_Uuid ) = srcField->m_Uuid;
-            }
-        }
-
         // The rest of SaveSelection's footprint safety steps, minus the refPoint move
         // (the wire carries absolute positions) and minus SetNetCode(0): zeroing pad
         // nets is a paste-into-FOREIGN-board safety, but collab peers edit the SAME
         // board — nets must survive the wire. KiCad 10 formats pad nets by NAME and
         // the parser resolves by name against the receiver's board (creating the net
         // if missing), so no code remapping is needed on apply.
-        copy.SetLocked( false );
-
-        CLIPBOARD_IO     io;
+        //
+        // NOTE: unlike SaveSelection we do NOT SetLocked( false ) — `(locked yes)` is
+        // real file content and dropping it would drift against the save.
+        WIRE_BOARD_IO    io( aBoard );
         STRING_FORMATTER fmt;
-        io.SetBoard( aBoard );
         io.SetOutputFormatter( &fmt );
         io.Format( &copy );
 
@@ -365,14 +384,57 @@ std::string blobForItem( BOARD* aBoard, BOARD_ITEM* aItem )
     return out;
 }
 
-// Reconstruct a board item from a clipboard blob. Parse() returns a bare FOOTPRINT*, or a BOARD*
+// A bare `(footprint …)` blob carries no `(version …)`, but the parser NEEDS one: it starts at
+// m_requiredVersion = 0, and several format decisions are gated on it — most visibly
+// `if( m_requiredVersion < 20230620 ) field->SetVisible( false )` in the T_property case
+// (pcb_io_kicad_sexpr_parser.cpp), which silently stamps `(hide yes)` onto every mandatory
+// field of an applied footprint.
+//
+// The clipboard dialect got this for free because CTL_FOR_CLIPBOARD emits the version INSIDE
+// the footprint form — but that token is not valid board-file content (see blobForItem), so we
+// can't keep it in the Y.Doc. Instead re-supply it here, at parse time only: splice
+// `(version N)` in right after `(footprint "<lib id>"`, which is exactly where the clipboard
+// writer put it. The Y.Doc body stays byte-identical to the file; only the wire→model decode
+// sees the token.
+static std::string withFootprintVersion( const std::string& aBlob )
+{
+    static const std::string kHead = "(footprint";
+
+    if( aBlob.compare( 0, kHead.size(), kHead ) != 0 )
+        return aBlob;                       // envelope blob — its (kicad_pcb …) carries a version
+
+    if( aBlob.find( "(version " ) != std::string::npos )
+        return aBlob;                       // already versioned (older peer, clipboard dialect)
+
+    // Skip the quoted lib id that follows the head keyword, then inject.
+    size_t open = aBlob.find( '"', kHead.size() );
+
+    if( open == std::string::npos )
+        return aBlob;
+
+    size_t close = open + 1;
+
+    while( close < aBlob.size() && aBlob[close] != '"' )
+        close += ( aBlob[close] == '\\' ) ? 2 : 1;
+
+    if( close >= aBlob.size() )
+        return aBlob;
+
+    return aBlob.substr( 0, close + 1 )
+           + " (version " + std::to_string( SEXPR_BOARD_FILE_VERSION ) + ")"
+           + aBlob.substr( close + 1 );
+}
+
+// Reconstruct a board item from a wire blob. Parse() returns a bare FOOTPRINT*, or a BOARD*
 // (the `(kicad_pcb …)` envelope) holding the single item — in which case detach that item from
 // the throw-away board and hand back ownership. Returns nullptr on a parse failure (Parse catches
 // internally) or if no item is found. Runs inside the apply COROUTINE.
-BOARD_ITEM* makeFromBlob( BOARD& aBoard, const std::string& aBlob )
+BOARD_ITEM* makeFromBlob( BOARD& aBoard, const std::string& aBlobIn )
 {
-    if( aBlob.empty() )
+    if( aBlobIn.empty() )
         return nullptr;
+
+    const std::string aBlob = withFootprintVersion( aBlobIn );
 
     CLIPBOARD_IO io;
     io.SetBoard( &aBoard );
