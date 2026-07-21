@@ -438,7 +438,9 @@ for (const [cfg, label, mkActions, seedReg] of [
           const t = m.text();
           if (/collab|drift|parse|error|abort/i.test(t)) consoles[tabLabel]!.push(t.slice(0, 400));
         });
-        page.on("pageerror", (e) => consoles[tabLabel]!.push(`PAGEERROR ${e.message}`));
+        page.on("pageerror", (e) =>
+          consoles[tabLabel]!.push(`PAGEERROR ${e.message}\nSTACK ${(e.stack ?? "").slice(0, 4000)}`),
+        );
       }
       const actions = mkActions();
       const reg = seedReg();

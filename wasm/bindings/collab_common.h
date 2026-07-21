@@ -61,32 +61,95 @@ inline bool& fiberBusy()
     return busy;
 }
 
+/* The in-flight body. HEAP-allocated and pinned for the body's whole life:
+ * when a body PARKS (asyncify suspension inside commit.Push), COROUTINE::Call
+ * RETURNS EARLY — the later asyncify rewind re-enters the fiber through the
+ * SAME callable at the SAME addresses (dynCall_vi → fcontext_entry →
+ * callerStub → the wrapper). Stack-local cor/body (the original runOnFiber
+ * AND the first serialized version) were destroyed on that early return, so
+ * the rewind called through freed objects — "table index is out of bounds"
+ * at rewind, memory corruption downstream (finding #10b's symbolized stack).
+ * `done` is the ONLY completion signal; Call() returning is not. */
+struct FiberSlot
+{
+    COROUTINE<int, int>*   cor = nullptr;
+    std::function<void()>* body = nullptr;
+    bool                   done = false;
+};
+
+inline FiberSlot& activeFiberSlot()
+{
+    static FiberSlot s;
+    return s;
+}
+
+inline wxEvtHandler*& fiberHandler()
+{
+    static wxEvtHandler* h = nullptr;
+    return h;
+}
+
+inline void drainFibers();
+
+inline void reapFiber()
+{
+    FiberSlot& slot = activeFiberSlot();
+    delete slot.cor;
+    delete slot.body;
+    slot.cor = nullptr;
+    slot.body = nullptr;
+    slot.done = false;
+    fiberBusy() = false;
+}
+
 inline void drainFibers()
 {
+    FiberSlot& slot = activeFiberSlot();
+
     if( fiberBusy() )
-        return;             // the running drain's while-loop covers the rest
+    {
+        if( !slot.done )
+            return;         // parked body still in flight — its tail re-drains
+
+        reapFiber();        // completed via rewind since the last drain
+    }
 
     auto& q = fiberQueue();
 
     while( !q.empty() )
     {
         fiberBusy() = true;
-
-        std::function<void()> body = std::move( q.front() );
+        slot.done = false;
+        slot.body = new std::function<void()>( std::move( q.front() ) );
         q.pop_front();
 
-        COROUTINE<int, int> cor( [&body]( int ) -> int
-                                 {
-                                     body();
-                                     return 0;
-                                 } );
-        cor.Call( 0 );
-        fiberBusy() = false;
+        slot.cor = new COROUTINE<int, int>( []( int ) -> int
+        {
+            FiberSlot& sl = activeFiberSlot();
+            ( *sl.body )();
+            sl.done = true;
+
+            // If we parked, no drain is pending by the time the rewind
+            // completes — schedule the reap + next body from the fiber tail
+            // (CallAfter only queues; safe here).
+            if( wxEvtHandler* h = fiberHandler() )
+                h->CallAfter( []() { drainFibers(); } );
+
+            return 0;
+        } );
+
+        slot.cor->Call( 0 );
+
+        if( !slot.done )
+            return;         // parked — cor/body stay pinned for the rewind
+
+        reapFiber();
     }
 }
 
 inline void runOnFiber( wxEvtHandler* aHandler, std::function<void()> aBody )
 {
+    fiberHandler() = aHandler;
     fiberQueue().push_back( std::move( aBody ) );
     aHandler->CallAfter( []() { drainFibers(); } );
 }
