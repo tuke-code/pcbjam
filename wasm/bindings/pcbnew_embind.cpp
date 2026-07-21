@@ -2111,12 +2111,16 @@ std::string pcbCollabTestAddZone( int aX1, int aY1, int aX2, int aY2, std::strin
 bool pcbCollabTestFlipBoardItem( std::string aId )
 {
     PCB_EDIT_FRAME* fr = pcbFrame();
-    BOARD_ITEM*     item = testResolve( fr, aId );
 
-    if( !item )
+    if( !testResolve( fr, aId ) )
         return false;
 
-    pcbjam_collab::runOnFiber( fr, [fr, item]() {
+    pcbjam_collab::runOnFiber( fr, [fr, aId]() {   // re-resolve on the fiber (S4)
+        BOARD_ITEM* item = testResolve( fr, aId );
+
+        if( !item )
+            return;
+
         BOARD_COMMIT commit( fr );
         commit.Modify( item );
         item->Flip( item->GetPosition(), FLIP_DIRECTION::LEFT_RIGHT );
@@ -2135,14 +2139,19 @@ bool pcbCollabTestSetFootprintField( std::string aId, std::string aField, std::s
     if( !item || item->Type() != PCB_FOOTPRINT_T )
         return false;
 
-    FOOTPRINT* fp = static_cast<FOOTPRINT*>( item );
-    wxString   text = wxString::FromUTF8( aText.c_str() );
-    bool       isRef = ( aField == "Reference" );
+    wxString text = wxString::FromUTF8( aText.c_str() );
+    bool     isRef = ( aField == "Reference" );
 
     if( !isRef && aField != "Value" )
         return false;
 
-    pcbjam_collab::runOnFiber( fr, [fr, fp, text, isRef]() {
+    pcbjam_collab::runOnFiber( fr, [fr, aId, text, isRef]() {   // re-resolve on the fiber (S4)
+        BOARD_ITEM* live = testResolve( fr, aId );
+
+        if( !live || live->Type() != PCB_FOOTPRINT_T )
+            return;
+
+        FOOTPRINT*   fp = static_cast<FOOTPRINT*>( live );
         BOARD_COMMIT commit( fr );
         commit.Modify( fp );
 
@@ -2160,12 +2169,16 @@ bool pcbCollabTestSetFootprintField( std::string aId, std::string aField, std::s
 bool pcbCollabTestSetBoardItemLocked( std::string aId, bool aLocked )
 {
     PCB_EDIT_FRAME* fr = pcbFrame();
-    BOARD_ITEM*     item = testResolve( fr, aId );
 
-    if( !item )
+    if( !testResolve( fr, aId ) )
         return false;
 
-    pcbjam_collab::runOnFiber( fr, [fr, item, aLocked]() {
+    pcbjam_collab::runOnFiber( fr, [fr, aId, aLocked]() {   // re-resolve on the fiber (S4)
+        BOARD_ITEM* item = testResolve( fr, aId );
+
+        if( !item )
+            return;
+
         BOARD_COMMIT commit( fr );
         commit.Modify( item );
         item->SetLocked( aLocked );
@@ -2179,12 +2192,18 @@ bool pcbCollabTestSetBoardItemLocked( std::string aId, bool aLocked )
 bool pcbCollabTestMoveBoardItem( std::string aId, int aDx, int aDy )
 {
     PCB_EDIT_FRAME* fr = pcbFrame();
-    BOARD_ITEM*     item = testResolve( fr, aId );
 
-    if( !item )
+    if( !testResolve( fr, aId ) )
         return false;
 
-    pcbjam_collab::runOnFiber( fr, [fr, item, aDx, aDy]() { collabTestMove( fr, item, aDx, aDy ); } );
+    // Re-resolve ON the fiber: a remote remove can apply between scheduling
+    // and running, and doApplyItems FREES removed items — a captured pointer
+    // would be dangling and the commit would resurrect a deleted item
+    // (drift-trio S4 move-vs-delete). Vanished => the move loses, silently.
+    pcbjam_collab::runOnFiber( fr, [fr, aId, aDx, aDy]() {
+        if( BOARD_ITEM* item = testResolve( fr, aId ) )
+            collabTestMove( fr, item, aDx, aDy );
+    } );
     return true;
 }
 

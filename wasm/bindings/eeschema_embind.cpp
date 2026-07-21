@@ -1518,15 +1518,23 @@ bool schCollabTestMoveSchItem( std::string aId, int aDx, int aDy )
     if( !fr )
         return false;
 
-    SCH_SHEET_PATH path;
-    SCH_ITEM* item = fr->Schematic().ResolveItem( KIID( wxString::FromUTF8( aId.c_str() ) ),
-                                                  &path, /*allowNull*/ true );
-
-    if( !item )
+    SCH_SHEET_PATH probe;
+    if( !fr->Schematic().ResolveItem( KIID( wxString::FromUTF8( aId.c_str() ) ), &probe,
+                                      /*allowNull*/ true ) )
         return false;
 
-    SCH_SCREEN* screen = path.LastScreen();
-    fr->CallAfter( [fr, item, screen, aDx, aDy]() { collabTestMove( fr, item, screen, aDx, aDy ); } );
+    // Re-resolve when the deferred body runs: a remote remove can apply in
+    // between and the captured pointer would be dangling — the commit would
+    // resurrect a deleted item (drift-trio S4 move-vs-delete). Vanished =>
+    // the move loses, silently.
+    fr->CallAfter( [fr, aId, aDx, aDy]() {
+        SCH_SHEET_PATH path;
+        SCH_ITEM* item = fr->Schematic().ResolveItem( KIID( wxString::FromUTF8( aId.c_str() ) ),
+                                                      &path, /*allowNull*/ true );
+
+        if( item )
+            collabTestMove( fr, item, path.LastScreen(), aDx, aDy );
+    } );
     return true;
 }
 
@@ -1544,16 +1552,21 @@ bool schCollabTestMirrorSchItem( std::string aId, bool aHorizontal )
     if( !item )
         return false;
 
-    SCH_SCREEN* screen = path.LastScreen();
+    pcbjam_collab::runOnFiber( fr, [fr, aId, aHorizontal]() {   // re-resolve on the fiber (S4)
+        SCH_SHEET_PATH path;
+        SCH_ITEM* live = fr->Schematic().ResolveItem( KIID( wxString::FromUTF8( aId.c_str() ) ),
+                                                      &path, /*allowNull*/ true );
 
-    pcbjam_collab::runOnFiber( fr, [fr, item, screen, aHorizontal]() {
+        if( !live )
+            return;
+
         SCH_COMMIT commit( fr );
-        commit.Modify( item, screen );
+        commit.Modify( live, path.LastScreen() );
 
         if( aHorizontal )
-            item->MirrorHorizontally( item->GetPosition().x );
+            live->MirrorHorizontally( live->GetPosition().x );
         else
-            item->MirrorVertically( item->GetPosition().y );
+            live->MirrorVertically( live->GetPosition().y );
 
         commit.Push( wxT( "Collab test mirror" ) );
     } );

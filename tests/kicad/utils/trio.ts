@@ -261,7 +261,7 @@ export async function bootOpen(page: Page, cfg: ToolCfg): Promise<void> {
   await page.addScriptTag({ path: BUNDLE });
 }
 
-function startV2(
+export function startV2(
   page: Page,
   opts: { room: string; settleMs?: number; seedText?: string; editorMatchesDoc?: boolean },
 ): Promise<void> {
@@ -274,12 +274,15 @@ function startV2(
   }, opts);
 }
 
-export interface Trio {
+/** Anything with labeled tabs — the oracles work on trios, duos, quads alike. */
+export interface TabSet {
+  tabs: ReadonlyArray<readonly [label: string, page: Page]>;
+}
+
+export interface Trio extends TabSet {
   A: Page;
   B: Page;
   C: Page;
-  /** Sweep/settle order: seeder first, observer last. */
-  tabs: ReadonlyArray<readonly [label: string, page: Page]>;
 }
 
 /**
@@ -404,7 +407,7 @@ function firstDiff(a: string, b: string): string {
  * Poll until every tab's silent save is byte-identical. The convergence gate
  * between scenario steps — bounded poll, no blind sleeps (tests/TESTING.md).
  */
-export async function settleConverged(trio: Trio, cfg: ToolCfg, timeout = 30000): Promise<void> {
+export async function settleConverged(trio: TabSet, cfg: ToolCfg, timeout = 30000): Promise<void> {
   await expect
     .poll(
       async () => {
@@ -425,7 +428,7 @@ export async function settleConverged(trio: Trio, cfg: ToolCfg, timeout = 30000)
  *   2. all three silent saves are byte-identical,
  *   3. the room doc materializes, identically, on every tab.
  */
-export async function oracleSweep(trio: Trio, cfg: ToolCfg): Promise<void> {
+export async function oracleSweep(trio: TabSet, cfg: ToolCfg): Promise<void> {
   for (const [label, page] of trio.tabs) {
     const d = await drift(page, cfg);
     expect(d?.added ?? [], `${label} drift added`).toEqual([]);
