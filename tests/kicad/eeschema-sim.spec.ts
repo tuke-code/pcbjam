@@ -75,9 +75,16 @@ async function runSimulation(page: import('@playwright/test').Page): Promise<voi
 
     // The simulator window div appears while the frame ctor is still
     // suspended in the init RPC; the toolbar registers its tools only after
-    // init completes and the frame first paints.
+    // init completes and the frame first paints. The Run tool's
+    // ENABLE(!simRunning) condition is a wxUpdateUIEvent check, and the WASM
+    // port only reliably re-evaluates those when input events pump the loop —
+    // after a run finishes, the last input was the click that started it, so
+    // nudge the mouse each poll or the toolbar can hold its stale
+    // "running" state forever.
     await expect
         .poll(async () => {
+            await page.mouse.move(4, 4);
+            await page.mouse.move(8, 8);
             const el = await findByTooltip(page, 'Run Simulation', { elementType: 'tool' });
             return !!el && el.enabled;
         }, { timeout: 60000 })
